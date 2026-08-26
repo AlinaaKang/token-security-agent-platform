@@ -35,12 +35,13 @@ class UrllibJsonClient:
             return json.loads(response.read().decode("utf-8"))
 
 
-class _ProtectedInputRow(BaseModel):
+class ProtectedAblationRow(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     sample_id: str = Field(min_length=1)
     group_id: str = Field(min_length=1)
-    split: Literal["calibration", "dev", "test"]
+    source_dataset: str = Field(min_length=1)
+    split: Literal["calibration", "dev", "test"] | None = None
     domain: EvaluationDomain
     label_risky: bool
     attack_family: str | None = None
@@ -48,7 +49,7 @@ class _ProtectedInputRow(BaseModel):
     suffix_end: int | None = Field(default=None, ge=0)
     prompt: str = Field(min_length=1, repr=False)
 
-    @field_validator("sample_id", "group_id", "prompt")
+    @field_validator("sample_id", "group_id", "source_dataset", "prompt")
     @classmethod
     def _strip_text(cls, value: str) -> str:
         stripped = value.strip()
@@ -62,7 +63,7 @@ class _ProtectedInputRow(BaseModel):
         return value.strip().casefold() if value is not None else None
 
     @model_validator(mode="after")
-    def _validate_domain(self) -> "_ProtectedInputRow":
+    def _validate_domain(self) -> "ProtectedAblationRow":
         benign = self.domain in {
             EvaluationDomain.BENIGN_PLAIN,
             EvaluationDomain.BENIGN_SHIFT,
@@ -94,8 +95,8 @@ def _errors_path(output_path: Path) -> Path:
     return output_path.with_suffix(output_path.suffix + ".errors.json")
 
 
-def _load_rows(path: Path) -> tuple[_ProtectedInputRow, ...]:
-    rows: list[_ProtectedInputRow] = []
+def load_protected_rows(path: Path) -> tuple[ProtectedAblationRow, ...]:
+    rows: list[ProtectedAblationRow] = []
     identifiers: set[str] = set()
     try:
         stream = path.open("r", encoding="utf-8")
@@ -107,7 +108,7 @@ def _load_rows(path: Path) -> tuple[_ProtectedInputRow, ...]:
                 continue
             try:
                 payload = json.loads(line)
-                row = _ProtectedInputRow.model_validate(payload)
+                row = ProtectedAblationRow.model_validate(payload)
             except (json.JSONDecodeError, ValidationError):
                 raise ValueError(
                     f"protected input row {line_number} is invalid"
@@ -121,7 +122,7 @@ def _load_rows(path: Path) -> tuple[_ProtectedInputRow, ...]:
     return tuple(rows)
 
 
-def _input_hash(rows: tuple[_ProtectedInputRow, ...]) -> str:
+def _input_hash(rows: tuple[ProtectedAblationRow, ...]) -> str:
     identities = []
     for row in sorted(rows, key=lambda item: item.sample_id):
         metadata = row.model_dump(mode="json", exclude={"prompt"})
@@ -189,7 +190,7 @@ def _atomic_json(path: Path, payload: Any) -> None:
 
 def _atomic_observations(
     path: Path,
-    rows: tuple[_ProtectedInputRow, ...],
+    rows: tuple[ProtectedAblationRow, ...],
     observations: dict[str, AblationObservation],
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,7 +213,7 @@ def _atomic_observations(
 
 
 def _observation_from_response(
-    row: _ProtectedInputRow, response: dict[str, Any]
+    row: ProtectedAblationRow, response: dict[str, Any]
 ) -> AblationObservation:
     detector_status = response.get("detector_status")
     if detector_status not in {"no_token_anomaly", "token_anomaly_candidate"}:
@@ -247,7 +248,9 @@ def collect_observations(
     resume: bool,
     client: JsonClient | None = None,
 ) -> dict[str, int]:
-    rows = _load_rows(input_path)
+    rows = load_protected_rows(input_path)
+    if any(row.split is None for row in rows):
+        raise ValueError("protected collection rows require a frozen split")
     input_hash = _input_hash(rows)
     client = client or UrllibJsonClient()
     base = api_base.rstrip("/")

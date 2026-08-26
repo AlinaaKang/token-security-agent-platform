@@ -228,27 +228,27 @@ git commit -m "feat: collect protected ablation observations"
   - XSTest/exaggerated-safety `d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d`
   - BEAST status `source_unavailable`
 
-- [ ] **Step 1: Write source registry and manifest red tests**
+- [x] **Step 1: Write source registry and manifest red tests**
 
 Assert registry requires HTTPS URL, 40-character lowercase revision, SPDX license, attribution, and expected file SHA-256 for verified sources. Assert unavailable sources require a reason and cannot contribute sample IDs.
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run: `python -m pytest tests/unit/test_ablation_manifest_cli.py -q`
 
-- [ ] **Step 3: Implement protected manifest builder**
+- [x] **Step 3: Implement protected manifest builder**
 
 Validate domains/labels (`benign_*` false, unsafe/suffix true), group near-duplicates through input group IDs, call existing `split_by_group`, verify domain/family coverage, and write only IDs, groups, counts, hashes, and source revisions.
 
-- [ ] **Step 4: Add leakage and reproducibility tests**
+- [x] **Step 4: Add leakage and reproducibility tests**
 
 Assert no Prompt fragment appears in manifest/stdout/errors, same seed produces byte-identical output, changed group changes dataset hash, and all split group intersections are empty.
 
-- [ ] **Step 5: Create audited source registry and notices**
+- [x] **Step 5: Create audited source registry and notices**
 
 Store verified repository URL/revision/license metadata. Keep file SHA-256 entries in unavailable state until the exact protected source file is mounted and audited; such sources cannot enter verified coverage. Update notices with repository attribution and explain that no attack text is redistributed.
 
-- [ ] **Step 6: Run Task 4 tests and privacy scan**
+- [x] **Step 6: Run Task 4 tests and privacy scan**
 
 ```powershell
 python -m pytest tests/unit/test_ablation_manifest_cli.py tests/unit/test_ablation_io.py -q
@@ -257,7 +257,7 @@ Select-String -Path configs/ablation_sources.json -Pattern 'prompt|suffix_text|r
 
 Expected: tests pass and privacy scan returns no matches.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```powershell
 git add configs/ablation_sources.json scripts/build_ablation_manifest.py tests/unit/test_ablation_manifest_cli.py THIRD_PARTY_NOTICES.md

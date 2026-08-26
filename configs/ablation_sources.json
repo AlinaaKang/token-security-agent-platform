@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "source_id": "advprompter",
+      "status": "unverified",
+      "url": "https://github.com/facebookresearch/advprompter",
+      "revision": "802a500c91f1dcd7c8b76869d3e39bf8e40ed7d7",
+      "license_spdx": null,
+      "attribution": null,
+      "file_sha256": null,
+      "reason": "protected source file and repository license audit pending"
+    },
+    {
+      "source_id": "autodan_hga",
+      "status": "unverified",
+      "url": "https://github.com/SheltonLiu-N/AutoDAN",
+      "revision": "34062e964185693e81a6775b4f0d00bfd7507612",
+      "license_spdx": null,
+      "attribution": null,
+      "file_sha256": null,
+      "reason": "protected source file and repository license audit pending"
+    },
+    {
+      "source_id": "beast",
+      "status": "source_unavailable",
+      "url": null,
+      "revision": null,
+      "license_spdx": null,
+      "attribution": null,
+      "file_sha256": null,
+      "reason": "official repository or immutable released artifact not verified"
+    },
+    {
+      "source_id": "cpdonline",
+      "status": "unverified",
+      "url": "https://github.com/cpdonline/cpdonline",
+      "revision": "1a6c055865c44cc1d10dfbe5d014576c7331322e",
+      "license_spdx": "MIT",
+      "attribution": "Copyright (c) 2026 cpdonline",
+      "file_sha256": null,
+      "reason": "protected benchmark file checksum audit pending"
+    },
+    {
+      "source_id": "gcg",
+      "status": "unverified",
+      "url": "https://github.com/llm-attacks/llm-attacks",
+      "revision": "098262edf85f807224e70ecd87b9d83716bf6b73",
+      "license_spdx": null,
+      "attribution": null,
+      "file_sha256": null,
+      "reason": "protected source file and repository license audit pending"
+    },
+    {
+      "source_id": "harmbench",
+      "status": "unverified",
+      "url": "https://github.com/centerforaisafety/HarmBench",
+      "revision": "8e1604d1171fe8a48d8febecd22f600e462bdcdd",
+      "license_spdx": null,
+      "attribution": null,
+      "file_sha256": null,
+      "reason": "protected source file and repository license audit pending"
+    },
+    {
+      "source_id": "xstest",
+      "status": "unverified",
+      "url": "https://github.com/paul-rottger/exaggerated-safety",
+      "revision": "d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d",
+      "license_spdx": null,
+      "attribution": null,
+      "file_sha256": null,
+      "reason": "protected source file and repository license audit pending"
+    }
+  ]
+}

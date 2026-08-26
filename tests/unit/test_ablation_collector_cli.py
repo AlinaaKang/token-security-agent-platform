@@ -63,6 +63,7 @@ def _write_input(path: Path, *, duplicate: bool = False) -> None:
         {
             "sample_id": "suffix-1",
             "group_id": "group-suffix",
+            "source_dataset": "cpdonline",
             "split": "dev",
             "domain": "optimized_suffix",
             "label_risky": True,
@@ -74,6 +75,7 @@ def _write_input(path: Path, *, duplicate: bool = False) -> None:
         {
             "sample_id": "semantic-1",
             "group_id": "group-semantic",
+            "source_dataset": "harmbench",
             "split": "dev",
             "domain": "semantic_unsafe",
             "label_risky": True,
@@ -129,6 +131,7 @@ def test_collector_writes_only_normalized_observations() -> None:
     assert "SAFE_PRIVATE" not in serialized
     assert "prompt" not in serialized.casefold()
     assert "token_text" not in serialized
+    assert "source_dataset" not in serialized
 
 
 def test_collector_resume_retries_failures_and_skips_completed_rows() -> None:

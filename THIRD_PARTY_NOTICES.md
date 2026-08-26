@@ -61,3 +61,17 @@ Deployment identity recorded on 2026-08-26:
 - OWASP source: GenAI Security Project 2025 risk pages
 
 The snapshot is an offline, immutable competition artifact. Updating external material is a separate controlled process and is not performed during request handling.
+
+## Agent Ablation Source Candidates
+
+The frozen agent ablation benchmark records candidate upstream repositories before any sample enters headline metrics. A repository revision alone is not treated as a verified dataset. The exact protected data file, its SHA-256, repository license, and attribution must also pass the source audit.
+
+Candidate revisions recorded on 2026-08-26:
+
+- AutoDAN-HGA: <https://github.com/SheltonLiu-N/AutoDAN>, `34062e964185693e81a6775b4f0d00bfd7507612`
+- AdvPrompter: <https://github.com/facebookresearch/advprompter>, `802a500c91f1dcd7c8b76869d3e39bf8e40ed7d7`
+- GCG reference implementation: <https://github.com/llm-attacks/llm-attacks>, `098262edf85f807224e70ecd87b9d83716bf6b73`
+- HarmBench candidate semantic-risk source: <https://github.com/centerforaisafety/HarmBench>, `8e1604d1171fe8a48d8febecd22f600e462bdcdd`
+- XSTest candidate hard-negative source: <https://github.com/paul-rottger/exaggerated-safety>, `d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d`
+
+These candidates remain `unverified` until the file and license audit is complete. BEAST remains `source_unavailable` because an official repository or immutable released artifact has not been verified. The project does not redistribute attack Prompt text from these sources.
