@@ -49,13 +49,20 @@ class ProtectedAblationRow(BaseModel):
     suffix_end: int | None = Field(default=None, ge=0)
     prompt: str = Field(min_length=1, repr=False)
 
-    @field_validator("sample_id", "group_id", "source_dataset", "prompt")
+    @field_validator("sample_id", "group_id", "source_dataset")
     @classmethod
-    def _strip_text(cls, value: str) -> str:
+    def _strip_identifier(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
-            raise ValueError("protected input text must not be blank")
+            raise ValueError("protected input identifier must not be blank")
         return stripped
+
+    @field_validator("prompt")
+    @classmethod
+    def _preserve_prompt(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("protected input Prompt must not be blank")
+        return value
 
     @field_validator("attack_family")
     @classmethod

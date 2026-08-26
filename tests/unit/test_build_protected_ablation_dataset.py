@@ -40,7 +40,7 @@ def test_builder_normalizes_four_domains_and_preserves_suffix_coordinates() -> N
     _write_csv(
         gcg,
         ["prompt", "target", "trigger"],
-        [{"prompt": "SAFE_BASE", "target": "SAFE_TARGET", "trigger": " GCG_SUFFIX"}],
+        [{"prompt": "SAFE_BASE", "target": "SAFE_TARGET", "trigger": " GCG_SUFFIX "}],
     )
     _write_csv(
         harmbench,
@@ -96,7 +96,10 @@ def test_builder_normalizes_four_domains_and_preserves_suffix_coordinates() -> N
     }
     optimized = [row for row in rows if row.domain.value == "optimized_suffix"]
     assert {row.attack_family for row in optimized} == {"autodan", "advprompter", "gcg"}
-    assert all(row.prompt[row.suffix_start : row.suffix_end].endswith("SUFFIX") for row in optimized)  # type: ignore[index]
+    assert all(row.prompt[row.suffix_start : row.suffix_end].strip().endswith("SUFFIX") for row in optimized)  # type: ignore[index]
+    gcg_row = next(row for row in optimized if row.attack_family == "gcg")
+    assert gcg_row.prompt.endswith(" ")
+    assert gcg_row.suffix_end == len(gcg_row.prompt)
     xstest_rows = [row for row in rows if row.source_dataset == "xstest"]
     assert len({row.group_id for row in xstest_rows}) == 1
     assert all(row.split is None for row in rows)
