@@ -233,6 +233,7 @@ def test_committed_source_registry_marks_only_audited_files_verified() -> None:
         "harmbench",
         "xstest",
     }
+    assert set(by_id) == audited | {"autodan_hga", "beast"}
     assert {source_id for source_id, source in by_id.items() if source.status.value == "verified"} == audited
     assert all(by_id[source_id].file_sha256 for source_id in audited)
     assert by_id["autodan_hga"].status.value != "verified"

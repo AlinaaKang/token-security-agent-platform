@@ -2,16 +2,6 @@
   "schema_version": 1,
   "sources": [
     {
-      "source_id": "advprompter",
-      "status": "source_unavailable",
-      "url": "https://github.com/facebookresearch/advprompter",
-      "revision": "802a500c91f1dcd7c8b76869d3e39bf8e40ed7d7",
-      "license_spdx": "CC-BY-NC-4.0",
-      "attribution": "Anselm Paulus, Arman Zharmagambetov, Chuan Guo, Brandon Amos, and Yuandong Tian",
-      "file_sha256": null,
-      "reason": "official repository verified, but no immutable generated suffix artifact was selected for this benchmark"
-    },
-    {
       "source_id": "autodan_hga",
       "status": "source_unavailable",
       "url": "https://github.com/SheltonLiu-N/AutoDAN",
@@ -60,16 +50,6 @@
       "attribution": "Copyright (c) 2026 cpdonline",
       "file_sha256": "sha256:6dbdcd82ea8bec98caa8c0c8c33c90a4c5468ee512de9bfcfa4d392791b669be",
       "reason": null
-    },
-    {
-      "source_id": "gcg",
-      "status": "source_unavailable",
-      "url": "https://github.com/llm-attacks/llm-attacks",
-      "revision": "098262edf85f807224e70ecd87b9d83716bf6b73",
-      "license_spdx": "MIT",
-      "attribution": "Copyright (c) 2023 Andy Zou",
-      "file_sha256": null,
-      "reason": "reference implementation verified, but the benchmark uses the separately audited CPDonline GCG artifact"
     },
     {
       "source_id": "harmbench",
