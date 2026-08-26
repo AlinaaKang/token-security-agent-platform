@@ -176,31 +176,31 @@ git commit -m "feat: validate ablation benchmark artifacts"
 - Output JSONL: protected `AblationObservation` records without Prompt, Token text, evidence, knowledge, or raw model output
 - CLI: `collect_agent_ablation.py --input-jsonl <protected> --api-base <url> --output-jsonl <protected> --model-id <id> --resume`
 
-- [ ] **Step 1: Write collector privacy red test**
+- [x] **Step 1: Write collector privacy red test**
 
 Use a local fake HTTP server that returns extra `prompt`, `signals`, `evidence`, and raw fields. Assert output contains only `AblationObservation` fields, request uses `knowledge_mode=off`, stdout contains counts only, and exceptions never include Prompt text.
 
-- [ ] **Step 2: Run red test**
+- [x] **Step 2: Run red test**
 
 Run: `python -m pytest tests/unit/test_ablation_collector_cli.py -q`
 
-- [ ] **Step 3: Implement one-call collector**
+- [x] **Step 3: Implement one-call collector**
 
 Validate protected input with a script-local strict model, call `/api/analyze` once per sample, derive only normalized observation fields, write through a temporary file followed by atomic rename, and keep errors as `{sample_id, error_type}` in a separate protected file.
 
-- [ ] **Step 4: Add resume and identity tests**
+- [x] **Step 4: Add resume and identity tests**
 
 Assert resume skips completed IDs, rejects duplicate or unknown IDs, refuses a different API deployment identity, and never appends across benchmark hashes.
 
-- [ ] **Step 5: Implement resume metadata**
+- [x] **Step 5: Implement resume metadata**
 
 Persist a protected sidecar containing benchmark hash, API model ID, calibration version, semantic model version, and completed ID count. Do not persist Prompt or API response bodies.
 
-- [ ] **Step 6: Run Task 3 tests**
+- [x] **Step 6: Run Task 3 tests**
 
 Run: `python -m pytest tests/unit/test_ablation_collector_cli.py -q`
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```powershell
 git add scripts/collect_agent_ablation.py tests/unit/test_ablation_collector_cli.py
