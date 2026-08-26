@@ -46,12 +46,12 @@
 
 讲解：
 
-- 测试集 663 条，三方法使用相同冻结划分。
-- Window NLL 的整句分类 F1 最高，不能隐藏这一结果。
-- Entropy-CPD 的独特输出是 Token 起点定位。
-- 低误报阈值在开发集选择，冻结 test 的实际 FPR 原样公开。
+- 正式数据集 1,469 条，其中冻结 test 838 条；三条智能体链路使用相同划分和观测。
+- Semantic-only 已经很强；Fusion 增加少量 Recall，但没有全面改善 F1/FPR，不能隐藏这一结果。
+- Entropy-CPD 的独特输出是独立变化证据和字符级起点定位。
+- FPR 约束在 dev 上选择，冻结 test 的实际 FPR 原样公开；production 没有 Dev 约束，页面显示“不适用”。
 
-展示 GCG、AutoDAN、AdvPrompter 召回率，以及 BEAST、AutoDAN-HGA“未评测”。
+展示 Semantic-only、CPD-only、Fusion 的九个工作点，GCG、AutoDAN、AdvPrompter 召回率，以及 BEAST、AutoDAN-HGA“来源缺口”。
 
 ## 2:40-2:55 知识证据
 
@@ -59,6 +59,6 @@
 
 ## 2:55-3:00 局限与进阶
 
-讲解：Qwen3Guard 是 Apache-2.0 第三方工程层，当前 6/6 与 9/9 只是功能验收，不是独立语义准确率。知识库是离线证据层，不会改变基础动作；在线更新与反馈闭环仍是下一阶段。
+讲解：Qwen3Guard 是 Apache-2.0 第三方工程层，CPD 来自 CPDonline；原创点是双证据智能体编排、定位、脱敏审计和冻结消融，不声称发明模型或 CPD。知识库是离线证据层，不会改变基础动作。
 
-结束前确认页面右上角显示“部署校准一致”，评测中心明确显示“尚未进行独立冻结语义评测”。
+结束前确认页面右上角显示“部署校准一致”，评测中心显示真实 `agent-ablation-v1`，并明确 Fusion 的 Dev FPR 5%/10% 约束未满足。

@@ -11,6 +11,7 @@
 - 处置语义：语义危险直接拦截，争议内容进入复核；语义安全但 CPD 告警时，analysis 实验拦截、gateway 人工复核；两路均正常才放行。
 - 隐私边界：Guard 原始输出只在内存中严格解析；SQLite 只保存 SHA-256、长度、归一化语义类别、检测统计、动作、模型和校准版本。
 - 冻结评测：Global NLL、Window NLL、Entropy-CPD 使用相同 group-aware calibration/dev/test 划分。
+- 智能体消融：Semantic-only、CPD-only、Fusion 使用同一 1,469 条冻结数据集和九个工作点，公开来源缺口、误报、定位与延迟。
 - 真实演示：浏览器只接收冻结测试 sample ID、攻击族和脱敏 Token 序号，不接收攻击原文。
 - 可选进阶层：离线官方知识快照、FTS5 Top-3 检索和有引用研判报告；知识证据在基础结论生成后附加，不能改写动作、分数或异常起点。
 
@@ -18,14 +19,17 @@ PCAP、RAG、ReAct、BEAST 和 AutoDAN-HGA 不进入基础任务算法与冻结 
 
 ## 当前验证
 
-- 后端：194 passed，1 个本机 GPU 集成测试因未配置本地模型而 skipped。
-- 前端：12 passed，TypeScript 与 Vite 生产构建通过。
+- 后端：229 passed，1 个本机真实 GPU 集成测试因未配置模型而 skipped。
+- 前端：13 个交互测试，TypeScript 与 Vite 生产构建通过。
 - AutoDL：RTX 4090 D 24GB，Qwen2.5-7B-Instruct + Qwen3Guard-Gen-0.6B；模型、检测器、语义 Guard、知识库、审计、评测、样本服务全部 ready，部署校准一致。
-- 冻结测试：663 条，其中攻击 460、无害 203。
+- 原始 CPD/NLL 基准：冻结测试 663 条，其中攻击 460、无害 203。
 - 受保护融合验收：3 条直接危险、1 条普通安全、1 条争议上下文、1 条无害格式突变，语义与动作 6/6 符合预期。
 - 真实 ID 抽测：GCG、AutoDAN、AdvPrompter 各 3 条，本轮 9/9 同时触发语义拦截和 CPD 异常候选，响应完全脱敏。
+- 正式智能体消融：1,469 条总数据、838 条冻结 test、838/838 完成且失败 0。Semantic-only 的 Dev FPR 5% 档位在 test 上 F1 97.64%、FPR 1.24%；Fusion 同档位 F1 96.71%、FPR 10.25%，因此不声称融合全面优于单路。
 
 6/6 与 9/9 都只用于功能链路验收，不代表独立语义准确率或总体 F1。完整冻结 CPD/NLL 指标见 [实验报告](docs/basic-task/experiment-report.md)。
+
+最新三链路消融的来源、哈希、九个工作点、分域结果与限制见 [智能体冻结消融报告](docs/basic-task/ablation-report.md)。CPD 在当前系统中的可辩护价值是独立 Token 变化证据与异常起点定位，不是总体分类性能必然优于语义模型。
 
 ## 本地验证
 
@@ -56,6 +60,8 @@ npm.cmd run build
 - `TOKEN_SECURITY_DEMO_GCG_CSV`
 - `TOKEN_SECURITY_KNOWLEDGE_SNAPSHOT_PATH`
 - `TOKEN_SECURITY_KNOWLEDGE_EVALUATION_REPORT_PATH`
+- `TOKEN_SECURITY_AGENT_ABLATION_MANIFEST_PATH`
+- `TOKEN_SECURITY_AGENT_ABLATION_REPORT_PATH`
 
 开发模式 Web 默认通过 Vite 将 `/health` 和 `/api` 代理到 `http://127.0.0.1:18000`。
 
@@ -77,6 +83,7 @@ CPD 算法和首批数据唯一参考为 CPDonline，固定 commit：
 - [开发与部署](docs/basic-task/development.md)
 - [测试报告](docs/basic-task/test-report.md)
 - [实验报告](docs/basic-task/experiment-report.md)
+- [智能体冻结消融报告](docs/basic-task/ablation-report.md)
 - [三分钟演示脚本](docs/basic-task/demo-script-3min.md)
 - [进阶任务系统设计](docs/advanced-task/design.md)
 - [进阶任务测试报告](docs/advanced-task/test-report.md)

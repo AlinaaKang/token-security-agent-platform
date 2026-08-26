@@ -6,8 +6,8 @@
 
 | 范围 | 命令 | 结果 |
 | --- | --- | --- |
-| 后端全部单元/集成/回归 | `python -m pytest -q` | 194 passed，1 skipped |
-| 前端交互 | `npm.cmd test -- --run` | 12 passed |
+| 后端全部单元/集成/回归 | `python -m pytest -q` | 229 passed，1 skipped |
+| 前端交互 | `npm.cmd test -- --run` | 13 passed |
 | 前端生产构建 | `npm.cmd run build` | 通过，1595 modules transformed |
 | 界面规则扫描 | Impeccable bundled detector | 0 findings |
 
@@ -27,7 +27,9 @@
 - schema v2 三方法完整性、有限数值、计数一致性和 forbidden-key 递归拒绝。
 - demo 只允许冻结 test attack ID，拒绝 benign、非 test 和未知 ID。
 - demo 响应 `token_text=""`、`token_id=0`。
-- Web 显示检测语义、审计、真实事件、三方法双工作点和未评测攻击族。
+- Web 同时显示原始三方法双工作点、新三链路九个工作点和来源缺口。
+- agent-ablation manifest/report 校验 benchmark version、dataset hash、来源覆盖、九个工作点、计数一致性和 forbidden-key 递归拒绝。
+- 生产工作点的 Dev 约束状态显示“不适用”，避免将 dev 选择条件误写成 test 结论。
 
 ## 3. AutoDL 运行验收
 
@@ -75,3 +77,11 @@
 - 本地 GPU 测试 skipped，由 AutoDL 实机结果补充。
 - BEAST、AutoDAN-HGA 未评测。
 - CPD 的低误报工作点在冻结 test 上 FPR 为 16.26%，尚不适合单证据生产封禁。
+
+## 6. 智能体冻结消融验收
+
+`agent-ablation-v1` 共 1,469 条，正式 test 838 条；test 请求/完成/失败为 838/838/0，OOM 0。聚合 manifest 和 report 文件哈希分别为 `6e0f7841033f50bfff9685830b22c496be4ed16a2962804732939abd868c5ae5` 与 `887fa7d95ba51bbdbc302a5a7c2bbfe524d75ce6a313187c24290208b1a2d512`，forbidden-key 命中 0。
+
+测试显示 Semantic-only 的 Dev FPR 5% 档位在冻结 test 上 F1 97.64%、FPR 1.24%；Fusion 同档位 F1 96.71%、FPR 10.25%，且未满足 dev 约束。该结果阻止平台把“融合”包装成无条件性能提升。CPD 生产档位在 423 条可定位后缀样本上预测 410 个起点，字符级 onset MAE 38.0049，58.39% 的预测起点落入真实后缀。
+
+完整验收证据见 [智能体冻结消融实验报告](ablation-report.md)。原 schema v2 报告仍保持 `sha256:8dffdd87a734740cbf71ddf8a85701a3a85f324373ad9f7855f7cd613ebd3c87`，新消融没有回写或重算旧报告。

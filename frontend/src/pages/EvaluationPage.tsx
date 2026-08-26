@@ -96,7 +96,9 @@ function AblationRow({ report }: { report: AblationMethodReport }) {
         {report.action_counts.allow} / {report.action_counts.review} / {report.action_counts.block}
       </td>
       <td>
-        {report.constraint_satisfied ? (
+        {report.operating_point === "production" ? (
+          <span className="constraint-state">不适用</span>
+        ) : report.constraint_satisfied ? (
           <span className="constraint-state satisfied">满足</span>
         ) : (
           <span className="constraint-state unsatisfied">约束未满足</span>
@@ -128,7 +130,7 @@ function AgentAblationSection({ report }: { report: AgentAblationReport }) {
               <th>F1</th>
               <th>P95 延迟</th>
               <th>放行 / 复核 / 拦截</th>
-              <th>约束状态</th>
+              <th>Dev 约束状态</th>
             </tr>
           </thead>
           {ablationPointOrder.map((point) => (

@@ -474,6 +474,8 @@ describe("competition security console", () => {
     expect(screen.getByText("语义危险召回")).toBeInTheDocument();
     expect(screen.getByText("优化后缀召回")).toBeInTheDocument();
     expect(screen.getByText("无害突变 FPR")).toBeInTheDocument();
+    expect(screen.getByText("Dev 约束状态")).toBeInTheDocument();
+    expect(screen.getAllByText("不适用").length).toBeGreaterThan(0);
     expect(screen.getByText("约束未满足")).toBeInTheDocument();
     expect(screen.getByText("BEAST · 来源缺口")).toBeInTheDocument();
     expect(screen.getByText("冻结 test 聚合结果；知识增强不参与判定")).toBeInTheDocument();
