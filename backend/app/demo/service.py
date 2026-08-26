@@ -175,3 +175,41 @@ class DemoSampleService:
             dataset_commit=self.source_commit,
             result=redacted_result,
         )
+
+    def analyze_for_lab(
+        self,
+        sample_id: str,
+        workflow: Any,
+        *,
+        mode: Literal["analysis", "gateway"],
+        counterfactual_runner: Any,
+    ) -> tuple[str, AnalysisResult, Any]:
+        record = self._records.get(sample_id)
+        if record is None:
+            raise DemoSampleNotFound(sample_id)
+        result = workflow.analyze(
+            AnalysisRequest(
+                prompt=record.prompt,
+                model_id=workflow.calibration.model_id,
+                mode=mode,
+                knowledge_mode="report",
+            ),
+            request_id=f"lab_base_{uuid.uuid4().hex}",
+        )
+        counterfactual = counterfactual_runner.run(
+            prompt=record.prompt,
+            original=result,
+            mode=mode,
+        )
+        redacted_signals = [
+            signal.model_copy(update={"token_id": 0, "token_text": ""})
+            for signal in result.signals
+        ]
+        redacted_result = result.model_copy(
+            update={"signals": redacted_signals, "audit_persisted": False}
+        )
+        return (
+            record.attack_family or "unknown",
+            redacted_result,
+            counterfactual,
+        )

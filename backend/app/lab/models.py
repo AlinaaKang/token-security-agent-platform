@@ -5,8 +5,22 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.knowledge.models import KnowledgeId
-from app.schemas import Decision, MAX_PROMPT_CHARACTERS, NonEmptyText, TokenSignal
+from app.agent.fusion import FusionReason
+from app.knowledge.models import (
+    KnowledgeEvidence,
+    KnowledgeId,
+    KnowledgeStatus,
+    ReportStatus,
+)
+from app.schemas import (
+    AnalysisResult,
+    Decision,
+    MAX_PROMPT_CHARACTERS,
+    NonEmptyText,
+    Provenance,
+    TokenSignal,
+)
+from app.semantic.models import SemanticCategory, SemanticSeverity
 
 
 FORBIDDEN_PUBLIC_KEYS = frozenset(
@@ -72,6 +86,32 @@ class LabRunRequest(BaseModel):
         raise ValueError("scenario kind must match exactly one input source")
 
 
+class LabScenario(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scenario_id: NonEmptyText
+    label: NonEmptyText
+    scenario_kind: Literal["synthetic", "protected"]
+    attack_family: NonEmptyText | None = None
+    ready: bool = True
+
+
+class LabStage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    stage_id: Literal[
+        "semantic_guard",
+        "token_observation",
+        "entropy_cpd",
+        "fixed_fusion",
+        "knowledge_retrieval",
+    ]
+    status: Literal["succeeded", "unavailable"]
+    latency_ms: float | None = Field(default=None, ge=0)
+    timing_basis: Literal["measured", "combined", "unavailable"]
+    summary: NonEmptyText
+
+
 class ToolDryRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -97,6 +137,61 @@ class LabPublicSignal(BaseModel):
             cpd_entropy=signal.cpd_entropy,
             cpd_nll=signal.cpd_nll,
             risk=signal.risk,
+        )
+
+
+class LabDetectionSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    decision: Decision
+    risk_score: float = Field(ge=0, le=1)
+    detector_score: float = Field(ge=0)
+    detector_status: NonEmptyText
+    semantic_severity: SemanticSeverity
+    semantic_categories: tuple[SemanticCategory, ...] = ()
+    semantic_model_id: NonEmptyText
+    semantic_model_version: NonEmptyText
+    semantic_latency_ms: float = Field(ge=0)
+    fusion_reason: FusionReason
+    suspicious_span: dict[str, int] | None = None
+    signals: tuple[LabPublicSignal, ...]
+    provenance: Provenance
+    latency_ms: float = Field(ge=0)
+    knowledge_status: KnowledgeStatus
+    knowledge_snapshot_version: NonEmptyText | None = None
+    knowledge_latency_ms: float = Field(ge=0)
+    knowledge_evidence: tuple[KnowledgeEvidence, ...] = ()
+    report_status: ReportStatus
+
+    @classmethod
+    def from_analysis(cls, result: AnalysisResult) -> LabDetectionSnapshot:
+        return cls(
+            decision=result.decision,
+            risk_score=result.risk_score,
+            detector_score=result.detector_score,
+            detector_status=result.detector_status,
+            semantic_severity=result.semantic_severity,
+            semantic_categories=tuple(result.semantic_categories),
+            semantic_model_id=result.semantic_model_id,
+            semantic_model_version=result.semantic_model_version,
+            semantic_latency_ms=result.semantic_latency_ms,
+            fusion_reason=result.fusion_reason,
+            suspicious_span=(
+                result.suspicious_span.model_dump(mode="json")
+                if result.suspicious_span is not None
+                else None
+            ),
+            signals=tuple(
+                LabPublicSignal.from_token_signal(signal)
+                for signal in result.signals
+            ),
+            provenance=result.provenance,
+            latency_ms=result.latency_ms,
+            knowledge_status=result.knowledge_status,
+            knowledge_snapshot_version=result.knowledge_snapshot_version,
+            knowledge_latency_ms=result.knowledge_latency_ms,
+            knowledge_evidence=tuple(result.knowledge_evidence),
+            report_status=result.report_status,
         )
 
 
@@ -142,6 +237,25 @@ class LabCaseReport(BaseModel):
     tool_statuses: dict[LabToolId, Literal["succeeded", "failed"]] = Field(
         default_factory=dict
     )
+
+
+class LabRunResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: NonEmptyText
+    status: Literal["completed"] = "completed"
+    scenario_id: NonEmptyText
+    scenario_kind: Literal["custom", "synthetic", "protected"]
+    scenario_label: NonEmptyText
+    attack_family: NonEmptyText | None = None
+    mode: Literal["analysis", "gateway"]
+    created_at: str
+    stages: tuple[LabStage, ...]
+    detection: LabDetectionSnapshot
+    counterfactual: CounterfactualResult
+    tool_plans: tuple[LabToolPlan, ...]
+    tool_results: tuple[ToolDryRunResult, ...] = ()
+    case_report: LabCaseReport
 
 
 def assert_public_payload(payload: Any) -> None:

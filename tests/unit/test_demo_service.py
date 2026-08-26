@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.demo.service import DemoSampleNotFound, DemoSampleService
 from app.evaluation.normalize import PromptRecord
 from app.evaluation.split import split_by_group
+from app.lab.models import CounterfactualResult, CounterfactualSnapshot
 from app.schemas import AnalysisResult, Provenance, TokenSignal
 
 
@@ -79,6 +80,28 @@ class StubWorkflow:
         )
 
 
+class RecordingCounterfactualRunner:
+    def __init__(self) -> None:
+        self.seen_prompt: str | None = None
+
+    def run(self, *, prompt: str, original: AnalysisResult, mode: str):
+        self.seen_prompt = prompt
+        snapshot = CounterfactualSnapshot(
+            semantic_severity=original.semantic_severity,
+            detector_status=original.detector_status,
+            risk_score=original.risk_score,
+            detector_score=original.detector_score,
+            decision=original.decision,
+            latency_ms=original.latency_ms,
+        )
+        return CounterfactualResult(
+            interpretation="inconclusive",
+            reason="no_predicted_onset",
+            calibration_version=original.provenance.calibration_version,
+            original=snapshot,
+        )
+
+
 def test_demo_service_exposes_only_test_attacks_and_redacts_tokens() -> None:
     records = make_records()
     expected_test_ids = {
@@ -125,3 +148,28 @@ def test_demo_service_rejects_benign_and_non_test_ids() -> None:
             pass
         else:
             raise AssertionError(f"demo service accepted unavailable ID: {sample_id}")
+
+
+def test_demo_lab_adapter_keeps_protected_text_inside_the_demo_boundary() -> None:
+    service = DemoSampleService(
+        records=make_records(), source_commit="safe-source-commit"
+    )
+    selected = service.list_samples(family=None, limit=1)[0]
+    runner = RecordingCounterfactualRunner()
+
+    family, analysis, counterfactual = service.analyze_for_lab(
+        selected.sample_id,
+        StubWorkflow(),
+        mode="gateway",
+        counterfactual_runner=runner,
+    )
+
+    assert family in {"gcg", "autodan"}
+    assert runner.seen_prompt is not None
+    assert runner.seen_prompt.startswith("SAFE_BASE_")
+    assert analysis.signals[0].token_id == 0
+    assert analysis.signals[0].token_text == ""
+    serialized = analysis.model_dump_json() + counterfactual.model_dump_json()
+    assert "SAFE_BASE_" not in serialized
+    assert "SAFE_PATTERN_" not in serialized
+    assert "SAFE_TOKEN_TEXT" not in serialized

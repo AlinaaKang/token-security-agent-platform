@@ -197,7 +197,7 @@
 
 **Interfaces:**
 - Consumes: workflow, `DemoSampleService`, `CounterfactualRunner`, `LabRunStore`, existing knowledge-enriched `AnalysisResult`.
-- Produces: `DemoSampleService.analyze_for_lab(sample_id, workflow, *, mode) -> tuple[str, AnalysisResult]` where the Prompt stays inside the call boundary, and `LabService.list_scenarios()`, `LabService.create_run(request)`, `LabService.run_tool(run_id, tool_id, request)`, `LabService.metrics()`.
+- Produces: `DemoSampleService.analyze_for_lab(sample_id, workflow, *, mode, counterfactual_runner) -> tuple[str, AnalysisResult, CounterfactualResult]` where both the Prompt and truncation stay inside the protected call boundary, and `LabService.list_scenarios()`, `LabService.create_run(request)`, `LabService.run_tool(run_id, tool_id, request)`, `LabService.metrics()`.
 
 - [ ] **Step 1: Write a failing protected-scenario adapter test**
 
