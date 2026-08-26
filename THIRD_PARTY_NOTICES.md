@@ -62,16 +62,16 @@ Deployment identity recorded on 2026-08-26:
 
 The snapshot is an offline, immutable competition artifact. Updating external material is a separate controlled process and is not performed during request handling.
 
-## Agent Ablation Source Candidates
+## Agent Ablation Sources
 
-The frozen agent ablation benchmark records candidate upstream repositories before any sample enters headline metrics. A repository revision alone is not treated as a verified dataset. The exact protected data file, its SHA-256, repository license, and attribution must also pass the source audit.
+The frozen agent ablation benchmark treats a source as verified only when its repository revision, license, attribution, and exact protected file SHA-256 all match the committed registry. The audit performed on 2026-08-26 verified these files:
 
-Candidate revisions recorded on 2026-08-26:
+- CPDonline `full_prompt_dataset.csv`, `cd1833a77577e3d814c61b25181df7ddb5fcc22419fb89bc3f0890ef4c12b588`.
+- CPDonline `llama2_7B_foo_opt_624.csv`, `9193519b6e16696a53df488f90740c1711f6bd9f1ee979ba80baa3ddf288f082`.
+- CPDonline `gcg_llamaguard_bypass.csv`, `6dbdcd82ea8bec98caa8c0c8c33c90a4c5468ee512de9bfcfa4d392791b669be`.
+- HarmBench `harmbench_behaviors_text_test.csv`, commit `8e1604d1171fe8a48d8febecd22f600e462bdcdd`, MIT, `75d257b3e7428c52eb7b0154318f455af3e01b09a3794b5e2f3d36054f3c0e29`.
+- XSTest `xstest_prompts.csv`, commit `d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d`, CC-BY-4.0, `11783fb294ed017473ee53c207d71f2161c7672c8d0b037501e78387f801cb5a`.
 
-- AutoDAN-HGA: <https://github.com/SheltonLiu-N/AutoDAN>, `34062e964185693e81a6775b4f0d00bfd7507612`
-- AdvPrompter: <https://github.com/facebookresearch/advprompter>, `802a500c91f1dcd7c8b76869d3e39bf8e40ed7d7`
-- GCG reference implementation: <https://github.com/llm-attacks/llm-attacks>, `098262edf85f807224e70ecd87b9d83716bf6b73`
-- HarmBench candidate semantic-risk source: <https://github.com/centerforaisafety/HarmBench>, `8e1604d1171fe8a48d8febecd22f600e462bdcdd`
-- XSTest candidate hard-negative source: <https://github.com/paul-rottger/exaggerated-safety>, `d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d`
+CPDonline remains MIT licensed and attributed to Copyright (c) 2026 cpdonline. HarmBench is attributed to Copyright (c) 2024 centerforaisafety. XSTest is attributed to Paul Roettger, Hannah Rose Kirk, Bertie Vidgen, Giuseppe Attanasio, Federico Bianchi, and Dirk Hovy.
 
-These candidates remain `unverified` until the file and license audit is complete. BEAST remains `source_unavailable` because an official repository or immutable released artifact has not been verified. The project does not redistribute attack Prompt text from these sources.
+The AutoDAN-HGA, AdvPrompter, and GCG implementation repositories were fixed to the revisions in `configs/ablation_sources.json`, but no generated suffix artifact from those repositories was selected for this benchmark. The current AutoDAN, AdvPrompter, and GCG family samples are the separately audited CPDonline artifacts above. BEAST remains `source_unavailable`. The project does not redistribute Prompt text from any source.

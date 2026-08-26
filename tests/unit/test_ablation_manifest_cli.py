@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.build_ablation_manifest import build_manifest
+from scripts.build_ablation_manifest import _load_sources, build_manifest
+from scripts.collect_agent_ablation import load_protected_rows
 
 
 FILE_HASH = "sha256:" + "b" * 64
@@ -131,6 +132,38 @@ def test_manifest_builder_is_reproducible_private_free_and_group_isolated() -> N
     }
 
 
+def test_manifest_builder_writes_split_assigned_protected_rows() -> None:
+    input_path, sources_path, output_path = _paths("ablation-manifest-frozen")
+    frozen_path = input_path.with_name(input_path.stem + "-frozen.jsonl")
+    _protected_rows(input_path)
+    _sources(sources_path)
+    try:
+        manifest = build_manifest(
+            input_path=input_path,
+            sources_path=sources_path,
+            output_path=output_path,
+            benchmark_version="agent-ablation-v1",
+            seed="token-security-agent-ablation-v1",
+            frozen_output_path=frozen_path,
+        )
+        frozen = load_protected_rows(frozen_path)
+        manifest_text = output_path.read_text(encoding="ascii")
+        frozen_text = frozen_path.read_text(encoding="ascii")
+    finally:
+        _cleanup(input_path, sources_path, output_path, frozen_path)
+
+    expected_split = {
+        sample_id: split.split
+        for split in manifest.splits
+        for sample_id in split.sample_ids
+    }
+    assert len(frozen) == 40
+    assert {row.sample_id: row.split for row in frozen} == expected_split
+    assert "SAFE_PRIVATE" in frozen_text
+    assert "SAFE_PRIVATE" not in manifest_text
+    assert "prompt" not in manifest_text.casefold()
+
+
 def test_manifest_dataset_hash_changes_when_group_identity_changes() -> None:
     input_path, sources_path, output_path = _paths("ablation-manifest-hash")
     changed_path = input_path.with_name(input_path.stem + "-changed.jsonl")
@@ -187,3 +220,20 @@ def test_manifest_rejects_duplicate_sample_ids() -> None:
             )
     finally:
         _cleanup(input_path, sources_path, output_path)
+
+
+def test_committed_source_registry_marks_only_audited_files_verified() -> None:
+    registry = _load_sources(Path("configs/ablation_sources.json"))
+    by_id = {source.source_id: source for source in registry.sources}
+
+    audited = {
+        "cpdonline_autodan",
+        "cpdonline_advprompter",
+        "cpdonline_gcg",
+        "harmbench",
+        "xstest",
+    }
+    assert {source_id for source_id, source in by_id.items() if source.status.value == "verified"} == audited
+    assert all(by_id[source_id].file_sha256 for source_id in audited)
+    assert by_id["autodan_hga"].status.value != "verified"
+    assert by_id["beast"].status.value == "source_unavailable"

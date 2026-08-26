@@ -128,6 +128,35 @@ def _validate_coverage(rows: tuple[ProtectedAblationRow, ...]) -> None:
         raise ValueError("each attack family requires at least three groups")
 
 
+def _write_frozen_rows(
+    path: Path,
+    rows: tuple[ProtectedAblationRow, ...],
+    manifest: AblationBenchmarkManifest,
+) -> None:
+    split_by_id = {
+        sample_id: split.split
+        for split in manifest.splits
+        for sample_id in split.sample_ids
+    }
+    if set(split_by_id) != {row.sample_id for row in rows}:
+        raise ValueError("manifest and protected rows have different sample IDs")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="ascii", newline="\n") as stream:
+        for row in sorted(rows, key=lambda item: item.sample_id):
+            frozen = row.model_copy(update={"split": split_by_id[row.sample_id]})
+            stream.write(
+                json.dumps(
+                    frozen.model_dump(mode="json"),
+                    ensure_ascii=True,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
+    temporary.replace(path)
+
+
 def build_manifest(
     *,
     input_path: Path,
@@ -135,6 +164,7 @@ def build_manifest(
     output_path: Path,
     benchmark_version: str,
     seed: str,
+    frozen_output_path: Path | None = None,
 ) -> AblationBenchmarkManifest:
     if not benchmark_version.strip() or not seed.strip():
         raise ValueError("benchmark version and split seed must not be blank")
@@ -164,6 +194,8 @@ def build_manifest(
         ),
     )
     write_ascii_json(output_path, manifest)
+    if frozen_output_path is not None:
+        _write_frozen_rows(frozen_output_path, rows, manifest)
     return manifest
 
 
@@ -176,6 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--benchmark-version", required=True)
     parser.add_argument("--seed", required=True)
+    parser.add_argument("--frozen-output-jsonl", type=Path)
     return parser
 
 
@@ -187,6 +220,7 @@ def main() -> None:
         output_path=args.output,
         benchmark_version=args.benchmark_version,
         seed=args.seed,
+        frozen_output_path=args.frozen_output_jsonl,
     )
     print(
         "ablation manifest completed "

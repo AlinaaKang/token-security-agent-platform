@@ -3,23 +3,23 @@
   "sources": [
     {
       "source_id": "advprompter",
-      "status": "unverified",
+      "status": "source_unavailable",
       "url": "https://github.com/facebookresearch/advprompter",
       "revision": "802a500c91f1dcd7c8b76869d3e39bf8e40ed7d7",
-      "license_spdx": null,
-      "attribution": null,
+      "license_spdx": "CC-BY-NC-4.0",
+      "attribution": "Anselm Paulus, Arman Zharmagambetov, Chuan Guo, Brandon Amos, and Yuandong Tian",
       "file_sha256": null,
-      "reason": "protected source file and repository license audit pending"
+      "reason": "official repository verified, but no immutable generated suffix artifact was selected for this benchmark"
     },
     {
       "source_id": "autodan_hga",
-      "status": "unverified",
+      "status": "source_unavailable",
       "url": "https://github.com/SheltonLiu-N/AutoDAN",
       "revision": "34062e964185693e81a6775b4f0d00bfd7507612",
-      "license_spdx": null,
-      "attribution": null,
+      "license_spdx": "MIT",
+      "attribution": "Copyright (c) 2023 Xiaogeng Liu",
       "file_sha256": null,
-      "reason": "protected source file and repository license audit pending"
+      "reason": "official repository contains the generator and base behaviors, but no immutable generated suffix artifact was verified"
     },
     {
       "source_id": "beast",
@@ -32,44 +32,64 @@
       "reason": "official repository or immutable released artifact not verified"
     },
     {
-      "source_id": "cpdonline",
-      "status": "unverified",
+      "source_id": "cpdonline_advprompter",
+      "status": "verified",
       "url": "https://github.com/cpdonline/cpdonline",
       "revision": "1a6c055865c44cc1d10dfbe5d014576c7331322e",
       "license_spdx": "MIT",
       "attribution": "Copyright (c) 2026 cpdonline",
-      "file_sha256": null,
-      "reason": "protected benchmark file checksum audit pending"
+      "file_sha256": "sha256:9193519b6e16696a53df488f90740c1711f6bd9f1ee979ba80baa3ddf288f082",
+      "reason": null
+    },
+    {
+      "source_id": "cpdonline_autodan",
+      "status": "verified",
+      "url": "https://github.com/cpdonline/cpdonline",
+      "revision": "1a6c055865c44cc1d10dfbe5d014576c7331322e",
+      "license_spdx": "MIT",
+      "attribution": "Copyright (c) 2026 cpdonline",
+      "file_sha256": "sha256:cd1833a77577e3d814c61b25181df7ddb5fcc22419fb89bc3f0890ef4c12b588",
+      "reason": null
+    },
+    {
+      "source_id": "cpdonline_gcg",
+      "status": "verified",
+      "url": "https://github.com/cpdonline/cpdonline",
+      "revision": "1a6c055865c44cc1d10dfbe5d014576c7331322e",
+      "license_spdx": "MIT",
+      "attribution": "Copyright (c) 2026 cpdonline",
+      "file_sha256": "sha256:6dbdcd82ea8bec98caa8c0c8c33c90a4c5468ee512de9bfcfa4d392791b669be",
+      "reason": null
     },
     {
       "source_id": "gcg",
-      "status": "unverified",
+      "status": "source_unavailable",
       "url": "https://github.com/llm-attacks/llm-attacks",
       "revision": "098262edf85f807224e70ecd87b9d83716bf6b73",
-      "license_spdx": null,
-      "attribution": null,
+      "license_spdx": "MIT",
+      "attribution": "Copyright (c) 2023 Andy Zou",
       "file_sha256": null,
-      "reason": "protected source file and repository license audit pending"
+      "reason": "reference implementation verified, but the benchmark uses the separately audited CPDonline GCG artifact"
     },
     {
       "source_id": "harmbench",
-      "status": "unverified",
+      "status": "verified",
       "url": "https://github.com/centerforaisafety/HarmBench",
       "revision": "8e1604d1171fe8a48d8febecd22f600e462bdcdd",
-      "license_spdx": null,
-      "attribution": null,
-      "file_sha256": null,
-      "reason": "protected source file and repository license audit pending"
+      "license_spdx": "MIT",
+      "attribution": "Copyright (c) 2024 centerforaisafety",
+      "file_sha256": "sha256:75d257b3e7428c52eb7b0154318f455af3e01b09a3794b5e2f3d36054f3c0e29",
+      "reason": null
     },
     {
       "source_id": "xstest",
-      "status": "unverified",
-      "url": "https://github.com/paul-rottger/exaggerated-safety",
+      "status": "verified",
+      "url": "https://github.com/paul-rottger/xstest",
       "revision": "d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d",
-      "license_spdx": null,
-      "attribution": null,
-      "file_sha256": null,
-      "reason": "protected source file and repository license audit pending"
+      "license_spdx": "CC-BY-4.0",
+      "attribution": "Paul Roettger, Hannah Rose Kirk, Bertie Vidgen, Giuseppe Attanasio, Federico Bianchi, and Dirk Hovy",
+      "file_sha256": "sha256:11783fb294ed017473ee53c207d71f2161c7672c8d0b037501e78387f801cb5a",
+      "reason": null
     }
   ]
 }
