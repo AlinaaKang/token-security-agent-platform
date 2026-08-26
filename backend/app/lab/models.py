@@ -74,6 +74,37 @@ class LabPublicSignal(BaseModel):
         )
 
 
+class CounterfactualSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    semantic_severity: NonEmptyText
+    detector_status: NonEmptyText
+    risk_score: float = Field(ge=0, le=1)
+    detector_score: float = Field(ge=0)
+    decision: Decision
+    latency_ms: float = Field(ge=0)
+
+
+class CounterfactualResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    interpretation: Literal["risk_reduced", "unchanged", "inconclusive"]
+    reason: Literal[
+        "completed",
+        "no_predicted_onset",
+        "invalid_predicted_onset",
+        "provenance_mismatch",
+        "recheck_failed",
+    ]
+    char_start: int | None = Field(default=None, ge=0)
+    calibration_version: NonEmptyText
+    original: CounterfactualSnapshot
+    rechecked: CounterfactualSnapshot | None = None
+    risk_score_delta: float | None = None
+    detector_score_delta: float | None = None
+    action_changed: bool = False
+
+
 def assert_public_payload(payload: Any) -> None:
     if isinstance(payload, BaseModel):
         assert_public_payload(payload.model_dump(mode="json"))
