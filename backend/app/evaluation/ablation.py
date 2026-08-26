@@ -573,7 +573,11 @@ def _method_report(
             block=counts[Action.BLOCK.value],
         ),
         latency=_method_latency(rows, profile.method),
-        localization=_localization(rows, profile.method),
+        localization=(
+            _localization(rows, profile.method)
+            if profile.operating_point is OperatingPoint.PRODUCTION
+            else None
+        ),
     )
 
 

@@ -239,6 +239,12 @@ def test_evaluation_reports_hand_checked_metrics_and_no_sample_data() -> None:
     assert cpd.localization.predicted_count == 1
     assert cpd.localization.onset_mae == 2.0
     assert cpd.localization.trigger_in_suffix_rate == 0.5
+    assert report.result(
+        AblationMethod.CPD_ONLY, OperatingPoint.FPR_05
+    ).localization is None
+    assert report.result(
+        AblationMethod.FUSION, OperatingPoint.FPR_10
+    ).localization is None
     assert report.coverage_gaps == ("beast",)
     assert report.requested_count == 6
     assert report.completed_count == 6
