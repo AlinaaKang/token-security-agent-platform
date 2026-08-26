@@ -33,7 +33,7 @@
 - Produces: `select_ablation_profiles(observations: Sequence[AblationObservation], *, dataset_hash: str) -> tuple[AblationProfile, ...]`
 - Produces: `evaluate_ablation(observations: Sequence[AblationObservation], profiles: Sequence[AblationProfile], *, benchmark_version: str, dataset_hash: str, source_coverage: Mapping[str, str]) -> AgentAblationReport`
 
-- [ ] **Step 1: Write strict contract and privacy failing tests**
+- [x] **Step 1: Write strict contract and privacy failing tests**
 
 ```python
 def test_observation_rejects_prompt_and_unknown_fields() -> None:
@@ -50,13 +50,13 @@ def test_report_is_aggregate_only() -> None:
     assert "prompt" not in payload.casefold()
 ```
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run: `python -m pytest tests/unit/test_ablation_evaluation.py -q`
 
 Expected: collection fails because `app.evaluation.ablation` does not exist.
 
-- [ ] **Step 3: Implement strict enums and models**
+- [x] **Step 3: Implement strict enums and models**
 
 Use `ConfigDict(extra="forbid", frozen=True)`. Domains are `benign_plain`, `benign_shift`, `semantic_unsafe`, and `optimized_suffix`. Methods are `semantic_only`, `cpd_only`, and `fusion`. Operating points are `production`, `fpr_10`, and `fpr_05`. Observation fields are normalized only:
 
@@ -78,7 +78,7 @@ semantic_latency_ms: float
 total_latency_ms: float
 ```
 
-- [ ] **Step 4: Write profile-selection red tests**
+- [x] **Step 4: Write profile-selection red tests**
 
 Cover semantic policy choice, CPD threshold choice, fusion through the real `EvidenceFusionPolicy`, deterministic tie breaks, and an unsatisfied constraint:
 
@@ -90,19 +90,19 @@ def test_unsatisfied_fpr_constraint_is_explicit() -> None:
     assert profile.dev_false_positive_rate == min_candidate_fpr(impossible_fpr_rows())
 ```
 
-- [ ] **Step 5: Implement deterministic profile selection**
+- [x] **Step 5: Implement deterministic profile selection**
 
 For semantic-only enumerate `unsafe_only` and `controversial_or_unsafe`. For CPD enumerate unique finite dev detector scores plus a threshold above the maximum. For fusion apply each CPD candidate through `EvidenceFusionPolicy(mode="analysis")` with the unchanged semantic severity. Rank candidates by constraint satisfaction, recall, precision, negative FPR, and conservative threshold/policy.
 
-- [ ] **Step 6: Write aggregate metric red tests**
+- [x] **Step 6: Write aggregate metric red tests**
 
 Assert TP/FP/TN/FN, precision/recall/F1/FPR, domain error rates, family recall, action counts, P50/P95 latency, localization count/MAE/in-suffix rate, requested/completed/failed counts, and source coverage gaps.
 
-- [ ] **Step 7: Implement aggregate evaluation**
+- [x] **Step 7: Implement aggregate evaluation**
 
 Reject duplicate IDs, mixed splits, unknown profile dataset hashes, missing method/operating-point pairs, non-finite values, and suffix coordinates on non-suffix rows. Output sorted method, family, domain, and source keys for deterministic serialization.
 
-- [ ] **Step 8: Run Task 1 tests and backend regression**
+- [x] **Step 8: Run Task 1 tests and backend regression**
 
 ```powershell
 $env:PYTHONPATH=".localdeps;backend"
@@ -110,7 +110,7 @@ python -m pytest tests/unit/test_ablation_evaluation.py -q
 python -m pytest -q
 ```
 
-- [ ] **Step 9: Commit Task 1**
+- [x] **Step 9: Commit Task 1**
 
 ```powershell
 git add backend/app/evaluation/ablation.py tests/unit/test_ablation_evaluation.py
