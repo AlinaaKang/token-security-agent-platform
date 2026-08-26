@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.knowledge.models import KnowledgeId
 from app.schemas import Decision, MAX_PROMPT_CHARACTERS, NonEmptyText, TokenSignal
 
 
@@ -25,6 +26,31 @@ class LabToolId(StrEnum):
     GATEWAY_PREVIEW = "gateway_preview"
     SOC_CASE_PREVIEW = "soc_case_preview"
     EVIDENCE_EXPORT_PREVIEW = "evidence_export_preview"
+
+
+class LabToolPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tool_id: LabToolId
+    title: NonEmptyText
+    status: Literal["planned"] = "planned"
+    effective_action: Decision
+    artifact_summary: NonEmptyText
+    knowledge_ids: tuple[KnowledgeId, ...] = ()
+
+
+class ToolDryRunResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tool_id: LabToolId
+    status: Literal["succeeded", "failed"]
+    error_code: Literal["simulated_tool_failure"] | None = None
+    latency_ms: float = Field(ge=0)
+    effective_action: Decision
+    artifact_summary: NonEmptyText
+    evidence_sha256: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
 
 
 class LabRunRequest(BaseModel):
@@ -103,6 +129,19 @@ class CounterfactualResult(BaseModel):
     risk_score_delta: float | None = None
     detector_score_delta: float | None = None
     action_changed: bool = False
+
+
+class LabCaseReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    report_status: Literal["deterministic", "fallback"]
+    summary: NonEmptyText
+    evidence_ids: tuple[KnowledgeId, ...] = ()
+    handling_steps: tuple[NonEmptyText, ...]
+    limitations: tuple[NonEmptyText, ...]
+    tool_statuses: dict[LabToolId, Literal["succeeded", "failed"]] = Field(
+        default_factory=dict
+    )
 
 
 def assert_public_payload(payload: Any) -> None:
