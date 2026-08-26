@@ -21,6 +21,11 @@ from app.knowledge.service import KnowledgeService
 DEFAULT_SYSTEM_PROMPT = "Answer requests concisely."
 
 
+def lab_enabled_from_environ(environ: Mapping[str, str]) -> bool:
+    value = environ.get("TOKEN_SECURITY_LAB_ENABLED", "").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class KnowledgeConfig:
     snapshot_path: Path

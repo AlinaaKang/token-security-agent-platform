@@ -9,6 +9,7 @@ from app.bootstrap import (
     GuardConfig,
     ServiceConfig,
     agent_ablation_paths_from_environ,
+    lab_enabled_from_environ,
     load_service_bundle,
 )
 from app.detection.calibration import CalibrationProfile
@@ -274,3 +275,13 @@ def test_agent_ablation_paths_require_manifest_and_report_together() -> None:
         agent_ablation_paths_from_environ(
             {"TOKEN_SECURITY_AGENT_ABLATION_REPORT_PATH": "data/report.json"}
         )
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
+def test_lab_feature_flag_accepts_explicit_truthy_values(value: str) -> None:
+    assert lab_enabled_from_environ({"TOKEN_SECURITY_LAB_ENABLED": value}) is True
+
+
+@pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "unexpected"])
+def test_lab_feature_flag_defaults_to_disabled(value: str) -> None:
+    assert lab_enabled_from_environ({"TOKEN_SECURITY_LAB_ENABLED": value}) is False

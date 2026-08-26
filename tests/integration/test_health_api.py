@@ -30,6 +30,7 @@ def test_health_reports_api_model_and_detector_readiness_separately() -> None:
             "deployment_match": False,
         },
         "demo": {"ready": False, "sample_count": 0},
+        "lab": {"enabled": False, "ready": False, "reason": "disabled"},
     }
 
 
@@ -57,6 +58,7 @@ def test_health_reports_configured_model_and_calibration() -> None:
             "deployment_match": True,
         },
         "demo": {"ready": True, "sample_count": 100},
+        "lab": {"enabled": True, "ready": False, "reason": "unavailable"},
     }
     try:
         response = TestClient(app).get("/health")
@@ -69,3 +71,8 @@ def test_health_reports_configured_model_and_calibration() -> None:
     assert response.json()["detector"]["calibration_version"] == "demo-v1"
     assert response.json()["semantic_guard"]["model_version"] == "revision-id"
     assert response.json()["audit"]["ready"] is True
+    assert response.json()["lab"] == {
+        "enabled": True,
+        "ready": False,
+        "reason": "unavailable",
+    }

@@ -11,6 +11,7 @@ from app.api.analyze import router as analyze_router
 from app.api.events import router as events_router
 from app.api.evaluation import router as evaluation_router
 from app.api.demo import router as demo_router
+from app.api.lab import router as lab_router
 from app.audit.store import SQLiteEventStore
 from app.bootstrap import (
     ServiceConfig,
@@ -19,10 +20,12 @@ from app.bootstrap import (
     demo_source_paths_from_environ,
     event_db_path_from_environ,
     knowledge_evaluation_report_path_from_environ,
+    lab_enabled_from_environ,
     load_service_bundle,
 )
 from app.evaluation.service import EvaluationReportService
 from app.demo.service import DemoSampleService
+from app.lab.service import LabService
 
 
 PRODUCT_NAME = "面向AI安全的Token流量异常检测智能体平台"
@@ -31,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    lab_enabled = lab_enabled_from_environ(os.environ)
+    application.state.lab_enabled = lab_enabled
     event_store = None
     audit_health: dict[str, Any] = {"ready": False, "storage": None}
     try:
@@ -42,8 +47,10 @@ async def lifespan(application: FastAPI):
 
     config = ServiceConfig.from_environ(os.environ)
     active_calibration_version = None
+    workflow = None
     if config is not None:
         bundle = load_service_bundle(config)
+        workflow = bundle.workflow
         application.state.analysis_workflow = bundle.workflow
         active_calibration_version = bundle.health["detector"]["calibration_version"]
         application.state.active_calibration_version = active_calibration_version
@@ -108,6 +115,7 @@ async def lifespan(application: FastAPI):
                 "evaluation initialization failed error_type=%s", type(exc).__name__
             )
     demo_health = {"ready": False, "sample_count": 0}
+    demo_service = None
     try:
         demo_paths = demo_source_paths_from_environ(os.environ)
         if (
@@ -130,10 +138,27 @@ async def lifespan(application: FastAPI):
             }
     except Exception as exc:
         logger.error("demo initialization failed error_type=%s", type(exc).__name__)
+    lab_health = {
+        "enabled": lab_enabled,
+        "ready": False,
+        "reason": "disabled" if not lab_enabled else "unavailable",
+    }
+    if lab_enabled and workflow is not None:
+        try:
+            application.state.lab_service = LabService(
+                workflow=workflow,
+                demo_service=demo_service,
+            )
+            lab_health = {"enabled": True, "ready": True, "reason": "ready"}
+        except Exception as exc:
+            logger.error(
+                "lab initialization failed error_type=%s", type(exc).__name__
+            )
     application.state.service_health = {
         **base_health,
         "evaluation": evaluation_health,
         "demo": demo_health,
+        "lab": lab_health,
     }
     try:
         yield
@@ -147,6 +172,7 @@ app.include_router(analyze_router)
 app.include_router(events_router)
 app.include_router(evaluation_router)
 app.include_router(demo_router)
+app.include_router(lab_router)
 
 
 @app.get("/health")
@@ -174,4 +200,5 @@ def health() -> dict[str, Any]:
             "deployment_match": False,
         },
         "demo": {"ready": False, "sample_count": 0},
+        "lab": {"enabled": False, "ready": False, "reason": "disabled"},
     }
