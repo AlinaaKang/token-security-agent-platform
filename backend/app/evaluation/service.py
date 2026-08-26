@@ -9,6 +9,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas import NonEmptyText
+from app.evaluation.ablation import AgentAblationReport
+from app.evaluation.ablation_io import (
+    load_ablation_manifest,
+    load_ablation_report,
+)
 from app.evaluation.knowledge import KnowledgeEvaluationReport
 
 
@@ -141,6 +146,7 @@ class EvaluationSummary(BaseModel, frozen=True):
     provenance: ReportProvenance
     deployment_match: bool = False
     knowledge: KnowledgeEvaluationReport | None = None
+    agent_ablation: AgentAblationReport | None = None
 
     @model_validator(mode="after")
     def report_must_contain_all_methods(self) -> EvaluationSummary:
@@ -178,9 +184,16 @@ class EvaluationReportService:
         path: Path,
         *,
         knowledge_path: Path | None = None,
+        ablation_manifest_path: Path | None = None,
+        ablation_path: Path | None = None,
     ) -> None:
+        if (ablation_manifest_path is None) != (ablation_path is None):
+            raise ValueError("ablation manifest and report paths must be configured together")
         self.path = path
         self.knowledge_path = knowledge_path
+        self.ablation_manifest_path = ablation_manifest_path
+        self.ablation_path = ablation_path
+        self.ablation_error_type: str | None = None
 
     def load(self, *, active_calibration_version: str | None) -> EvaluationSummary:
         raw = json.loads(self.path.read_text(encoding="utf-8"))
@@ -199,6 +212,22 @@ class EvaluationReportService:
                 or knowledge.decision_invariance != 1.0
             ):
                 raise ValueError("knowledge evaluation acceptance gate failed")
+        agent_ablation = None
+        self.ablation_error_type = None
+        if self.ablation_manifest_path is not None and self.ablation_path is not None:
+            try:
+                manifest = load_ablation_manifest(self.ablation_manifest_path)
+                agent_ablation = load_ablation_report(
+                    self.ablation_path,
+                    expected_benchmark_version=manifest.benchmark_version,
+                    expected_dataset_hash=manifest.dataset_hash,
+                )
+                if agent_ablation.source_coverage != manifest.source_coverage:
+                    raise ValueError("ablation report source coverage mismatch")
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as exc:
+                self.ablation_error_type = type(exc).__name__
         return summary.model_copy(
             update={
                 "deployment_match": (
@@ -207,5 +236,6 @@ class EvaluationReportService:
                     == active_calibration_version
                 ),
                 "knowledge": knowledge,
+                "agent_ablation": agent_ablation,
             }
         )

@@ -14,6 +14,7 @@ from app.api.demo import router as demo_router
 from app.audit.store import SQLiteEventStore
 from app.bootstrap import (
     ServiceConfig,
+    agent_ablation_paths_from_environ,
     benchmark_report_path_from_environ,
     demo_source_paths_from_environ,
     event_db_path_from_environ,
@@ -76,10 +77,17 @@ async def lifespan(application: FastAPI):
     evaluation_summary = None
     if report_path is not None:
         try:
+            ablation_paths = agent_ablation_paths_from_environ(os.environ)
             evaluation_service = EvaluationReportService(
                 report_path,
                 knowledge_path=knowledge_evaluation_report_path_from_environ(
                     os.environ
+                ),
+                ablation_manifest_path=(
+                    ablation_paths.manifest_path if ablation_paths is not None else None
+                ),
+                ablation_path=(
+                    ablation_paths.report_path if ablation_paths is not None else None
                 ),
             )
             summary = evaluation_service.load(
@@ -92,6 +100,8 @@ async def lifespan(application: FastAPI):
                 "schema_version": summary.schema_version,
                 "deployment_match": summary.deployment_match,
                 "knowledge_ready": summary.knowledge is not None,
+                "agent_ablation_ready": summary.agent_ablation is not None,
+                "agent_ablation_error_type": evaluation_service.ablation_error_type,
             }
         except Exception as exc:
             logger.error(

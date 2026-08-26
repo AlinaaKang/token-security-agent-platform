@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from app.bootstrap import KnowledgeConfig, GuardConfig, ServiceConfig, load_service_bundle
+from app.bootstrap import (
+    KnowledgeConfig,
+    GuardConfig,
+    ServiceConfig,
+    agent_ablation_paths_from_environ,
+    load_service_bundle,
+)
 from app.detection.calibration import CalibrationProfile
 from app.detection.cpd import RobustBaseline
 from app.model.runtime import RuntimeReadiness, hash_system_prompt
@@ -249,3 +255,22 @@ def test_service_bundle_rejects_calibration_for_other_system_prompt() -> None:
             load_service_bundle(config, runtime_factory=FakeRuntime)
     finally:
         calibration_path.unlink(missing_ok=True)
+
+
+def test_agent_ablation_paths_require_manifest_and_report_together() -> None:
+    assert agent_ablation_paths_from_environ({}) is None
+
+    paths = agent_ablation_paths_from_environ(
+        {
+            "TOKEN_SECURITY_AGENT_ABLATION_MANIFEST_PATH": "data/manifest.json",
+            "TOKEN_SECURITY_AGENT_ABLATION_REPORT_PATH": "data/report.json",
+        }
+    )
+    assert paths is not None
+    assert paths.manifest_path == Path("data/manifest.json")
+    assert paths.report_path == Path("data/report.json")
+
+    with pytest.raises(ValueError, match="configured together"):
+        agent_ablation_paths_from_environ(
+            {"TOKEN_SECURITY_AGENT_ABLATION_REPORT_PATH": "data/report.json"}
+        )

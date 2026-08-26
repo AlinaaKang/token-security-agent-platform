@@ -179,6 +179,53 @@ const evaluation = {
     generated_report_count: 0,
     fallback_report_count: 0,
   },
+  agent_ablation: {
+    schema_version: 1,
+    benchmark_version: "agent-ablation-v1",
+    dataset_hash: `sha256:${"d".repeat(64)}`,
+    requested_count: 120,
+    completed_count: 119,
+    failed_count: 1,
+    failure_counts: { timeouterror: 1 },
+    source_coverage: {
+      cpdonline: "verified",
+      beast: "source_unavailable",
+    },
+    coverage_gaps: ["beast"],
+    methods: (["semantic_only", "cpd_only", "fusion"] as const).flatMap((methodId) =>
+      (["production", "fpr_10", "fpr_05"] as const).map((point) => ({
+        method: methodId,
+        operating_point: point,
+        constraint_max_fpr: point === "production" ? null : point === "fpr_10" ? 0.1 : 0.05,
+        constraint_satisfied: !(methodId === "fusion" && point === "fpr_05"),
+        metrics: {
+          true_positive: 42,
+          false_positive: 3,
+          true_negative: 57,
+          false_negative: 18,
+          precision: 0.9333,
+          recall: methodId === "fusion" ? 0.9 : 0.7,
+          f1: methodId === "fusion" ? 0.931 : 0.8,
+          false_positive_rate: 0.05,
+        },
+        domain_metrics: {
+          benign_plain: { count: 30, detected: 1, recall: null, false_positive_rate: 0.0333 },
+          benign_shift: { count: 30, detected: 2, recall: null, false_positive_rate: 0.0667 },
+          semantic_unsafe: { count: 30, detected: methodId === "cpd_only" ? 15 : 27, recall: methodId === "cpd_only" ? 0.5 : 0.9, false_positive_rate: null },
+          optimized_suffix: { count: 30, detected: methodId === "semantic_only" ? 12 : 24, recall: methodId === "semantic_only" ? 0.4 : 0.8, false_positive_rate: null },
+        },
+        family_metrics: { gcg: { count: 10, detected: 8, recall: 0.8 } },
+        action_counts: { allow: 75, review: 12, block: 32 },
+        latency: { p50_ms: 42, p95_ms: 78 },
+        localization: methodId === "semantic_only" ? null : {
+          eligible_count: 30,
+          predicted_count: 24,
+          onset_mae: 3.2,
+          trigger_in_suffix_rate: 0.76,
+        },
+      })),
+    ),
+  },
 };
 
 function jsonResponse(payload: unknown, ok = true) {
@@ -189,6 +236,7 @@ function installFetch(options: {
   analysis?: unknown;
   health?: unknown;
   events?: unknown;
+  evaluation?: unknown;
 } = {}) {
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
@@ -201,7 +249,7 @@ function installFetch(options: {
     }
     if (url === "/api/v1/analyze") return jsonResponse(options.analysis ?? analysisResult);
     if (url === "/api/v1/events?limit=50&offset=0") return jsonResponse(options.events ?? events);
-    if (url === "/api/v1/evaluation/summary") return jsonResponse(evaluation);
+    if (url === "/api/v1/evaluation/summary") return jsonResponse(options.evaluation ?? evaluation);
     throw new Error(`Unexpected request: ${url}`);
   }));
 }
@@ -416,6 +464,20 @@ describe("competition security console", () => {
     expect(screen.getAllByText("100.00%").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("仅为冻结工程检索评测")).toBeInTheDocument();
     expect(screen.getByTitle(`sha256:${"c".repeat(64)}`)).toBeInTheDocument();
+    expect(screen.getByText("智能体冻结消融")).toBeInTheDocument();
+    expect(screen.getAllByText("仅语义模型").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("仅 Entropy-CPD").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("融合智能体").length).toBeGreaterThan(0);
+    expect(screen.getByText("生产策略")).toBeInTheDocument();
+    expect(screen.getAllByText("FPR ≤ 10%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("FPR ≤ 5%").length).toBeGreaterThan(0);
+    expect(screen.getByText("语义危险召回")).toBeInTheDocument();
+    expect(screen.getByText("优化后缀召回")).toBeInTheDocument();
+    expect(screen.getByText("无害突变 FPR")).toBeInTheDocument();
+    expect(screen.getByText("约束未满足")).toBeInTheDocument();
+    expect(screen.getByText("BEAST · 来源缺口")).toBeInTheDocument();
+    expect(screen.getByText("冻结 test 聚合结果；知识增强不参与判定")).toBeInTheDocument();
+    expect(screen.queryByText("SAFE_PRIVATE_PROMPT")).not.toBeInTheDocument();
   });
 
   it("keeps evaluation usable with a legacy health response", async () => {
@@ -428,5 +490,19 @@ describe("competition security console", () => {
     expect(await screen.findByText("Qwen3Guard 功能验收")).toBeInTheDocument();
     expect(screen.getByText("模型未就绪")).toBeInTheDocument();
     expect(screen.getByText("尚未进行独立冻结语义评测")).toBeInTheDocument();
+  });
+
+  it("keeps the ablation table usable when an optional domain metric is absent", async () => {
+    const incompleteEvaluation = structuredClone(evaluation);
+    delete (
+      incompleteEvaluation.agent_ablation.methods[0].domain_metrics as Record<string, unknown>
+    ).benign_shift;
+    installFetch({ evaluation: incompleteEvaluation });
+    window.history.pushState({}, "", "/evaluation");
+
+    render(<App />);
+
+    const section = await screen.findByRole("region", { name: "智能体冻结消融" });
+    expect(within(section).getAllByText("--").length).toBeGreaterThan(0);
   });
 });

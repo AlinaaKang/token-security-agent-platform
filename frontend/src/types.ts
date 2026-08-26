@@ -221,6 +221,65 @@ export interface EvaluationSummary {
   provenance: { calibration_version: string; dataset_hash: string };
   deployment_match: boolean;
   knowledge?: KnowledgeEvaluation | null;
+  agent_ablation?: AgentAblationReport | null;
+}
+
+export type AblationMethod = "semantic_only" | "cpd_only" | "fusion";
+export type AblationOperatingPoint = "production" | "fpr_10" | "fpr_05";
+export type AblationDomain =
+  | "benign_plain"
+  | "benign_shift"
+  | "semantic_unsafe"
+  | "optimized_suffix";
+export type SourceCoverageStatus = "verified" | "unverified" | "source_unavailable";
+
+export interface AblationClassificationMetrics {
+  true_positive: number;
+  false_positive: number;
+  true_negative: number;
+  false_negative: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  false_positive_rate: number;
+}
+
+export interface AblationDomainMetrics {
+  count: number;
+  detected: number;
+  recall: number | null;
+  false_positive_rate: number | null;
+}
+
+export interface AblationMethodReport {
+  method: AblationMethod;
+  operating_point: AblationOperatingPoint;
+  constraint_max_fpr: number | null;
+  constraint_satisfied: boolean;
+  metrics: AblationClassificationMetrics;
+  domain_metrics: Partial<Record<AblationDomain, AblationDomainMetrics>>;
+  family_metrics: Record<string, { count: number; detected: number; recall: number }>;
+  action_counts: { allow: number; review: number; block: number };
+  latency: { p50_ms: number; p95_ms: number };
+  localization: {
+    eligible_count: number;
+    predicted_count: number;
+    onset_mae: number | null;
+    trigger_in_suffix_rate: number;
+  } | null;
+}
+
+export interface AgentAblationReport {
+  schema_version: 1;
+  benchmark_version: string;
+  dataset_hash: string;
+  requested_count: number;
+  completed_count: number;
+  failed_count: number;
+  failure_counts: Record<string, number>;
+  source_coverage: Record<string, SourceCoverageStatus>;
+  coverage_gaps: string[];
+  methods: AblationMethodReport[];
 }
 
 export interface KnowledgeEvaluation {

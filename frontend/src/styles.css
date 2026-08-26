@@ -614,6 +614,52 @@ td:first-child { min-width: 128px; }
 .knowledge-metrics span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 9px; }
 .knowledge-metrics strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
 
+.ablation-toolbar { align-items: flex-start; }
+.ablation-toolbar > div { min-width: 0; }
+.ablation-toolbar strong { display: flex; }
+.ablation-toolbar small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+.ablation-table { min-width: 1040px; }
+.ablation-table td:first-child { min-width: 150px; }
+.ablation-table .operating-point-row th {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  color: var(--ink);
+  border-top-color: var(--line-strong);
+  background: #e9eeec;
+  font-size: 11px;
+}
+.ablation-actions { white-space: nowrap; }
+.constraint-state {
+  display: inline-block;
+  min-width: 70px;
+  padding: 4px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+.constraint-state.satisfied { color: var(--trusted); background: var(--trusted-soft); }
+.constraint-state.unsatisfied { color: var(--blocked); background: var(--blocked-soft); }
+.ablation-footer {
+  min-height: 46px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.ablation-footer strong { padding: 4px 7px; font-weight: 650; }
+.ablation-footer .verified { color: var(--trusted); background: var(--trusted-soft); }
+.ablation-footer .gap { color: #7b5219; background: var(--review-soft); }
+.ablation-footer em { margin-left: auto; color: var(--blocked); font-style: normal; }
+
 @media (max-width: 980px) {
   .analysis-grid { grid-template-columns: 1fr; }
   .input-column { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -673,6 +719,8 @@ td:first-child { min-width: 128px; }
   .grounded-report dl { grid-template-columns: 1fr; }
   .knowledge-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 17px; }
   .knowledge-metrics > div:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .ablation-toolbar { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .ablation-footer em { width: 100%; margin-left: 0; }
   .knowledge-mode-row { align-items: stretch; flex-direction: column; }
   .segmented-control { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .segmented-control button { min-width: 0; padding: 0 6px; white-space: normal; line-height: 1.25; }

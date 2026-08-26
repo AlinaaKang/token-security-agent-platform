@@ -125,6 +125,31 @@ def knowledge_evaluation_report_path_from_environ(
 
 
 @dataclass(frozen=True)
+class AgentAblationPaths:
+    manifest_path: Path
+    report_path: Path
+
+
+def agent_ablation_paths_from_environ(
+    environ: Mapping[str, str],
+) -> AgentAblationPaths | None:
+    manifest = environ.get(
+        "TOKEN_SECURITY_AGENT_ABLATION_MANIFEST_PATH", ""
+    ).strip()
+    report = environ.get("TOKEN_SECURITY_AGENT_ABLATION_REPORT_PATH", "").strip()
+    if not manifest and not report:
+        return None
+    if not manifest or not report:
+        raise ValueError(
+            "TOKEN_SECURITY_AGENT_ABLATION_MANIFEST_PATH and "
+            "TOKEN_SECURITY_AGENT_ABLATION_REPORT_PATH must be configured together"
+        )
+    return AgentAblationPaths(
+        manifest_path=Path(manifest), report_path=Path(report)
+    )
+
+
+@dataclass(frozen=True)
 class DemoSourcePaths:
     autodan_csv: Path
     advprompter_csv: Path

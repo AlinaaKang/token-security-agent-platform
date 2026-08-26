@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from app.evaluation.ablation import SourceCoverageStatus
 from app.evaluation.service import EvaluationReportService, UnsafeReportError
+from tests.unit.test_ablation_cli import _manifest as write_ablation_manifest
+from tests.unit.test_ablation_io import _report as ablation_report
 
 
 def safe_report() -> dict:
@@ -110,3 +113,58 @@ def test_evaluation_service_marks_other_calibration_as_historical() -> None:
         path.unlink(missing_ok=True)
 
     assert summary.deployment_match is False
+
+
+def test_evaluation_service_loads_optional_validated_agent_ablation() -> None:
+    base_path = Path("tmp/test-evaluation-ablation-base.json")
+    manifest_path = Path("tmp/test-evaluation-ablation-manifest.json")
+    ablation_path = Path("tmp/test-evaluation-ablation-report.json")
+    write_report(base_path, safe_report())
+    write_ablation_manifest(manifest_path)
+    report = ablation_report().model_copy(
+        update={
+            "source_coverage": {"safe-source": SourceCoverageStatus.VERIFIED},
+            "coverage_gaps": (),
+        }
+    )
+    ablation_path.write_text(report.model_dump_json(), encoding="ascii")
+    try:
+        service = EvaluationReportService(
+            base_path,
+            ablation_manifest_path=manifest_path,
+            ablation_path=ablation_path,
+        )
+        summary = service.load(active_calibration_version="cal-v1")
+    finally:
+        base_path.unlink(missing_ok=True)
+        manifest_path.unlink(missing_ok=True)
+        ablation_path.unlink(missing_ok=True)
+
+    assert summary.agent_ablation == report
+    assert service.ablation_error_type is None
+
+
+def test_invalid_agent_ablation_degrades_without_hiding_base_report() -> None:
+    base_path = Path("tmp/test-evaluation-ablation-invalid-base.json")
+    manifest_path = Path("tmp/test-evaluation-ablation-invalid-manifest.json")
+    ablation_path = Path("tmp/test-evaluation-ablation-invalid-report.json")
+    write_report(base_path, safe_report())
+    write_ablation_manifest(manifest_path)
+    payload = ablation_report().model_dump(mode="json")
+    payload["prompt"] = "SAFE_PRIVATE_PROMPT"
+    ablation_path.write_text(json.dumps(payload), encoding="ascii")
+    try:
+        service = EvaluationReportService(
+            base_path,
+            ablation_manifest_path=manifest_path,
+            ablation_path=ablation_path,
+        )
+        summary = service.load(active_calibration_version="cal-v1")
+    finally:
+        base_path.unlink(missing_ok=True)
+        manifest_path.unlink(missing_ok=True)
+        ablation_path.unlink(missing_ok=True)
+
+    assert summary.counts.total == 3
+    assert summary.agent_ablation is None
+    assert service.ablation_error_type is not None

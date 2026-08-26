@@ -2,10 +2,34 @@ import { BarChart3, BookOpenCheck, CheckCircle2, CircleSlash2, GitCompareArrows,
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
-import type { EvaluationSummary, HealthResponse, MethodSummary, OperatingPoint } from "../types";
+import type {
+  AblationMethod,
+  AblationMethodReport,
+  AblationOperatingPoint,
+  AgentAblationReport,
+  EvaluationSummary,
+  HealthResponse,
+  MethodSummary,
+  OperatingPoint,
+  SourceCoverageStatus,
+} from "../types";
 
 const methodOrder = ["global_nll", "window_nll", "entropy_cpd"] as const;
 const familyOrder = ["gcg", "autodan", "advprompter"] as const;
+const ablationMethodOrder: AblationMethod[] = ["semantic_only", "cpd_only", "fusion"];
+const ablationPointOrder: AblationOperatingPoint[] = ["production", "fpr_10", "fpr_05"];
+
+const ablationMethodLabels: Record<AblationMethod, string> = {
+  semantic_only: "仅语义模型",
+  cpd_only: "仅 Entropy-CPD",
+  fusion: "融合智能体",
+};
+
+const ablationPointLabels: Record<AblationOperatingPoint, string> = {
+  production: "生产策略",
+  fpr_10: "FPR ≤ 10%",
+  fpr_05: "FPR ≤ 5%",
+};
 
 function familyLabel(value: string) {
   const labels: Record<string, string> = {
@@ -20,6 +44,16 @@ function familyLabel(value: string) {
 
 function percent(value: number) {
   return (value * 100).toFixed(2) + "%";
+}
+
+function optionalPercent(value: number | null) {
+  return value === null ? "--" : percent(value);
+}
+
+function coverageStatusLabel(status: SourceCoverageStatus) {
+  if (status === "source_unavailable") return "来源缺口";
+  if (status === "unverified") return "待核验";
+  return "已核验";
 }
 
 function MetricCells({ point }: { point: OperatingPoint }) {
@@ -45,6 +79,83 @@ function FamilyRecall({ method }: { method: MethodSummary }) {
         );
       })}
     </>
+  );
+}
+
+function AblationRow({ report }: { report: AblationMethodReport }) {
+  return (
+    <tr>
+      <td><strong>{ablationMethodLabels[report.method]}</strong></td>
+      <td className="mono">{percent(report.metrics.recall)}</td>
+      <td className="mono">{optionalPercent(report.domain_metrics.semantic_unsafe?.recall ?? null)}</td>
+      <td className="mono">{optionalPercent(report.domain_metrics.optimized_suffix?.recall ?? null)}</td>
+      <td className="mono">{optionalPercent(report.domain_metrics.benign_shift?.false_positive_rate ?? null)}</td>
+      <td className="mono">{report.metrics.f1.toFixed(4)}</td>
+      <td className="mono">{report.latency.p95_ms.toFixed(1)} ms</td>
+      <td className="mono ablation-actions">
+        {report.action_counts.allow} / {report.action_counts.review} / {report.action_counts.block}
+      </td>
+      <td>
+        {report.constraint_satisfied ? (
+          <span className="constraint-state satisfied">满足</span>
+        ) : (
+          <span className="constraint-state unsatisfied">约束未满足</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function AgentAblationSection({ report }: { report: AgentAblationReport }) {
+  return (
+    <section className="data-section spaced-section ablation-section" aria-labelledby="agent-ablation-title">
+      <div className="table-toolbar ablation-toolbar">
+        <div>
+          <strong id="agent-ablation-title"><GitCompareArrows size={16} /> 智能体冻结消融</strong>
+          <small>冻结 test 聚合结果；知识增强不参与判定</small>
+        </div>
+        <span>{report.benchmark_version} · 完成 {report.completed_count}/{report.requested_count}</span>
+      </div>
+      <div className="table-scroll ablation-table-scroll">
+        <table className="ablation-table">
+          <thead>
+            <tr>
+              <th>检测方法</th>
+              <th>总体召回</th>
+              <th>语义危险召回</th>
+              <th>优化后缀召回</th>
+              <th>无害突变 FPR</th>
+              <th>F1</th>
+              <th>P95 延迟</th>
+              <th>放行 / 复核 / 拦截</th>
+              <th>约束状态</th>
+            </tr>
+          </thead>
+          {ablationPointOrder.map((point) => (
+            <tbody key={point}>
+              <tr className="operating-point-row">
+                <th colSpan={9}>{ablationPointLabels[point]}</th>
+              </tr>
+              {ablationMethodOrder.map((method) => {
+                const item = report.methods.find(
+                  (candidate) => candidate.method === method && candidate.operating_point === point,
+                );
+                return item ? <AblationRow key={method} report={item} /> : null;
+              })}
+            </tbody>
+          ))}
+        </table>
+      </div>
+      <div className="ablation-footer">
+        <span>来源覆盖</span>
+        {Object.entries(report.source_coverage).map(([source, status]) => (
+          <strong className={status === "verified" ? "verified" : "gap"} key={source}>
+            {familyLabel(source)} · {coverageStatusLabel(status)}
+          </strong>
+        ))}
+        {report.failed_count > 0 && <em>失败请求 {report.failed_count}</em>}
+      </div>
+    </section>
   );
 }
 
@@ -168,6 +279,8 @@ export function EvaluationPage() {
           </div>
         )}
       </section>
+
+      {data?.agent_ablation && <AgentAblationSection report={data.agent_ablation} />}
 
       <section className="data-section spaced-section">
         <div className="table-toolbar">
