@@ -277,34 +277,34 @@ git commit -m "feat: freeze ablation source manifest"
 - Selection CLI reads manifest + protected dev observations and writes protected/frozen profile JSON.
 - Evaluation CLI reads manifest + frozen profile + protected test observations and writes aggregate report JSON.
 
-- [ ] **Step 1: Write split-isolation red tests**
+- [x] **Step 1: Write split-isolation red tests**
 
 Assert selector rejects test rows, evaluator rejects dev/calibration rows, profile hash mismatch fails, missing observation IDs fail, extra IDs fail, and neither stdout nor report includes sample IDs.
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run: `python -m pytest tests/unit/test_ablation_cli.py -q`
 
-- [ ] **Step 3: Implement selector CLI**
+- [x] **Step 3: Implement selector CLI**
 
 Load dev IDs from manifest, require exact observation identity, call `select_ablation_profiles`, and write deterministic profile JSON containing only thresholds/policies, dev aggregate selection metrics, dataset hash, and method/operating-point IDs.
 
-- [ ] **Step 4: Implement evaluator CLI**
+- [x] **Step 4: Implement evaluator CLI**
 
 Load test IDs and frozen profiles, require exact identity, call `evaluate_ablation`, add requested/completed/failed counts from a normalized protected error summary, and write the aggregate report atomically.
 
-- [ ] **Step 5: Add forbidden-key and failure-count tests**
+- [x] **Step 5: Add forbidden-key and failure-count tests**
 
 Feed fake observations with private marker values and API failure records. Assert private values and sample IDs are absent while failure type counts and requested/completed totals remain correct.
 
-- [ ] **Step 6: Run Task 5 tests and backend regression**
+- [x] **Step 6: Run Task 5 tests and backend regression**
 
 ```powershell
 python -m pytest tests/unit/test_ablation_cli.py tests/unit/test_ablation_evaluation.py tests/unit/test_ablation_io.py -q
 python -m pytest -q
 ```
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 ```powershell
 git add scripts/select_ablation_profiles.py scripts/evaluate_agent_ablation.py tests/unit/test_ablation_cli.py
