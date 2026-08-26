@@ -226,6 +226,31 @@ class AgentAblationReport(_StrictModel):
     coverage_gaps: tuple[str, ...]
     methods: tuple[AblationMethodReport, ...]
 
+    @model_validator(mode="after")
+    def _validate_aggregate_integrity(self) -> "AgentAblationReport":
+        expected = {
+            (method, operating_point)
+            for method in AblationMethod
+            for operating_point in OperatingPoint
+        }
+        actual = {(item.method, item.operating_point) for item in self.methods}
+        if len(self.methods) != len(actual) or actual != expected:
+            raise ValueError(
+                "report must contain each method/operating point exactly once"
+            )
+        if self.requested_count != self.completed_count + self.failed_count:
+            raise ValueError("requested count must equal completed plus failed counts")
+        if sum(self.failure_counts.values()) != self.failed_count:
+            raise ValueError("failure counts must sum to failed_count")
+        expected_gaps = tuple(
+            key
+            for key, status in sorted(self.source_coverage.items())
+            if status is not SourceCoverageStatus.VERIFIED
+        )
+        if self.coverage_gaps != expected_gaps:
+            raise ValueError("coverage gaps must match non-verified sources")
+        return self
+
     def result(
         self, method: AblationMethod, operating_point: OperatingPoint
     ) -> AblationMethodReport:

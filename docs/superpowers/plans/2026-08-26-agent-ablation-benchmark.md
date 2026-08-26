@@ -132,31 +132,31 @@ git commit -m "feat: evaluate frozen agent ablations"
 - Produces: `load_ablation_report(path: Path, *, expected_benchmark_version: str) -> AgentAblationReport`
 - Produces: `write_ascii_json(path: Path, payload: BaseModel) -> None`
 
-- [ ] **Step 1: Write manifest validation red tests**
+- [x] **Step 1: Write manifest validation red tests**
 
 Reject Prompt fields, duplicate IDs, overlap among calibration/dev/test group IDs, count mismatches, invalid SHA-256, mutable source URLs without revision, and unknown fields. Accept a minimal manifest with four domains and source coverage.
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run: `python -m pytest tests/unit/test_ablation_io.py -q`
 
-- [ ] **Step 3: Implement strict loaders and forbidden-key scan**
+- [x] **Step 3: Implement strict loaders and forbidden-key scan**
 
 Recursively reject keys matching `prompt`, `suffix`, `token_text`, `raw_output`, `guard_raw_output`, and `query_text`, except normalized coordinate keys `suffix_start` and `suffix_end` in protected observations, which are never accepted by committed manifest/report loaders.
 
-- [ ] **Step 4: Write deterministic serialization tests**
+- [x] **Step 4: Write deterministic serialization tests**
 
 Write the same profile/report twice and assert byte equality, ASCII-only bytes, final newline, sorted keys, and reload equality.
 
-- [ ] **Step 5: Implement deterministic ASCII writer**
+- [x] **Step 5: Implement deterministic ASCII writer**
 
 Use `json.dumps(model.model_dump(mode="json"), ensure_ascii=True, sort_keys=True, separators=(",", ":")) + "\n"`. Refuse overwrite when benchmark version or dataset hash differs from the existing file.
 
-- [ ] **Step 6: Run Task 2 tests**
+- [x] **Step 6: Run Task 2 tests**
 
 Run: `python -m pytest tests/unit/test_ablation_io.py tests/unit/test_ablation_evaluation.py -q`
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```powershell
 git add backend/app/evaluation/ablation_io.py tests/unit/test_ablation_io.py
