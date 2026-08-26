@@ -1,0 +1,15 @@
+schema_version: 1
+
+models:
+  qwen2_5_7b:
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    tokenizer_id: Qwen/Qwen2.5-7B-Instruct
+    dtype: bfloat16
+    device_map: auto
+    max_input_tokens: 4096
+    trust_remote_code: false
+
+runtime:
+  use_cache: false
+  output_hidden_states: false
+  entropy_chunk_tokens: 64

@@ -1,0 +1,13 @@
+.git
+.venv
+.localdeps
+.localdeps312
+**/__pycache__
+**/.pytest_cache
+frontend/node_modules
+frontend/dist
+data/raw
+data/processed
+data/splits
+knowledge/index
+reports

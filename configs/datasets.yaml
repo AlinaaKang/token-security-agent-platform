@@ -1,0 +1,56 @@
+schema_version: 1
+
+split:
+  strategy: sha256_group_rank
+  seed: competition-v1
+  ratios:
+    calibration: 0.20
+    dev: 0.20
+    test: 0.60
+  group_key: normalized_base_prompt_and_attack_family
+
+sources:
+  cpdonline_main:
+    enabled: true
+    adapter: cpdonline
+    path: ${CPDONLINE_ROOT}/data/full_prompt_dataset.csv
+    url: https://github.com/cpdonline/cpdonline
+    license: MIT
+    copyright: Copyright (c) 2026 cpdonline
+
+  cpdonline_ppgap:
+    enabled: true
+    adapter: cpdonline
+    paths:
+      - ${CPDONLINE_ROOT}/data/benign_mix_ppgap1_800.csv
+      - ${CPDONLINE_ROOT}/data/benign_mix_ppgap2_800.csv
+      - ${CPDONLINE_ROOT}/data/benign_mix_ppgap3_800.csv
+    url: https://github.com/cpdonline/cpdonline
+    license: MIT
+    copyright: Copyright (c) 2026 cpdonline
+
+  cpdonline_guard_bypass:
+    enabled: true
+    adapter: cpdonline_guard_bypass
+    path: ${CPDONLINE_ROOT}/data/gcg_llamaguard_bypass.csv
+    url: https://github.com/cpdonline/cpdonline
+    license: MIT
+    copyright: Copyright (c) 2026 cpdonline
+
+  jailbreakbench:
+    enabled: false
+    adapter: jailbreakbench
+    url: https://github.com/JailbreakBench/jailbreakbench
+    license: MIT
+
+  harmbench:
+    enabled: false
+    adapter: harmbench
+    url: https://github.com/centerforaisafety/HarmBench
+    license: MIT
+
+  xstest:
+    enabled: false
+    adapter: xstest
+    url: https://github.com/paul-rottger/xstest
+    license: CC-BY-4.0
