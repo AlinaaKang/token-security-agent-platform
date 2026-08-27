@@ -365,7 +365,7 @@
 .challenge-signal-canvas {
   position: relative;
   min-width: 620px;
-  aspect-ratio: 920 / 236;
+  height: 236px;
 }
 .challenge-signal-canvas svg { width: 100%; height: 100%; display: block; }
 .challenge-signal-axis { stroke: var(--line-strong); stroke-width: 1; }
@@ -375,7 +375,7 @@
 .challenge-signal-targets button {
   position: absolute;
   top: 50%;
-  width: 30px;
+  width: 44px;
   height: 44px;
   padding: 0;
   border: 1px solid transparent;
@@ -398,6 +398,9 @@
   gap: 14px;
 }
 .challenge-answer-grid fieldset { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.challenge-answer-na { min-height: 78px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; display: grid; align-content: center; gap: 5px; }
+.challenge-answer-na strong { font-size: 12px; }
+.challenge-answer-na span { color: var(--muted); font-size: 10px; }
 .challenge-answer-grid legend { padding: 0 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .challenge-answer-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .challenge-action-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }

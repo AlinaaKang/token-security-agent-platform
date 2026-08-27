@@ -76,7 +76,7 @@ $env:TOKEN_SECURITY_LAB_ENABLED="true"
 - 后端完整回归：`307 passed, 1 skipped`。跳过项为未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的本机真实 GPU 集成测试。
 - 前端完整回归：`21 passed`。
 - 前端生产构建：TypeScript 与 Vite 成功，`1597 modules transformed`。
-- Token 侦探挑战回归：前端完整套件 `75 passed`，生产构建 `1605 modules transformed`；桌面与手机视口的设置、回放、答题、揭晓、失败重试、键盘和减少动态效果检查通过。
+- Token 侦探挑战回归：前端完整套件 `78 passed`，生产构建 `1605 modules transformed`；桌面与手机视口的设置、回放、答题、揭晓、失败重试、键盘和减少动态效果检查通过。
 - Token 侦探真实验收：三关与五关共 8 次运行，受保护族 GCG、AutoDAN、AdvPrompter 齐全，请求禁用字段命中 0、未知引用 0，延迟 P50/P95 为 197.592/248.344 ms，基础健康哈希前后不变。
 - 隐私验证器：当前 Git 跟踪清单 `forbidden_key_hits=0`、`tracked_path_hits=0`、`json_errors=0`。
 - 浏览器 QA：`1440x900` 与 `390x844` 下，`/analyze` 和 `/lab` 均无全局横向溢出或控制台错误；实验舱三条 SVG 曲线非空，移动端曲线只在局部容器滚动，键盘可切换调查标签并执行工具失败模拟。

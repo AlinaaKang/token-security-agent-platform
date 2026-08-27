@@ -330,4 +330,51 @@ describe("token detective challenge setup", () => {
 
     expect(screen.getByRole("region", { name: "本关揭晓" })).toBeInTheDocument();
   });
+
+  it("does not require an evidence answer when the system relation is unavailable", async () => {
+    installFetch({
+      run: {
+        ...runResult,
+        detection: {
+          ...runResult.detection,
+          semantic_severity: "unavailable",
+          detector_status: "no_token_anomaly",
+        },
+      },
+    });
+    render(<App />);
+
+    await screen.findByRole("button", { name: "进入挑战" });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
+    expect(screen.getByText("证据关系不适用")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "放行" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
+    expect(screen.getByRole("button", { name: "提交研判" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
+    expect(screen.getByRole("region", { name: "本关揭晓" })).toBeInTheDocument();
+  });
+
+  it("allows a zero-point onset submission when no signal position is selectable", async () => {
+    installFetch({
+      run: {
+        ...runResult,
+        detection: {
+          ...runResult.detection,
+          signals: [runResult.detection.signals[0]],
+        },
+      },
+    });
+    render(<App />);
+
+    await screen.findByRole("button", { name: "进入挑战" });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
+    fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
+    expect(screen.getByText("信号不足，定位按未选择计分")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交研判" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
+    expect(screen.getByRole("region", { name: "本关揭晓" })).toBeInTheDocument();
+  });
 });

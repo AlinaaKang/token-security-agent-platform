@@ -47,4 +47,16 @@ describe("ChallengeSignalPicker", () => {
     expect(screen.getByText("信号不足，至少需要两个 Token 观测点")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /选择 Token/ })).not.toBeInTheDocument();
   });
+
+  it("reserves at least 44 pixels per Token on dense traces", () => {
+    const denseSignals = Array.from({ length: 20 }, (_, position) => ({
+      ...signals[0],
+      index: position * 2,
+      entropy: position + 1,
+    }));
+    const { container } = render(
+      <ChallengeSignalPicker signals={denseSignals} selectedIndex={null} onSelect={() => undefined} />,
+    );
+    expect(container.querySelector(".challenge-signal-canvas")).toHaveStyle({ minWidth: "920px" });
+  });
 });

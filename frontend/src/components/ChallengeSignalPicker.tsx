@@ -37,6 +37,11 @@ export function ChallengeSignalPicker({
   }
 
   const selectedPosition = signals.findIndex((signal) => signal.index === selectedIndex);
+  const plotWidth = SIGNAL_CHART_WIDTH - SIGNAL_CHART_PAD_X * 2;
+  const minimumTargetWidth = Math.ceil(
+    Math.max(0, signals.length - 1) * 44 * (SIGNAL_CHART_WIDTH / plotWidth),
+  );
+  const canvasMinWidth = Math.max(620, minimumTargetWidth);
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, position: number) {
     if (event.key === "Enter" || event.key === " ") {
@@ -57,7 +62,7 @@ export function ChallengeSignalPicker({
       <div className="challenge-signal-legend" aria-hidden="true">
         {SERIES.map((item) => <span className={item.className} key={item.key}>{item.label}</span>)}
       </div>
-      <div className="challenge-signal-canvas">
+      <div className="challenge-signal-canvas" style={{ minWidth: canvasMinWidth }}>
         <svg
           viewBox={`0 0 ${SIGNAL_CHART_WIDTH} ${SIGNAL_CHART_HEIGHT}`}
           role="img"

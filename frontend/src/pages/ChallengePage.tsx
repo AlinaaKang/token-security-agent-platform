@@ -168,8 +168,11 @@ export function ChallengePage() {
 
   function submitAnswer() {
     const run = session.currentRun;
-    if (!run || draft.decision === null || draft.evidenceRelation === null) return;
-    if (run.detection.suspicious_span !== null && draft.onsetIndex === null) return;
+    if (!run || draft.decision === null) return;
+    const evidenceRequired = expectedEvidenceRelation(run) !== null;
+    const onsetSelectable = run.detection.signals.length >= 2;
+    if (evidenceRequired && draft.evidenceRelation === null) return;
+    if (run.detection.suspicious_span !== null && onsetSelectable && draft.onsetIndex === null) return;
     const answer = {
       decision: draft.decision,
       evidenceRelation: draft.evidenceRelation,
@@ -209,11 +212,13 @@ export function ChallengePage() {
   const run = session.currentRun;
   const replaying = session.phase === "guessing" && run !== null && !replayComplete;
   const activeReplayStage = replayStageIndex === null ? null : run?.stages[replayStageIndex] ?? null;
+  const evidenceRequired = run ? expectedEvidenceRelation(run) !== null : false;
   const onsetRequired = Boolean(run?.detection.suspicious_span);
+  const onsetSelectable = (run?.detection.signals.length ?? 0) >= 2;
   const canSubmit = session.phase === "guessing"
     && draft.decision !== null
-    && draft.evidenceRelation !== null
-    && (!onsetRequired || draft.onsetIndex !== null);
+    && (!evidenceRequired || draft.evidenceRelation !== null)
+    && (!onsetRequired || !onsetSelectable || draft.onsetIndex !== null);
 
   return (
     <main className="page challenge-page" aria-label="Token 侦探挑战">
@@ -328,20 +333,27 @@ export function ChallengePage() {
             onSelect={(onsetIndex) => setDraft((current) => ({ ...current, onsetIndex }))}
           />
           <div className="challenge-answer-grid">
-            <fieldset>
-              <legend>证据关系</legend>
-              <div className="challenge-answer-options">
-                {EVIDENCE_OPTIONS.map((option) => (
-                  <button
-                    type="button"
-                    aria-pressed={draft.evidenceRelation === option.value}
-                    className={draft.evidenceRelation === option.value ? "active" : ""}
-                    onClick={() => setDraft((current) => ({ ...current, evidenceRelation: option.value }))}
-                    key={option.value}
-                  >{option.label}</button>
-                ))}
+            {evidenceRequired ? (
+              <fieldset>
+                <legend>证据关系</legend>
+                <div className="challenge-answer-options">
+                  {EVIDENCE_OPTIONS.map((option) => (
+                    <button
+                      type="button"
+                      aria-pressed={draft.evidenceRelation === option.value}
+                      className={draft.evidenceRelation === option.value ? "active" : ""}
+                      onClick={() => setDraft((current) => ({ ...current, evidenceRelation: option.value }))}
+                      key={option.value}
+                    >{option.label}</button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : (
+              <div className="challenge-answer-na">
+                <strong>证据关系不适用</strong>
+                <span>本关按其余适用项归一化计分</span>
               </div>
-            </fieldset>
+            )}
             <fieldset>
               <legend>处置动作</legend>
               <div className="challenge-answer-options challenge-action-options">
@@ -359,7 +371,11 @@ export function ChallengePage() {
           </div>
           <div className="challenge-onset-status">
             <span>预测起点</span>
-            <strong>{onsetRequired ? draft.onsetIndex === null ? "请选择曲线位置" : `T${draft.onsetIndex}` : "不适用"}</strong>
+            <strong>{onsetRequired
+              ? !onsetSelectable
+                ? "信号不足，定位按未选择计分"
+                : draft.onsetIndex === null ? "请选择曲线位置" : `T${draft.onsetIndex}`
+              : "不适用"}</strong>
           </div>
           <button className="challenge-submit-button" type="button" disabled={!canSubmit} onClick={submitAnswer}>
             <ShieldCheck size={17} aria-hidden="true" />提交研判
