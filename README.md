@@ -6,7 +6,7 @@
 
 ## 已实现
 
-- Web 三页：安全分析、安全事件、评测中心。
+- Web 工作区：安全分析、安全事件、评测中心、专业攻防实验舱和 Token 侦探挑战。
 - 在线链路：Prompt -> Qwen3Guard 语义分类 -> Qwen Token 观测 -> Entropy-CPD -> 证据融合 -> 脱敏审计。
 - 处置语义：语义危险直接拦截，争议内容进入复核；语义安全但 CPD 告警时，analysis 实验拦截、gateway 人工复核；两路均正常才放行。
 - 隐私边界：Guard 原始输出只在内存中严格解析；SQLite 只保存 SHA-256、长度、归一化语义类别、检测统计、动作、模型和校准版本。
@@ -20,7 +20,7 @@ PCAP、RAG、ReAct、BEAST 和 AutoDAN-HGA 不进入基础任务算法与冻结 
 ## 当前验证
 
 - 后端：229 passed，1 个本机真实 GPU 集成测试因未配置模型而 skipped。
-- 前端：13 个交互测试，TypeScript 与 Vite 生产构建通过。
+- 前端：75 个自动化测试，TypeScript 与 Vite 生产构建通过。
 - AutoDL：RTX 4090 D 24GB，Qwen2.5-7B-Instruct + Qwen3Guard-Gen-0.6B；模型、检测器、语义 Guard、知识库、审计、评测、样本服务全部 ready，部署校准一致。
 - 原始 CPD/NLL 基准：冻结测试 663 条，其中攻击 460、无害 203。
 - 受保护融合验收：3 条直接危险、1 条普通安全、1 条争议上下文、1 条无害格式突变，语义与动作 6/6 符合预期。
@@ -89,3 +89,4 @@ CPD 算法和首批数据唯一参考为 CPDonline，固定 commit：
 - [进阶任务测试报告](docs/advanced-task/test-report.md)
 - [进阶任务实验报告](docs/advanced-task/experiment-report.md)
 - [AI 安全攻防实验舱](docs/security-lab.md)
+- [Token 侦探挑战](docs/token-detective-challenge.md)

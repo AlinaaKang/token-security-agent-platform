@@ -664,7 +664,7 @@ git commit -m "feat: polish token detective challenge replay"
 - Consumes: final `/challenge`, existing privacy verifier, local Vite server, AutoDL tunnel, protected scenario IDs.
 - Produces: verified operation guide, actual test/build counts, browser outcomes, protected-family statuses, latency, and explicit limitations.
 
-- [ ] **Step 1: Write the operation and demonstration guide**
+- [x] **Step 1: Write the operation and demonstration guide**
 
 Document:
 
@@ -681,7 +681,7 @@ Document:
 
 Link the guide from `README.md` and `docs/security-lab.md` without changing previously recorded frozen metrics.
 
-- [ ] **Step 2: Run complete automated regression and privacy checks**
+- [x] **Step 2: Run complete automated regression and privacy checks**
 
 Run from the repository root:
 
@@ -698,7 +698,7 @@ git diff --name-only -- configs data knowledge
 
 Expected: backend has zero failures with only the existing unconfigured local GPU test skipped; frontend has zero failures; build succeeds; privacy counts are all zero; no calibration, frozen report, source data, or knowledge snapshot file is changed.
 
-- [ ] **Step 3: Start the local product and perform desktop/mobile Playwright QA**
+- [x] **Step 3: Start the local product and perform desktop/mobile Playwright QA**
 
 Keep the established tunnel `127.0.0.1:18000 → AutoDL 127.0.0.1:8000` and Vite URL. At 1440×900 and 390×844 verify:
 
@@ -713,7 +713,7 @@ Keep the established tunnel `127.0.0.1:18000 → AutoDL 127.0.0.1:8000` and Vite
 
 Use screenshot and canvas/image-pixel checks to prove all three bitmap assets render nonblank on desktop and mobile.
 
-- [ ] **Step 4: Run real protected challenge acceptance through AutoDL**
+- [x] **Step 4: Run real protected challenge acceptance through AutoDL**
 
 Capture the base `/health` SHA-256, then complete one speed challenge and one full challenge. Ensure GCG, AutoDAN, and AdvPrompter each execute by protected sample ID. For every returned run record only family, sample ID, decision, detector status, CPD onset, score, counterfactual interpretation, report status, latency, forbidden-key count, and unknown-citation count.
 
@@ -730,11 +730,11 @@ protected requests contain sample_id and no source text
 
 Do not claim every decision must be block; record the actual action and score. Do not create or copy a protected response file to Git.
 
-- [ ] **Step 5: Update the guide with actual verification evidence**
+- [x] **Step 5: Update the guide with actual verification evidence**
 
 Record actual backend/frontend test counts, build module count, privacy counts, viewport outcomes, AutoDL family statuses, P50/P95, failures, and the current limitations. Keep browser screenshots under ignored `tmp/` and do not commit them.
 
-- [ ] **Step 6: Rerun documentation-adjacent checks**
+- [x] **Step 6: Rerun documentation-adjacent checks**
 
 Run:
 
@@ -748,7 +748,7 @@ npm.cmd run build
 
 Expected: privacy counts are zero, focused tests pass, and build succeeds.
 
-- [ ] **Step 7: Commit final challenge verification**
+- [x] **Step 7: Commit final challenge verification**
 
 ```powershell
 git add README.md docs/token-detective-challenge.md docs/security-lab.md
@@ -757,15 +757,15 @@ git commit -m "docs: verify token detective challenge"
 
 ## Final Review Checklist
 
-- [ ] Every production behavior had a focused failing test before implementation.
-- [ ] Score mappings, onset boundaries, normalization, and sanitize/recheck mapping use literal tests.
-- [ ] The challenge sends all runs in analysis mode and protected runs by sample ID only.
-- [ ] No challenge state is stored outside React memory.
-- [ ] Player answers and system answers are separated until explicit submission.
-- [ ] Mascot animation is labelled recorded replay and uses returned stage order.
-- [ ] The approved Detective Academy assets are local, transparent, uncropped, and nonblank.
-- [ ] Existing product pages and the professional lab retain their contracts and visual behavior.
-- [ ] Full backend/frontend suites, production build, privacy scan, and Git diff checks pass.
-- [ ] Desktop/mobile, keyboard, reduced-motion, and local chart scrolling QA pass.
-- [ ] AutoDL speed/full runs cover GCG, AutoDAN, and AdvPrompter by protected ID with zero forbidden-key hits.
-- [ ] Documentation states that game score is not detection performance and preserves all coverage limitations.
+- [x] Every production behavior had a focused failing test before implementation.
+- [x] Score mappings, onset boundaries, normalization, and sanitize/recheck mapping use literal tests.
+- [x] The challenge sends all runs in analysis mode and protected runs by sample ID only.
+- [x] No challenge state is stored outside React memory.
+- [x] Player answers and system answers are separated until explicit submission.
+- [x] Mascot animation is labelled recorded replay and uses returned stage order.
+- [x] The approved Detective Academy assets are local, transparent, uncropped, and nonblank.
+- [x] Existing product pages and the professional lab retain their contracts and visual behavior.
+- [x] Full backend/frontend suites, production build, privacy scan, and Git diff checks pass.
+- [x] Desktop/mobile, keyboard, reduced-motion, and local chart scrolling QA pass.
+- [x] AutoDL speed/full runs cover GCG, AutoDAN, and AdvPrompter by protected ID with zero forbidden-key hits.
+- [x] Documentation states that game score is not detection performance and preserves all coverage limitations.
