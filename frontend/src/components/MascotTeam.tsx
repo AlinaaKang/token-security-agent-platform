@@ -1,15 +1,28 @@
 import { Activity, BadgeCheck, ScanSearch, ShieldCheck } from "lucide-react";
 
+import {
+  canInspectRole,
+  roleStateFor,
+  type InvestigationRole,
+  type InvestigationRoleState,
+  type InvestigationState,
+} from "../challenge/investigation";
 import type { LabStage } from "../types";
 import type { ChallengePhase } from "../challenge/session";
+
+interface MascotInteraction {
+  state: InvestigationState;
+  onSelect: (role: InvestigationRole) => void;
+}
 
 interface MascotTeamProps {
   phase: ChallengePhase;
   replayStageId: LabStage["stage_id"] | null;
   evidenceConflict: boolean;
+  interaction?: MascotInteraction;
 }
 
-type MascotRole = "guard" | "cpd" | "agent";
+type MascotRole = InvestigationRole;
 type MascotMotion = "idle" | "approach" | "inspect" | "conclude" | "conflict" | "celebrate";
 
 const MASCOTS = [
@@ -57,7 +70,26 @@ function motionFor(
   return "approach";
 }
 
-export function MascotTeam({ phase, replayStageId, evidenceConflict }: MascotTeamProps) {
+function interactionMotion(
+  role: InvestigationRole,
+  roleState: InvestigationRoleState,
+): MascotMotion {
+  if (roleState !== "presenting") return "idle";
+  if (role === "cpd") return "inspect";
+  if (role === "agent") return "conclude";
+  return "approach";
+}
+
+function roleStatusLabel(role: InvestigationRole, state: InvestigationRoleState): string {
+  if (state === "ready") return "可以汇报";
+  if (state === "presenting") return "正在汇报";
+  if (state === "visited") return "回看汇报";
+  if (role === "cpd") return "等待语义侦探";
+  if (role === "agent") return "等待曲线侦探";
+  return "等待调查开始";
+}
+
+export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction }: MascotTeamProps) {
   const active = activeRole(replayStageId);
   const revealEvidenceConflict = phase === "revealed" && evidenceConflict;
 
@@ -76,7 +108,12 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict }: MascotTea
       </div>
       <div className="challenge-mascot-lineup">
         {MASCOTS.map(({ role, name, shortName, image, Icon }) => {
-          const motion = motionFor(role, phase, replayStageId, revealEvidenceConflict);
+          const roleState = interaction ? roleStateFor(interaction.state, role) : null;
+          const selected = interaction?.state.selectedRole === role;
+          const motion = interaction
+            ? interactionMotion(role, roleState!)
+            : motionFor(role, phase, replayStageId, revealEvidenceConflict);
+          const canInspect = interaction ? canInspectRole(interaction.state, role) : false;
           const classNames = [
             "challenge-mascot",
             `challenge-mascot-${role}`,
@@ -87,11 +124,26 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict }: MascotTea
           ].filter(Boolean).join(" ");
 
           return (
-            <figure className={classNames} data-motion={motion} key={role}>
-              <div className="challenge-mascot-image-wrap">
-                <img src={image} alt={name} width="512" height="512" />
-                <Icon data-mascot-status-icon aria-hidden="true" size={18} strokeWidth={2.2} />
-              </div>
+            <figure
+              className={classNames}
+              data-motion={motion}
+              data-role={role}
+              data-role-state={roleState ?? undefined}
+              key={role}
+            >
+              <button
+                type="button"
+                className="challenge-mascot-control"
+                disabled={!canInspect}
+                aria-pressed={interaction ? selected : undefined}
+                aria-label={interaction ? `${name}，${roleStatusLabel(role, roleState!)}` : name}
+                onClick={() => interaction?.onSelect(role)}
+              >
+                <div className="challenge-mascot-image-wrap">
+                  <img src={image} alt="" width="512" height="512" />
+                  <Icon data-mascot-status-icon aria-hidden="true" size={18} strokeWidth={2.2} />
+                </div>
+              </button>
               <figcaption>{shortName}</figcaption>
             </figure>
           );

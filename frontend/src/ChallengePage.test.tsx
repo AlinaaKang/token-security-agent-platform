@@ -175,7 +175,7 @@ describe("token detective challenge setup", () => {
     expect(screen.getByRole("link", { name: "专业调查" })).toHaveAttribute("href", "/lab");
     expect(screen.getByRole("button", { name: "三关速战" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "五关完整挑战" })).toBeEnabled();
-    expect(screen.getByRole("img", { name: "Guard 语义侦探" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guard 语义侦探" })).toBeInTheDocument();
     expect(requests.map((item) => item.url).sort()).toEqual([
       "/api/v1/lab/scenarios",
       "/health",
@@ -308,20 +308,20 @@ describe("token detective challenge setup", () => {
     expect(liveStage).toHaveTextContent("检测结果回放 · 1 / 5");
     expect(liveStage).toHaveTextContent("语义等级已归一化。");
     expect(liveStage).toHaveTextContent("4 ms");
-    expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
+    expect(screen.getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
       .toHaveAttribute("data-motion", "approach");
 
     await act(async () => { await vi.advanceTimersByTimeAsync(699); });
     expect(screen.getByRole("status")).toBe(liveStage);
     expect(liveStage).toHaveTextContent("语义等级已归一化。");
-    expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
+    expect(screen.getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
       .toHaveAttribute("data-motion", "approach");
 
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(screen.getByRole("status")).toBe(liveStage);
     expect(liveStage).toHaveTextContent("Token 观测已完成。");
     expect(liveStage).toHaveTextContent("21 ms");
-    expect(screen.getByRole("img", { name: "CPD 曲线侦探" }).closest("figure"))
+    expect(screen.getByRole("button", { name: "CPD 曲线侦探" }).closest("figure"))
       .toHaveAttribute("data-motion", "approach");
 
     const expectedStages = [
@@ -367,7 +367,7 @@ describe("token detective challenge setup", () => {
     });
     expect(await screen.findByRole("region", { name: "检测结果回放" })).toBeInTheDocument();
     expect(team).toHaveAttribute("data-stage", "semantic_guard");
-    expect(within(team).getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
+    expect(within(team).getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
       .toHaveAttribute("data-motion", "approach");
   });
 
@@ -378,13 +378,13 @@ describe("token detective challenge setup", () => {
     await beginChallengeWhenReady();
     await screen.findByRole("region", { name: "检测结果回放" });
     expect(screen.queryByText("证据分歧")).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+    expect(screen.getByRole("button", { name: "Agent 小队队长" }).closest("figure"))
       .not.toHaveClass("conflict");
 
     fireEvent.click(screen.getByRole("button", { name: "跳过回放" }));
     expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
     expect(screen.queryByText("证据分歧")).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+    expect(screen.getByRole("button", { name: "Agent 小队队长" }).closest("figure"))
       .not.toHaveClass("conflict");
 
     fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
@@ -392,7 +392,7 @@ describe("token detective challenge setup", () => {
     fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
     fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
     expect(screen.getByText("证据分歧")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+    expect(screen.getByRole("button", { name: "Agent 小队队长" }).closest("figure"))
       .toHaveClass("conflict");
   });
 

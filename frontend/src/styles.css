@@ -156,6 +156,26 @@
   transition: transform 180ms ease;
 }
 
+.challenge-mascot-control {
+  display: grid;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  justify-items: center;
+}
+
+.challenge-mascot-control:disabled { cursor: not-allowed; }
+
+.challenge-mascot[data-role-state="ready"] .challenge-mascot-control,
+.challenge-mascot[data-role-state="visited"] .challenge-mascot-control { cursor: pointer; }
+
+.challenge-mascot-control:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 .challenge-mascot-image-wrap {
   position: relative;
   width: min(100%, 148px);
@@ -217,6 +237,27 @@
 
 .challenge-mascot.celebration {
   transform: translateY(-3px);
+}
+
+.challenge-mascot[data-role-state="ready"] .challenge-mascot-image-wrap {
+  opacity: 1;
+  filter: none;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(20, 120, 99, 0.18);
+}
+
+.challenge-mascot[data-role-state="locked"] .challenge-mascot-image-wrap {
+  opacity: 0.38;
+  filter: grayscale(0.45) saturate(0.5);
+}
+
+.challenge-mascot[data-role-state="visited"] .challenge-mascot-image-wrap {
+  opacity: 0.72;
+  filter: none;
+}
+
+.challenge-mascot[data-role-state="presenting"] {
+  transform: translateX(var(--mascot-travel-x)) translateY(-6px);
 }
 
 .lab-mode-switch {
