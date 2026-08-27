@@ -232,7 +232,7 @@ describe("token detective challenge setup", () => {
     render(<App />);
     await beginChallengeWhenReady();
 
-    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Guard 语义侦探" })).toBeEnabled();
     expect(screen.queryByRole("region", { name: "本关线索" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
@@ -266,7 +266,28 @@ describe("token detective challenge setup", () => {
     fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
     fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
     expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("语义侦探汇报");
-    expect(screen.getByRole("button", { name: /Agent 小队队长.*可以汇报/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeEnabled();
+  });
+
+  it("keeps the answer workspace open and Guard idle after reviewing all completed reports", async () => {
+    installFetch();
+    render(<App />);
+    await beginChallengeWhenReady();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Guard 语义侦探" }));
+    fireEvent.click(screen.getByRole("button", { name: "CPD 曲线侦探" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agent 小队队长" }));
+    const workspace = screen.getByRole("region", { name: "本关线索" });
+    const guard = screen.getByRole("button", { name: "Guard 语义侦探" });
+
+    fireEvent.click(guard);
+
+    expect(workspace).toBeInTheDocument();
+    expect(guard.closest("figure")).toHaveAttribute("data-motion", "idle");
+    expect(guard).toHaveAttribute("aria-pressed", "true");
+    const statusId = guard.getAttribute("aria-describedby");
+    expect(statusId).toBe("mascot-role-status-guard");
+    expect(document.getElementById(statusId!)).toHaveTextContent("已汇报，可回看");
   });
 
   it("lets unavailable evidence complete all three investigation steps", async () => {
@@ -297,13 +318,13 @@ describe("token detective challenge setup", () => {
     await beginChallengeWhenReady();
 
     expect(await screen.findByText("本关调查失败")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /语义侦探.*可以汇报/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("可以汇报")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "重试本关" }));
     await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(2));
-    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Guard 语义侦探" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "CPD 曲线侦探" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeDisabled();
 
     async function investigateAndAnswerRound() {
       fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
@@ -319,27 +340,27 @@ describe("token detective challenge setup", () => {
     await investigateAndAnswerRound();
     fireEvent.click(screen.getByRole("button", { name: "下一关" }));
     await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(3));
-    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Guard 语义侦探" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "CPD 曲线侦探" })).toBeDisabled();
     expect(screen.queryByRole("region", { name: "中央证据台" })).not.toBeInTheDocument();
 
     await investigateAndAnswerRound();
     fireEvent.click(screen.getByRole("button", { name: "下一关" }));
     await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(4));
-    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Guard 语义侦探" })).toBeEnabled();
     await investigateAndAnswerRound();
 
     fireEvent.click(screen.getByRole("button", { name: "查看总分" }));
     fireEvent.click(screen.getByRole("button", { name: "退出挑战" }));
     expect(screen.getByRole("button", { name: "进入挑战" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "中央证据台" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /语义侦探.*汇报/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("可以汇报")).not.toBeInTheDocument();
 
     await beginChallengeWhenReady();
     await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(5));
-    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Guard 语义侦探" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "CPD 曲线侦探" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeDisabled();
     expect(screen.queryByRole("region", { name: "中央证据台" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本关线索" })).not.toBeInTheDocument();
   });

@@ -18,16 +18,26 @@ function interactiveTeam(state = createInvestigationState(), onSelect = vi.fn())
 }
 
 describe("MascotTeam", () => {
-  it("renders real role buttons and enables only the ready detective", () => {
+  it("renders visible status text that describes each interactive role button", () => {
     interactiveTeam();
-    expect(screen.getByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ })).toBeDisabled();
+    const guard = screen.getByRole("button", { name: "Guard 语义侦探" });
+    const cpd = screen.getByRole("button", { name: "CPD 曲线侦探" });
+    const agent = screen.getByRole("button", { name: "Agent 小队队长" });
+
+    expect(guard).toBeEnabled();
+    expect(cpd).toBeDisabled();
+    expect(agent).toBeDisabled();
+    expect(screen.getByText("可以汇报")).toBeVisible();
+    expect(screen.getByText("等待语义侦探汇报")).toBeVisible();
+    expect(screen.getByText("等待曲线侦探汇报")).toBeVisible();
+    expect(guard).toHaveAttribute("aria-describedby", "mascot-role-status-guard");
+    expect(cpd).toHaveAttribute("aria-describedby", "mascot-role-status-cpd");
+    expect(agent).toHaveAttribute("aria-describedby", "mascot-role-status-agent");
   });
 
   it("uses a focusable native button with the ready role state", () => {
     interactiveTeam();
-    const guard = screen.getByRole("button", { name: "Guard 语义侦探，可以汇报" });
+    const guard = screen.getByRole("button", { name: "Guard 语义侦探" });
     expect(guard).toBeInstanceOf(HTMLButtonElement);
     expect(guard).toHaveAttribute("type", "button");
     expect(guard).toHaveAttribute("aria-pressed", "false");
@@ -45,8 +55,8 @@ describe("MascotTeam", () => {
   it("does not select locked detectives", () => {
     const onSelect = vi.fn();
     interactiveTeam(createInvestigationState(), onSelect);
-    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: "CPD 曲线侦探" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agent 小队队长" }));
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -65,7 +75,8 @@ describe("MascotTeam", () => {
     const figure = screen.getByRole("button", { name: /Guard 语义侦探/ }).closest("figure");
     expect(figure).toHaveAttribute("data-role-state", "visited");
     expect(figure).toHaveAttribute("data-motion", "idle");
-    expect(screen.getByRole("button", { name: /Guard 语义侦探.*回看汇报/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Guard 语义侦探" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("已汇报，可回看")).toHaveAttribute("id", "mascot-role-status-guard");
   });
 
   it("preserves the existing automatic replay mapping without interaction props", () => {

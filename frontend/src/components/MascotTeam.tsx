@@ -83,10 +83,14 @@ function interactionMotion(
 function roleStatusLabel(role: InvestigationRole, state: InvestigationRoleState): string {
   if (state === "ready") return "可以汇报";
   if (state === "presenting") return "正在汇报";
-  if (state === "visited") return "回看汇报";
-  if (role === "cpd") return "等待语义侦探";
-  if (role === "agent") return "等待曲线侦探";
+  if (state === "visited") return "已汇报，可回看";
+  if (role === "cpd") return "等待语义侦探汇报";
+  if (role === "agent") return "等待曲线侦探汇报";
   return "等待调查开始";
+}
+
+function roleStatusId(role: InvestigationRole): string {
+  return `mascot-role-status-${role}`;
 }
 
 export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction }: MascotTeamProps) {
@@ -114,6 +118,7 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction
             ? interactionMotion(role, roleState!)
             : motionFor(role, phase, replayStageId, revealEvidenceConflict);
           const canInspect = interaction ? canInspectRole(interaction.state, role) : false;
+          const status = interaction ? roleStatusLabel(role, roleState!) : null;
           const classNames = [
             "challenge-mascot",
             `challenge-mascot-${role}`,
@@ -136,7 +141,8 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction
                 className="challenge-mascot-control"
                 disabled={!canInspect}
                 aria-pressed={interaction ? selected : undefined}
-                aria-label={interaction ? `${name}，${roleStatusLabel(role, roleState!)}` : name}
+                aria-label={name}
+                aria-describedby={status ? roleStatusId(role) : undefined}
                 onClick={() => interaction?.onSelect(role)}
               >
                 <div className="challenge-mascot-image-wrap">
@@ -144,7 +150,10 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction
                   <Icon data-mascot-status-icon aria-hidden="true" size={18} strokeWidth={2.2} />
                 </div>
               </button>
-              <figcaption>{shortName}</figcaption>
+              <figcaption>
+                <span>{shortName}</span>
+                {status ? <span className="challenge-mascot-role-status" id={roleStatusId(role)}>{status}</span> : null}
+              </figcaption>
             </figure>
           );
         })}

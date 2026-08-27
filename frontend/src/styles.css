@@ -208,12 +208,27 @@
 }
 
 .challenge-mascot figcaption {
-  min-height: 20px;
+  display: grid;
+  grid-template-rows: 20px minmax(18px, auto);
+  min-height: 38px;
   color: #526273;
   font-size: 12px;
   font-weight: 750;
   text-align: center;
 }
+
+.challenge-mascot-role-status {
+  display: block;
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+}
+
+.challenge-mascot[data-role-state="ready"] .challenge-mascot-role-status { color: var(--trusted); }
+.challenge-mascot[data-role-state="presenting"] .challenge-mascot-role-status { color: #815412; }
+.challenge-mascot[data-role-state="visited"] .challenge-mascot-role-status { color: #526273; }
 
 .challenge-mascot.active .challenge-mascot-image-wrap,
 .challenge-mascot.evidence .challenge-mascot-image-wrap,
@@ -355,6 +370,8 @@
 .challenge-presentation-mode > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: #edf1f4; }
 .challenge-presentation-mode button { min-width: 0; min-height: 44px; padding: 0 8px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; line-height: 1.2; }
 .challenge-presentation-mode button.active { color: #123f36; background: var(--surface); box-shadow: 0 1px 4px rgba(35, 53, 70, .12); font-weight: 750; }
+.challenge-presentation-mode button:not(.active):not(:disabled):hover { color: #123f36; background: #dfeee9; }
+.challenge-presentation-mode button.active:not(:disabled):hover { color: #123f36; background: #f6fbf9; box-shadow: inset 0 0 0 1px #2d8a73, 0 1px 4px rgba(35, 53, 70, .12); }
 
 .challenge-availability,
 .challenge-ready-state {
