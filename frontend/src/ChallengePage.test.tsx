@@ -424,8 +424,9 @@ describe("token detective challenge setup", () => {
     const requests = installFetch({ failRunAttempts: 1 });
     render(<App />);
 
-    await screen.findByRole("button", { name: "进入挑战" });
-    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    const beginButton = await screen.findByRole("button", { name: "进入挑战" });
+    await waitFor(() => expect(beginButton).toBeEnabled());
+    fireEvent.click(beginButton);
     expect(await screen.findByText("本关调查失败")).toBeInTheDocument();
     expect(screen.queryByText("private upstream detail")).not.toBeInTheDocument();
     expect(screen.getByText("当前总分").parentElement).toHaveTextContent("0");
