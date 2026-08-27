@@ -234,7 +234,7 @@ describe("token detective challenge setup", () => {
     expect(within(firstReveal).getByText("净化后复检（按复核类计分）")).toBeInTheDocument();
     expect(within(firstReveal).getByText("本关百分制分数")).toBeInTheDocument();
     expect(within(firstReveal).getByText("100")).toBeInTheDocument();
-    expect(screen.getByText("调查过程回放")).toBeInTheDocument();
+    expect(screen.getByText("检测结果回放")).toBeInTheDocument();
     expect(screen.getByText("挑战得分不是检测准确率或攻击覆盖率")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "下一关" }));
@@ -261,6 +261,11 @@ describe("token detective challenge setup", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看总分" }));
     expect(screen.getByRole("region", { name: "挑战总结" })).toHaveTextContent("总分 100");
+    const celebrationTeam = screen.getByRole("region", { name: "侦探学院调查小队" });
+    expect(within(celebrationTeam).getAllByRole("figure")).toHaveLength(3);
+    within(celebrationTeam).getAllByRole("figure").forEach((figure) => {
+      expect(figure).toHaveAttribute("data-motion", "celebrate");
+    });
     fireEvent.click(screen.getByRole("button", { name: "退出挑战" }));
     expect(screen.getByRole("button", { name: "进入挑战" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本关揭晓" })).not.toBeInTheDocument();
@@ -281,12 +286,18 @@ describe("token detective challenge setup", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("region", { name: "调查过程回放" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "检测结果回放" })).toBeInTheDocument();
     expect(screen.getByText("4 ms")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure")).toHaveClass("active");
+    expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
+      .toHaveAttribute("data-motion", "approach");
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
-    expect(screen.getByRole("img", { name: "CPD 曲线侦探" }).closest("figure")).toHaveClass("active");
+    await act(async () => { await vi.advanceTimersByTimeAsync(699); });
+    expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
+      .toHaveAttribute("data-motion", "approach");
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByRole("img", { name: "CPD 曲线侦探" }).closest("figure"))
+      .toHaveAttribute("data-motion", "approach");
     fireEvent.click(screen.getByRole("button", { name: "跳过回放" }));
     expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "证据关系" })).toBeInTheDocument();

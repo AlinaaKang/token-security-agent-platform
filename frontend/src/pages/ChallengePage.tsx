@@ -73,6 +73,8 @@ const SEMANTIC_LABELS: Record<SemanticSeverity, string> = {
   unavailable: "语义不可用",
 };
 
+const REPLAY_PRESENTATION_MS = 700;
+
 interface DraftAnswer {
   decision: PlayerDecision | null;
   evidenceRelation: EvidenceRelation | null;
@@ -124,7 +126,7 @@ export function ChallengePage() {
       } else {
         setReplayStageIndex(replayStageIndex + 1);
       }
-    }, 350);
+    }, REPLAY_PRESENTATION_MS);
     return () => window.clearTimeout(timer);
   }, [replayComplete, replayStageIndex, session.currentRun, session.phase]);
 
@@ -310,14 +312,14 @@ export function ChallengePage() {
       ) : null}
 
       {replaying && activeReplayStage ? (
-        <section className="challenge-stage-replay" aria-label="调查过程回放">
+        <section className="challenge-stage-replay" aria-label="检测结果回放">
           <div>
-            <span>已完成结果回放 · {replayStageIndex! + 1} / {run!.stages.length}</span>
+            <span>检测结果回放 · {replayStageIndex! + 1} / {run!.stages.length}</span>
             <strong>{activeReplayStage.summary}</strong>
             <small>{activeReplayStage.latency_ms === null ? "服务端耗时不可用" : `${activeReplayStage.latency_ms} ms`}</small>
           </div>
           <button type="button" onClick={skipReplay}>跳过回放</button>
-          <p>这是返回结果的界面回放，不代表模型正在实时推理。</p>
+          <p>这是已返回检测结果的界面回放，不代表模型正在实时推理。</p>
         </section>
       ) : null}
 
@@ -401,7 +403,7 @@ export function ChallengePage() {
             <div><span>定位得分</span><strong>{run.detection.suspicious_span ? `${session.currentScore.onsetPoints} / 30` : "不适用"}</strong></div>
           </div>
           <div className="challenge-replay-summary">
-            <strong>调查过程回放</strong>
+            <strong>检测结果回放</strong>
             <ol>{run.stages.map((stage) => <li key={stage.stage_id}>{stage.summary}</li>)}</ol>
           </div>
           <div className="challenge-sensitivity">
@@ -418,13 +420,16 @@ export function ChallengePage() {
       ) : null}
 
       {session.phase === "complete" ? (
-        <section className="challenge-summary" aria-label="挑战总结">
-          <Trophy size={34} aria-hidden="true" />
-          <span>挑战完成</span>
-          <strong>总分 {session.totalScore}</strong>
-          <p>共完成 {session.completedScores.length} 关；分数为各关百分制结果的算术平均值。</p>
-          <button type="button" onClick={exitChallenge}>退出挑战</button>
-        </section>
+        <>
+          <MascotTeam phase="complete" replayStageId={null} evidenceConflict={false} />
+          <section className="challenge-summary" aria-label="挑战总结">
+            <Trophy size={34} aria-hidden="true" />
+            <span>挑战完成</span>
+            <strong>总分 {session.totalScore}</strong>
+            <p>共完成 {session.completedScores.length} 关；分数为各关百分制结果的算术平均值。</p>
+            <button type="button" onClick={exitChallenge}>退出挑战</button>
+          </section>
+        </>
       ) : null}
     </main>
   );
