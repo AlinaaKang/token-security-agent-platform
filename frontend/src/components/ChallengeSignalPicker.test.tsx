@@ -48,6 +48,21 @@ describe("ChallengeSignalPicker", () => {
     expect(screen.queryByRole("button", { name: /选择 Token/ })).not.toBeInTheDocument();
   });
 
+  it("renders the signal chart without Token controls in read-only mode", () => {
+    const onSelect = vi.fn();
+    render(
+      <ChallengeSignalPicker
+        signals={signals}
+        selectedIndex={null}
+        onSelect={onSelect}
+        readOnly
+      />,
+    );
+    expect(screen.getByRole("img", { name: "Token 挑战信号曲线" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /选择 Token/ })).not.toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("reserves at least 44 pixels per Token on dense traces", () => {
     const denseSignals = Array.from({ length: 20 }, (_, position) => ({
       ...signals[0],

@@ -490,6 +490,32 @@
 .challenge-signal-targets button.selected { color: var(--blocked); border-color: #d7a4a6; background: rgba(251, 232, 232, .78); }
 .challenge-signal-empty { min-height: 150px; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 
+.challenge-investigation-desk {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--trusted);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.challenge-investigation-desk > header { display: flex; align-items: center; gap: 8px; }
+.challenge-investigation-desk > header svg { color: var(--trusted); }
+.challenge-investigation-facts {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+}
+.challenge-investigation-facts > div { min-width: 0; padding: 11px; display: grid; gap: 5px; border-right: 1px solid var(--line); }
+.challenge-investigation-facts > div:last-child { border-right: 0; }
+.challenge-investigation-facts span,
+.challenge-investigation-conclusion span { color: var(--muted); font-size: 10px; }
+.challenge-investigation-facts strong { overflow-wrap: anywhere; font-size: 12px; }
+.challenge-investigation-caveat { margin: 12px 0; color: var(--review); font-size: 11px; }
+.challenge-investigation-conclusion { margin-top: 14px; padding: 14px; border-left: 3px solid var(--trusted); background: var(--trusted-soft); display: grid; gap: 6px; }
+.challenge-investigation-conclusion p { margin: 0; color: var(--muted); font-size: 11px; }
+
 .challenge-answer-grid {
   margin-top: 16px;
   display: grid;
@@ -598,6 +624,9 @@
   .challenge-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .challenge-progress > div:nth-child(2) { border-right: 0; }
   .challenge-progress > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .challenge-investigation-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .challenge-investigation-facts > div:nth-child(2n) { border-right: 0; }
+  .challenge-investigation-facts > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
   .challenge-answer-grid { grid-template-columns: 1fr; }
   .challenge-action-options { grid-template-columns: 1fr; }
   .challenge-score-table { grid-template-columns: 1fr 1fr; }

@@ -17,6 +17,7 @@ interface ChallengeSignalPickerProps {
   signals: LabPublicSignal[];
   selectedIndex: number | null;
   onSelect: (index: number) => void;
+  readOnly?: boolean;
 }
 
 const SERIES: Array<{ key: SignalSeriesKey; className: string; label: string }> = [
@@ -29,6 +30,7 @@ export function ChallengeSignalPicker({
   signals,
   selectedIndex,
   onSelect,
+  readOnly = false,
 }: ChallengeSignalPickerProps) {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -93,23 +95,25 @@ export function ChallengeSignalPicker({
             />
           ) : null}
         </svg>
-        <div className="challenge-signal-targets">
-          {signals.map((signal, position) => (
-            <button
-              type="button"
-              className={signal.index === selectedIndex ? "selected" : ""}
-              style={{ left: `${(xAtPosition(position, signals.length) / SIGNAL_CHART_WIDTH) * 100}%` }}
-              aria-label={`选择 Token ${signal.index}`}
-              title={`选择 Token ${signal.index}`}
-              key={signal.index}
-              ref={(node) => { buttonRefs.current[position] = node; }}
-              onClick={() => onSelect(signal.index)}
-              onKeyDown={(event) => handleKeyDown(event, position)}
-            >
-              <Flag size={13} aria-hidden="true" />
-            </button>
-          ))}
-        </div>
+        {!readOnly ? (
+          <div className="challenge-signal-targets">
+            {signals.map((signal, position) => (
+              <button
+                type="button"
+                className={signal.index === selectedIndex ? "selected" : ""}
+                style={{ left: `${(xAtPosition(position, signals.length) / SIGNAL_CHART_WIDTH) * 100}%` }}
+                aria-label={`选择 Token ${signal.index}`}
+                title={`选择 Token ${signal.index}`}
+                key={signal.index}
+                ref={(node) => { buttonRefs.current[position] = node; }}
+                onClick={() => onSelect(signal.index)}
+                onKeyDown={(event) => handleKeyDown(event, position)}
+              >
+                <Flag size={13} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
