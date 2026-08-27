@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { LabSignalChart } from "./components/LabSignalChart";
 
 
 const health = {
@@ -279,5 +280,14 @@ describe("security lab workspace", () => {
     expect(screen.getByText("实验舱运行指标")).toBeInTheDocument();
     expect(screen.getByText("这些是运行覆盖与稳定性数据，不是冻结分类性能。" )).toBeInTheDocument();
     expect(screen.queryByText("agent-ablation-v1")).not.toBeInTheDocument();
+  });
+
+  it("positions the shared chart cursor by observation order for sparse indexes", () => {
+    render(<LabSignalChart signals={[
+      { index: 10, entropy: 1, nll: 1, cpd_entropy: 0, cpd_nll: 0, risk: 0.1 },
+      { index: 20, entropy: 2, nll: 2, cpd_entropy: 1, cpd_nll: 0, risk: 0.2 },
+    ]} />);
+
+    expect(document.querySelector(".lab-chart-cursor")).toHaveAttribute("x1", "878");
   });
 });

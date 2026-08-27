@@ -12,6 +12,7 @@ from app.lab.models import (
 )
 from app.lab.service import LabRunCreationFailed, LabService
 from app.schemas import AnalysisResult, Decision, Provenance, TokenSignal
+from app.semantic.models import SemanticSeverity
 
 
 def _analysis(
@@ -373,3 +374,45 @@ def test_metrics_aggregate_only_redacted_bounded_run_outcomes() -> None:
         "PRIVATE_CONTINUATION",
     ):
         assert forbidden not in serialized
+
+
+def test_metrics_do_not_treat_unavailable_semantics_as_evidence_agreement() -> None:
+    service = LabService(workflow=RecordingWorkflow())
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    unavailable = run.model_copy(
+        update={
+            "detection": run.detection.model_copy(
+                update={
+                    "semantic_severity": SemanticSeverity.UNAVAILABLE,
+                    "detector_status": "no_token_anomaly",
+                }
+            )
+        }
+    )
+    service.run_store.put(unavailable)
+
+    metrics = service.metrics()
+
+    assert metrics.evidence_agreement_count == 0
+    assert metrics.evidence_conflict_count == 0
+    assert metrics.evidence_conflict_rate == 0.0
+
+
+def test_metrics_count_payloads_rejected_at_the_public_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = LabService(workflow=RecordingWorkflow())
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "app.lab.service.assert_public_payload",
+            lambda _payload: (_ for _ in ()).throw(ValueError("forbidden")),
+        )
+        with pytest.raises(LabRunCreationFailed, match="lab_run_failed"):
+            service.create_run(
+                LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+            )
+
+    assert service.metrics().privacy_violation_count == 1

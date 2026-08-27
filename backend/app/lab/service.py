@@ -4,6 +4,7 @@ import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Any
 
 from app.demo.service import DemoSampleNotFound
@@ -63,6 +64,8 @@ class LabService:
         self.demo_service = demo_service
         self.run_store = run_store or LabRunStore()
         self.counterfactual_runner = CounterfactualRunner(workflow)
+        self._privacy_lock = Lock()
+        self._privacy_violation_count = 0
 
     def list_scenarios(self) -> tuple[LabScenario, ...]:
         scenarios = [
@@ -218,7 +221,7 @@ class LabService:
         updated = run.model_copy(
             update={"tool_results": tool_results, "case_report": report}
         )
-        assert_public_payload(updated)
+        self._validate_public(updated)
         self.run_store.put(updated)
         return updated
 
@@ -261,10 +264,22 @@ class LabService:
                 p50=_percentile(latencies, 0.5),
                 p95=_percentile(latencies, 0.95),
             ),
-            privacy_violation_count=0,
+            privacy_violation_count=self._privacy_violations(),
         )
-        assert_public_payload(metrics)
+        self._validate_public(metrics)
         return metrics
+
+    def _validate_public(self, payload: Any) -> None:
+        try:
+            assert_public_payload(payload)
+        except ValueError:
+            with self._privacy_lock:
+                self._privacy_violation_count += 1
+            raise
+
+    def _privacy_violations(self) -> int:
+        with self._privacy_lock:
+            return self._privacy_violation_count
 
     def _assemble_run(
         self,
@@ -309,7 +324,7 @@ class LabService:
             tool_plans=plans,
             case_report=report,
         )
-        assert_public_payload(run)
+        self._validate_public(run)
         return run
 
 
@@ -392,6 +407,9 @@ def _percentile(values: list[float], quantile: float) -> float:
 
 
 def _evidence_relation(run: LabRunResult) -> str:
-    semantic_alert = run.detection.semantic_severity.value == "unsafe"
+    semantic_severity = run.detection.semantic_severity.value
+    if semantic_severity not in {"safe", "unsafe"}:
+        return "unavailable"
+    semantic_alert = semantic_severity == "unsafe"
     cpd_alert = run.detection.detector_status == "token_anomaly_candidate"
     return "agreement" if semantic_alert == cpd_alert else "conflict"

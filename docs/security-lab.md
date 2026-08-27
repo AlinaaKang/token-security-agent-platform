@@ -68,3 +68,14 @@ $env:TOKEN_SECURITY_LAB_ENABLED="true"
 路径一使用普通无害和无害格式突变，说明“分布变化不自动等于恶意”。路径二使用直接危险样本，说明语义 Guard 覆盖无明显后缀的内容风险。路径三依次选择 GCG、AutoDAN、AdvPrompter 的受保护 ID，展示 Token 定位、反事实敏感性、知识引用、模拟处置和脱敏报告。
 
 演示结论应限定为当前冻结样本和已记录运行，不声称 CPD 普遍提高分类 F1，也不把小样本功能抽测表述为总体准确率。
+
+## 2026-08-27 验证记录
+
+- 后端完整回归：`306 passed, 1 skipped`。跳过项为未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的真实 GPU 集成测试。
+- 前端完整回归：`21 passed`。
+- 前端生产构建：TypeScript 与 Vite 成功，`1597 modules transformed`。
+- 隐私验证器：当前 Git 跟踪清单 `forbidden_key_hits=0`、`tracked_path_hits=0`、`json_errors=0`。
+- 浏览器 QA：`1440x900` 与 `390x844` 下，`/analyze` 和 `/lab` 均无全局横向溢出或控制台错误；实验舱三条 SVG 曲线非空，移动端曲线只在局部容器滚动，键盘可切换调查标签并执行工具失败模拟。
+- AutoDL：本次未执行新实验舱的受保护 ID 冒烟。SSH 入口 `connect.westb.seetacloud.com:28129` 在验证时拒绝连接，待实例恢复或端口更新后再执行 GCG、AutoDAN、AdvPrompter 各一条 ID 级检查。
+
+上述浏览器检查使用合成无害数据，不含攻击原文。AutoDL 未完成项不得写成已通过，也不影响本地回归结论。

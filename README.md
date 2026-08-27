@@ -88,3 +88,4 @@ CPD 算法和首批数据唯一参考为 CPDonline，固定 commit：
 - [进阶任务系统设计](docs/advanced-task/design.md)
 - [进阶任务测试报告](docs/advanced-task/test-report.md)
 - [进阶任务实验报告](docs/advanced-task/experiment-report.md)
+- [AI 安全攻防实验舱](docs/security-lab.md)

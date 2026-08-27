@@ -985,7 +985,7 @@ td:first-child { min-width: 128px; }
   padding: 14px 17px;
   border-bottom: 1px solid var(--line);
   display: grid;
-  grid-template-columns: auto auto auto auto minmax(170px, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(150px, auto) auto auto auto minmax(170px, 1fr) auto auto auto;
   align-items: center;
   gap: 9px;
   font-size: 11px;

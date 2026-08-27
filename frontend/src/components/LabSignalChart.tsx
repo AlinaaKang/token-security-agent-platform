@@ -43,7 +43,7 @@ export const LabSignalChart = memo(function LabSignalChart({
     return <div className="lab-chart-empty">信号不足，至少需要两个 Token 观测点</div>;
   }
   const active = signals[Math.min(activeIndex, signals.length - 1)];
-  const cursorX = xAt(active.index, signals.length);
+  const cursorX = xAt(Math.min(activeIndex, signals.length - 1), signals.length);
   return (
     <div className="lab-chart-shell">
       <div className="lab-chart-legend" aria-hidden="true">
