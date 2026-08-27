@@ -24,3 +24,4 @@ reports/**/*.csv
 tmp/
 .env
 .secrets/
+.worktrees/
