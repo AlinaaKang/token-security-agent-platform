@@ -65,3 +65,33 @@ Result: `tsc -b && vite build` completed successfully. Vite transformed `1606` m
 ## Concerns
 
 Independent review found no Critical or Important issues and approved the change. It noted one minor test-description gap: the prescribed mouse-or-keyboard activation case invokes click only. The control is a native `button`, so browser keyboard activation is provided by platform semantics; no unsupported keyboard test utility was introduced.
+
+## Fix Round 1 Evidence
+
+Addressed the independent review's two test gaps without changing production code or adding keyboard handlers/dependencies:
+
+- Renamed the click-only selection test to `emits the selected role from click activation`.
+- Added a native-control characterization that finds `Guard 语义侦探，可以汇报`, verifies it is an enabled `HTMLButtonElement` with `type="button"` and `aria-pressed="false"`, then verifies it receives focus. These are the platform semantics that provide Enter/Space activation in a browser.
+- Added a locked-boundary characterization that attempts clicks on both locked CPD and Agent controls and verifies `onSelect` is never called.
+
+Ran before changing production code:
+
+```powershell
+npm.cmd test -- src/components/MascotTeam.test.tsx
+```
+
+Result: `1` test file passed, `25 passed` tests. Both new tests are characterization tests: the prior implementation already used an enabled native `button` for the ready role and disabled native buttons for locked roles. No truthful RED failure exists without either breaking a correct implementation or asserting JSDOM keyboard emulation that does not represent native browser activation; no such artificial failure was introduced.
+
+Final fix-round verification:
+
+```powershell
+npm.cmd test
+```
+
+Result: `10` test files passed, `114 passed` tests.
+
+```powershell
+npm.cmd run build
+```
+
+Result: `tsc -b && vite build` completed successfully; Vite transformed `1606` modules.

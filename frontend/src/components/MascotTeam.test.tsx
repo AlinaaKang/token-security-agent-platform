@@ -25,11 +25,29 @@ describe("MascotTeam", () => {
     expect(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ })).toBeDisabled();
   });
 
-  it("emits the selected role from mouse or keyboard activation", () => {
+  it("uses a focusable native button with the ready role state", () => {
+    interactiveTeam();
+    const guard = screen.getByRole("button", { name: "Guard 语义侦探，可以汇报" });
+    expect(guard).toBeInstanceOf(HTMLButtonElement);
+    expect(guard).toHaveAttribute("type", "button");
+    expect(guard).toHaveAttribute("aria-pressed", "false");
+    guard.focus();
+    expect(guard).toHaveFocus();
+  });
+
+  it("emits the selected role from click activation", () => {
     const onSelect = vi.fn();
     interactiveTeam(createInvestigationState(), onSelect);
     fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
     expect(onSelect).toHaveBeenCalledWith("guard");
+  });
+
+  it("does not select locked detectives", () => {
+    const onSelect = vi.fn();
+    interactiveTeam(createInvestigationState(), onSelect);
+    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ }));
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("marks a first visit as presenting and moves only that role", () => {
