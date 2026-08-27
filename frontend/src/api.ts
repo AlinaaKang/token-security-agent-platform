@@ -8,6 +8,7 @@ import type {
   KnowledgeMode,
   LabRunRequest,
   LabRunResult,
+  LabMetrics,
   LabScenario,
   LabToolId,
   Mode,
@@ -47,6 +48,8 @@ export const api = {
     ),
   labScenarios: () =>
     requestJson<LabScenario[]>("/api/v1/lab/scenarios"),
+  labMetrics: () =>
+    requestJson<LabMetrics>("/api/v1/lab/metrics"),
   createLabRun: (payload: LabRunRequest) =>
     requestJson<LabRunResult>("/api/v1/lab/runs", {
       method: "POST",

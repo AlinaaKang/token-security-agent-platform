@@ -4,7 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.lab.models import CounterfactualResult, CounterfactualSnapshot, LabRunRequest
+from app.lab.models import (
+    CounterfactualResult,
+    CounterfactualSnapshot,
+    LabRunRequest,
+    assert_public_payload,
+)
 from app.lab.service import LabRunCreationFailed, LabService
 from app.schemas import AnalysisResult, Decision, Provenance, TokenSignal
 
@@ -324,3 +329,47 @@ def test_tool_failure_keeps_a_blocked_run_blocked() -> None:
     assert updated.tool_results[0].effective_action == "block"
     assert updated.detection.decision == "block"
     assert service.get_run(run.run_id) == updated
+
+
+def test_metrics_aggregate_only_redacted_bounded_run_outcomes() -> None:
+    service = LabService(workflow=RecordingWorkflow())
+    run = service.create_run(
+        LabRunRequest(
+            scenario_kind="custom",
+            custom_input="Safe prefix. PRIVATE_CONTINUATION",
+        )
+    )
+    service.run_tool(run.run_id, "gateway_preview", inject_failure=False)
+    service.run_tool(run.run_id, "soc_case_preview", inject_failure=True)
+
+    metrics = service.metrics()
+
+    assert metrics.model_dump(mode="json") == {
+        "run_count": 1,
+        "counterfactual_eligible_count": 1,
+        "counterfactual_executed_count": 1,
+        "counterfactual_execution_rate": 1.0,
+        "evidence_agreement_count": 1,
+        "evidence_conflict_count": 0,
+        "evidence_conflict_rate": 0.0,
+        "tool_success_count": 1,
+        "tool_failure_count": 1,
+        "tool_success_rate": 0.5,
+        "report_generated_count": 1,
+        "report_fallback_count": 0,
+        "action_invariance_count": 1,
+        "action_invariance_rate": 1.0,
+        "latency_ms": {"p50": 30.0, "p95": 30.0},
+        "privacy_violation_count": 0,
+    }
+    assert_public_payload(metrics)
+    serialized = metrics.model_dump_json()
+    for forbidden in (
+        "sample_id",
+        "scenario_id",
+        "attack_family",
+        "input_hash",
+        "agent-ablation-v1",
+        "PRIVATE_CONTINUATION",
+    ):
+        assert forbidden not in serialized

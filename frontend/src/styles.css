@@ -1003,9 +1003,22 @@ td:first-child { min-width: 128px; }
 .lab-report-band dd { margin: 0; overflow-wrap: anywhere; font-size: 11px; line-height: 1.55; }
 .lab-simulation-notice { margin: 13px 17px 0; color: var(--review); display: flex; align-items: center; gap: 7px; font-size: 10px; }
 .lab-empty-inline { padding: 22px 17px; color: var(--muted); font-size: 12px; }
+.lab-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+.lab-metrics-grid > div { min-width: 0; padding: 15px 17px; border-right: 1px solid var(--line); }
+.lab-metrics-grid > div:last-child { border-right: 0; }
+.lab-metrics-grid span { display: block; color: var(--muted); font-size: 10px; }
+.lab-metrics-grid strong { display: block; margin-top: 6px; font-size: 16px; overflow-wrap: anywhere; }
+.lab-metrics-note { margin: 0; padding: 11px 17px; border-top: 1px solid var(--line); color: var(--muted); display: flex; justify-content: space-between; gap: 14px; font-size: 10px; }
 
 @media (max-width: 1100px) {
   .lab-control-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lab-metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lab-metrics-grid > div:nth-child(3) { border-right: 0; }
+  .lab-metrics-grid > div:nth-child(-n + 3) { border-bottom: 1px solid var(--line); }
   .lab-run-button { width: 100%; }
   .lab-timeline { grid-template-columns: 1fr; padding: 8px 17px; }
   .lab-timeline li { min-height: 70px; padding-top: 12px; padding-bottom: 12px; border-right: 0; border-bottom: 1px solid var(--line); grid-template-columns: minmax(0, 1fr) auto; }
@@ -1030,8 +1043,13 @@ td:first-child { min-width: 128px; }
   .lab-tool-toolbar { align-items: flex-start; flex-direction: column; }
   .lab-tool-list article { grid-template-columns: 1fr; }
   .lab-tool-list button { width: 100%; }
-  .lab-knowledge-relation { overflow-x: auto; grid-template-columns: repeat(8, max-content); }
+  .lab-knowledge-relation { overflow-x: auto; grid-template-columns: repeat(9, max-content); }
   .lab-report-band dl { grid-template-columns: 1fr; }
   .lab-report-band dl > div { border-right: 0; border-bottom: 1px solid var(--line); }
   .lab-report-band dl > div:last-child { border-bottom: 0; }
+  .lab-metrics-grid { grid-template-columns: 1fr 1fr; }
+  .lab-metrics-grid > div { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .lab-metrics-grid > div:nth-child(2n) { border-right: 0; }
+  .lab-metrics-grid > div:nth-last-child(-n + 2) { border-bottom: 0; }
+  .lab-metrics-note { align-items: flex-start; flex-direction: column; }
 }

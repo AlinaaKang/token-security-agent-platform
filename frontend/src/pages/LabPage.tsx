@@ -21,6 +21,7 @@ import type {
   Decision,
   HealthResponse,
   LabCounterfactualInterpretation,
+  LabMetrics,
   LabRunResult,
   LabScenario,
   LabToolId,
@@ -217,6 +218,30 @@ function KnowledgeAndReport({ run }: { run: LabRunResult }) {
   );
 }
 
+function MetricsPanel({ metrics }: { metrics: LabMetrics }) {
+  const percent = (value: number) => `${(value * 100).toFixed(0)}%`;
+  return (
+    <section className="lab-band lab-metrics-band" aria-label="实验舱运行指标">
+      <div className="lab-section-heading">
+        <div><Activity size={17} /><strong>实验舱运行指标</strong></div>
+        <span>最近 {metrics.run_count} 次脱敏运行</span>
+      </div>
+      <div className="lab-metrics-grid">
+        <div><span>反事实执行覆盖</span><strong>{percent(metrics.counterfactual_execution_rate)}</strong></div>
+        <div><span>证据冲突率</span><strong>{percent(metrics.evidence_conflict_rate)}</strong></div>
+        <div><span>工具模拟成功率</span><strong>{percent(metrics.tool_success_rate)}</strong></div>
+        <div><span>基础动作不变率</span><strong>{percent(metrics.action_invariance_rate)}</strong></div>
+        <div><span>运行延迟 P50</span><strong>{metrics.latency_ms.p50.toFixed(1)} ms</strong></div>
+        <div><span>运行延迟 P95</span><strong>{metrics.latency_ms.p95.toFixed(1)} ms</strong></div>
+      </div>
+      <div className="lab-metrics-note">
+        <span>这些是运行覆盖与稳定性数据，不是冻结分类性能。</span>
+        <span>隐私边界拦截计数：{metrics.privacy_violation_count}</span>
+      </div>
+    </section>
+  );
+}
+
 export function LabPage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [scenarios, setScenarios] = useState<LabScenario[]>([]);
@@ -224,6 +249,7 @@ export function LabPage() {
   const [customInput, setCustomInput] = useState("");
   const [mode, setMode] = useState<Mode>("analysis");
   const [run, setRun] = useState<LabRunResult | null>(null);
+  const [metrics, setMetrics] = useState<LabMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<LabTab>("evidence");
   const [loading, setLoading] = useState(false);
   const [busyTool, setBusyTool] = useState<LabToolId | null>(null);
@@ -239,6 +265,8 @@ export function LabPage() {
       try {
         const items = await api.labScenarios();
         if (active) setScenarios(items);
+        const aggregate = await api.labMetrics();
+        if (active) setMetrics(aggregate);
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : "实验场景加载失败");
       }
@@ -267,6 +295,7 @@ export function LabPage() {
       const createdRun = await api.createLabRun(payload);
       setRun(createdRun);
       if (selectedScenario === "custom") setCustomInput("");
+      api.labMetrics().then(setMetrics).catch(() => undefined);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "调查运行失败");
     } finally {
@@ -280,6 +309,7 @@ export function LabPage() {
     setError(null);
     try {
       setRun(await api.dryRunLabTool(run.run_id, toolId, injectFailure));
+      api.labMetrics().then(setMetrics).catch(() => undefined);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "模拟工具执行失败");
     } finally {
@@ -368,6 +398,7 @@ export function LabPage() {
             </div>
           </section>
           <KnowledgeAndReport run={run} />
+          {metrics ? <MetricsPanel metrics={metrics} /> : null}
         </>
       )}
     </main>

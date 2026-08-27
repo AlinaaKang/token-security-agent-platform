@@ -45,6 +45,14 @@ def list_scenarios(request: Request) -> Any:
     return service.list_scenarios()
 
 
+@router.get("/metrics")
+def get_metrics(request: Request) -> Any:
+    service, error = _service(request)
+    if error is not None:
+        return error
+    return service.metrics()
+
+
 @router.post("/runs", status_code=201)
 def create_run(payload: LabRunRequest, request: Request) -> Any:
     service, error = _service(request)

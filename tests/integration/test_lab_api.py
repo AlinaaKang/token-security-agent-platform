@@ -93,14 +93,18 @@ def test_lab_api_creates_reads_and_dry_runs_a_redacted_custom_run() -> None:
             f"/api/v1/lab/runs/{run_id}/tools/gateway_preview/dry-run",
             json={"inject_failure": True},
         )
+        metrics = client.get("/api/v1/lab/metrics")
 
     assert scenarios.status_code == 200
     assert created.status_code == 201
     assert loaded.status_code == 200
     assert dry_run.status_code == 200
+    assert metrics.status_code == 200
     assert dry_run.json()["tool_results"][0]["status"] == "failed"
     assert dry_run.json()["tool_results"][0]["effective_action"] == "block"
-    for response in (scenarios, created, loaded, dry_run):
+    assert metrics.json()["run_count"] == 1
+    assert metrics.json()["tool_failure_count"] == 1
+    for response in (scenarios, created, loaded, dry_run, metrics):
         assert _forbidden_hits(response.json()) == []
         assert "PRIVATE_CONTINUATION" not in response.text
 

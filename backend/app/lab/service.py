@@ -10,6 +10,8 @@ from app.demo.service import DemoSampleNotFound
 from app.lab.counterfactual import CounterfactualRunner
 from app.lab.models import (
     LabDetectionSnapshot,
+    LabLatencySummary,
+    LabMetrics,
     LabRunRequest,
     LabRunResult,
     LabScenario,
@@ -220,6 +222,50 @@ class LabService:
         self.run_store.put(updated)
         return updated
 
+    def metrics(self) -> LabMetrics:
+        runs = self.run_store.snapshot()
+        run_count = len(runs)
+        eligible = sum(run.counterfactual.char_start is not None for run in runs)
+        executed = sum(run.counterfactual.rechecked is not None for run in runs)
+        agreement = sum(_evidence_relation(run) == "agreement" for run in runs)
+        conflict = sum(_evidence_relation(run) == "conflict" for run in runs)
+        tool_results = [result for run in runs for result in run.tool_results]
+        tool_success = sum(result.status == "succeeded" for result in tool_results)
+        tool_failure = sum(result.status == "failed" for result in tool_results)
+        generated = sum(run.case_report.report_status == "deterministic" for run in runs)
+        fallback = sum(run.case_report.report_status == "fallback" for run in runs)
+        invariant = sum(
+            all(
+                result.effective_action == run.detection.decision
+                for result in run.tool_results
+            )
+            for run in runs
+        )
+        latencies = [run.detection.latency_ms for run in runs]
+        metrics = LabMetrics(
+            run_count=run_count,
+            counterfactual_eligible_count=eligible,
+            counterfactual_executed_count=executed,
+            counterfactual_execution_rate=_rate(executed, eligible),
+            evidence_agreement_count=agreement,
+            evidence_conflict_count=conflict,
+            evidence_conflict_rate=_rate(conflict, agreement + conflict),
+            tool_success_count=tool_success,
+            tool_failure_count=tool_failure,
+            tool_success_rate=_rate(tool_success, tool_success + tool_failure),
+            report_generated_count=generated,
+            report_fallback_count=fallback,
+            action_invariance_count=invariant,
+            action_invariance_rate=_rate(invariant, run_count),
+            latency_ms=LabLatencySummary(
+                p50=_percentile(latencies, 0.5),
+                p95=_percentile(latencies, 0.95),
+            ),
+            privacy_violation_count=0,
+        )
+        assert_public_payload(metrics)
+        return metrics
+
     def _assemble_run(
         self,
         *,
@@ -328,3 +374,24 @@ def _protected_label(family: str) -> str:
         if normalized == expected:
             return label
     return f"{family} 冻结样本"
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    return numerator / denominator if denominator else 0.0
+
+
+def _percentile(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * quantile
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    fraction = position - lower
+    return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
+
+
+def _evidence_relation(run: LabRunResult) -> str:
+    semantic_alert = run.detection.semantic_severity.value == "unsafe"
+    cpd_alert = run.detection.detector_status == "token_anomaly_candidate"
+    return "agreement" if semantic_alert == cpd_alert else "conflict"

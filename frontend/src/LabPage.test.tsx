@@ -19,6 +19,25 @@ const scenarios = [
   { scenario_id: "autodan_01", label: "AutoDAN 优化攻击", scenario_kind: "protected", attack_family: "autodan", ready: true },
 ];
 
+const metrics = {
+  run_count: 1,
+  counterfactual_eligible_count: 1,
+  counterfactual_executed_count: 1,
+  counterfactual_execution_rate: 1,
+  evidence_agreement_count: 1,
+  evidence_conflict_count: 0,
+  evidence_conflict_rate: 0,
+  tool_success_count: 0,
+  tool_failure_count: 0,
+  tool_success_rate: 0,
+  report_generated_count: 1,
+  report_fallback_count: 0,
+  action_invariance_count: 1,
+  action_invariance_rate: 1,
+  latency_ms: { p50: 30, p95: 30 },
+  privacy_violation_count: 0,
+};
+
 const run = {
   run_id: "lab_123",
   status: "completed",
@@ -127,6 +146,7 @@ function installFetch(options: { legacyHealth?: boolean } = {}) {
       return response(health);
     }
     if (url === "/api/v1/lab/scenarios") return response(scenarios);
+    if (url === "/api/v1/lab/metrics") return response(metrics);
     if (url === "/api/v1/lab/runs") return response(run, true, 201);
     if (url.includes("/tools/gateway_preview/dry-run")) {
       return response({
@@ -246,5 +266,18 @@ describe("security lab workspace", () => {
 
     expect(await screen.findByText("实验舱未启用")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "开始调查" })).toBeDisabled();
+  });
+
+  it("labels aggregate lab metrics separately from frozen classification performance", async () => {
+    installFetch();
+    render(<App />);
+    await screen.findByText("实验舱已就绪");
+    fireEvent.change(screen.getByLabelText("自定义 Prompt"), { target: { value: "SAFE_CUSTOM_INPUT" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始调查" }));
+
+    expect(await screen.findByRole("region", { name: "实验舱运行指标" })).toBeInTheDocument();
+    expect(screen.getByText("实验舱运行指标")).toBeInTheDocument();
+    expect(screen.getByText("这些是运行覆盖与稳定性数据，不是冻结分类性能。" )).toBeInTheDocument();
+    expect(screen.queryByText("agent-ablation-v1")).not.toBeInTheDocument();
   });
 });

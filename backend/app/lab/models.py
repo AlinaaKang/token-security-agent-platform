@@ -258,6 +258,34 @@ class LabRunResult(BaseModel):
     case_report: LabCaseReport
 
 
+class LabLatencySummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    p50: float = Field(ge=0)
+    p95: float = Field(ge=0)
+
+
+class LabMetrics(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_count: int = Field(ge=0)
+    counterfactual_eligible_count: int = Field(ge=0)
+    counterfactual_executed_count: int = Field(ge=0)
+    counterfactual_execution_rate: float = Field(ge=0, le=1)
+    evidence_agreement_count: int = Field(ge=0)
+    evidence_conflict_count: int = Field(ge=0)
+    evidence_conflict_rate: float = Field(ge=0, le=1)
+    tool_success_count: int = Field(ge=0)
+    tool_failure_count: int = Field(ge=0)
+    tool_success_rate: float = Field(ge=0, le=1)
+    report_generated_count: int = Field(ge=0)
+    report_fallback_count: int = Field(ge=0)
+    action_invariance_count: int = Field(ge=0)
+    action_invariance_rate: float = Field(ge=0, le=1)
+    latency_ms: LabLatencySummary
+    privacy_violation_count: int = Field(ge=0)
+
+
 def assert_public_payload(payload: Any) -> None:
     if isinstance(payload, BaseModel):
         assert_public_payload(payload.model_dump(mode="json"))

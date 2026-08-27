@@ -185,6 +185,25 @@ export interface LabRunResult {
   case_report: LabCaseReport;
 }
 
+export interface LabMetrics {
+  run_count: number;
+  counterfactual_eligible_count: number;
+  counterfactual_executed_count: number;
+  counterfactual_execution_rate: number;
+  evidence_agreement_count: number;
+  evidence_conflict_count: number;
+  evidence_conflict_rate: number;
+  tool_success_count: number;
+  tool_failure_count: number;
+  tool_success_rate: number;
+  report_generated_count: number;
+  report_fallback_count: number;
+  action_invariance_count: number;
+  action_invariance_rate: number;
+  latency_ms: { p50: number; p95: number };
+  privacy_violation_count: number;
+}
+
 export type LabRunRequest =
   | { scenario_kind: "custom"; custom_input: string; mode: Mode }
   | { scenario_kind: "frozen"; sample_id: string; mode: Mode };
