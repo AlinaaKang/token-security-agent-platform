@@ -113,12 +113,29 @@ describe("InvestigationDesk", () => {
     expect(screen.getByText("不适用")).toBeInTheDocument();
   });
 
-  it("summarizes evidence without revealing the final decision", () => {
+  it("summarizes conflicting evidence without revealing a scored category or final decision", () => {
     render(<InvestigationDesk run={withDetection({ decision: "block" })} role="agent" />);
     const desk = screen.getByRole("region", { name: "中央证据台" });
-    expect(desk).toHaveTextContent("仅分布异常");
     expect(desk).toHaveTextContent("两路证据存在分歧");
+    expect(desk).not.toHaveTextContent("仅分布异常");
+    expect(desk).not.toHaveTextContent("仅语义风险");
+    expect(desk).not.toHaveTextContent("双路正常");
+    expect(desk).not.toHaveTextContent("双路风险");
     expect(desk).not.toHaveTextContent("拦截");
     expect(desk).not.toHaveTextContent("block");
+  });
+
+  it("summarizes consistent evidence without revealing a scored category", () => {
+    render(<InvestigationDesk run={withDetection({ detector_status: "no_token_anomaly" })} role="agent" />);
+    const desk = screen.getByRole("region", { name: "中央证据台" });
+    expect(desk).toHaveTextContent("两路证据结论一致");
+    expect(desk).not.toHaveTextContent("双路正常");
+  });
+
+  it("summarizes insufficient evidence without revealing a scored category", () => {
+    render(<InvestigationDesk run={withDetection({ semantic_severity: "controversial" })} role="agent" />);
+    const desk = screen.getByRole("region", { name: "中央证据台" });
+    expect(desk).toHaveTextContent("现有证据不足以形成双路关系");
+    expect(desk).not.toHaveTextContent("仅分布异常");
   });
 });

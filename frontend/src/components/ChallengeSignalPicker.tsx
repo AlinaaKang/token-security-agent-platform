@@ -70,7 +70,7 @@ export function ChallengeSignalPicker({
           role="img"
           aria-label="Token 挑战信号曲线"
         >
-          <title>Entropy、NLL 与 CPD 累积值；选择预测异常起点</title>
+          <title>{readOnly ? "Token 分布信号曲线" : "Entropy、NLL 与 CPD 累积值；选择预测异常起点"}</title>
           <line
             className="challenge-signal-axis"
             x1={SIGNAL_CHART_PAD_X}

@@ -40,6 +40,7 @@ describe("ChallengeSignalPicker", () => {
     const paths = container.querySelectorAll(".challenge-signal-line");
     expect(paths).toHaveLength(3);
     paths.forEach((path) => expect(path.getAttribute("d")).toMatch(/^M\d/));
+    expect(screen.getByText("Entropy、NLL 与 CPD 累积值；选择预测异常起点")).toBeInTheDocument();
   });
 
   it("renders a stable fallback with fewer than two signals", () => {
@@ -59,6 +60,8 @@ describe("ChallengeSignalPicker", () => {
       />,
     );
     expect(screen.getByRole("img", { name: "Token 挑战信号曲线" })).toBeInTheDocument();
+    expect(screen.getByText("Token 分布信号曲线")).toBeInTheDocument();
+    expect(screen.queryByText("Entropy、NLL 与 CPD 累积值；选择预测异常起点")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /选择 Token/ })).not.toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });

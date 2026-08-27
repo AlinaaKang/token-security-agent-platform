@@ -2,7 +2,6 @@ import { Activity, BadgeCheck, ShieldCheck } from "lucide-react";
 
 import type { InvestigationRole } from "../challenge/investigation";
 import { expectedEvidenceRelation } from "../challenge/scoring";
-import type { EvidenceRelation } from "../challenge/types";
 import type { LabRunResult } from "../types";
 import { ChallengeSignalPicker } from "./ChallengeSignalPicker";
 
@@ -10,13 +9,6 @@ interface InvestigationDeskProps {
   run: LabRunResult;
   role: InvestigationRole;
 }
-
-const EVIDENCE_LABELS: Record<EvidenceRelation, string> = {
-  dual_normal: "双路正常",
-  semantic_only: "仅语义风险",
-  distribution_only: "仅分布异常",
-  dual_risk: "双路风险",
-};
 
 const SEMANTIC_LABELS = {
   safe: "语义安全",
@@ -29,6 +21,11 @@ export function InvestigationDesk({ run, role }: InvestigationDeskProps) {
   const detection = run.detection;
   const relation = expectedEvidenceRelation(run);
   const conflict = relation === "semantic_only" || relation === "distribution_only";
+  const evidenceSummary = relation === null
+    ? "现有证据不足以形成双路关系"
+    : conflict
+      ? "两路证据存在分歧"
+      : "两路证据结论一致";
 
   return (
     <section className="challenge-investigation-desk" aria-label="中央证据台" aria-live="polite">
@@ -60,8 +57,7 @@ export function InvestigationDesk({ run, role }: InvestigationDeskProps) {
         <>
           <header><BadgeCheck aria-hidden="true" /><strong>小队队长总结</strong></header>
           <div className="challenge-investigation-conclusion">
-            <span>证据关系</span><strong>{relation ? EVIDENCE_LABELS[relation] : "证据不可用"}</strong>
-            <p>{relation === null ? "现有证据不足以形成双路关系" : conflict ? "两路证据存在分歧" : "两路证据结论一致"}</p>
+            <span>证据状态</span><strong>{evidenceSummary}</strong>
           </div>
         </>
       ) : null}
