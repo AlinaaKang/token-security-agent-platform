@@ -149,6 +149,12 @@ function installFetch(options: {
   return requests;
 }
 
+async function beginChallengeWhenReady() {
+  const beginButton = await screen.findByRole("button", { name: "进入挑战" });
+  await waitFor(() => expect(beginButton).toBeEnabled());
+  fireEvent.click(beginButton);
+}
+
 describe("token detective challenge setup", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/challenge");
@@ -213,7 +219,7 @@ describe("token detective challenge setup", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "三关速战" });
-    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await beginChallengeWhenReady();
 
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
 
@@ -345,8 +351,7 @@ describe("token detective challenge setup", () => {
     installFetch({ pendingRun: pendingRun.promise });
     render(<App />);
 
-    await screen.findByRole("button", { name: "进入挑战" });
-    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await beginChallengeWhenReady();
 
     expect(screen.getByText("正在等待脱敏检测结果")).toBeInTheDocument();
     const team = screen.getByRole("region", { name: "侦探学院调查小队" });
@@ -370,8 +375,7 @@ describe("token detective challenge setup", () => {
     installFetch();
     render(<App />);
 
-    await screen.findByRole("button", { name: "进入挑战" });
-    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await beginChallengeWhenReady();
     await screen.findByRole("region", { name: "检测结果回放" });
     expect(screen.queryByText("证据分歧")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
@@ -424,9 +428,7 @@ describe("token detective challenge setup", () => {
     const requests = installFetch({ failRunAttempts: 1 });
     render(<App />);
 
-    const beginButton = await screen.findByRole("button", { name: "进入挑战" });
-    await waitFor(() => expect(beginButton).toBeEnabled());
-    fireEvent.click(beginButton);
+    await beginChallengeWhenReady();
     expect(await screen.findByText("本关调查失败")).toBeInTheDocument();
     expect(screen.queryByText("private upstream detail")).not.toBeInTheDocument();
     expect(screen.getByText("当前总分").parentElement).toHaveTextContent("0");
@@ -448,8 +450,7 @@ describe("token detective challenge setup", () => {
     });
     render(<App />);
 
-    await screen.findByRole("button", { name: "进入挑战" });
-    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await beginChallengeWhenReady();
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
     fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
@@ -472,8 +473,7 @@ describe("token detective challenge setup", () => {
     });
     render(<App />);
 
-    await screen.findByRole("button", { name: "进入挑战" });
-    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await beginChallengeWhenReady();
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     expect(screen.getByText("证据关系不适用")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "放行" }));
@@ -495,8 +495,7 @@ describe("token detective challenge setup", () => {
     });
     render(<App />);
 
-    await screen.findByRole("button", { name: "进入挑战" });
-    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await beginChallengeWhenReady();
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
     fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
