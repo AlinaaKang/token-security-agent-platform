@@ -6,6 +6,10 @@ import type {
   EventPage,
   HealthResponse,
   KnowledgeMode,
+  LabRunRequest,
+  LabRunResult,
+  LabScenario,
+  LabToolId,
   Mode,
 } from "./types";
 
@@ -40,5 +44,27 @@ export const api = {
     requestJson<DemoAnalysisResult>(
       "/api/v1/demo-samples/" + encodeURIComponent(sampleId) + "/analyze",
       { method: "POST" },
+    ),
+  labScenarios: () =>
+    requestJson<LabScenario[]>("/api/v1/lab/scenarios"),
+  createLabRun: (payload: LabRunRequest) =>
+    requestJson<LabRunResult>("/api/v1/lab/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  getLabRun: (runId: string) =>
+    requestJson<LabRunResult>(
+      "/api/v1/lab/runs/" + encodeURIComponent(runId),
+    ),
+  dryRunLabTool: (runId: string, toolId: LabToolId, injectFailure: boolean) =>
+    requestJson<LabRunResult>(
+      "/api/v1/lab/runs/" + encodeURIComponent(runId) +
+        "/tools/" + encodeURIComponent(toolId) + "/dry-run",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inject_failure: injectFailure }),
+      },
     ),
 };
