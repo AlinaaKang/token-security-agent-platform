@@ -93,6 +93,18 @@ describe("MascotTeam", () => {
     });
   });
 
+  it("keeps the same three figures mounted across replay and guessing states", () => {
+    const { rerender } = render(
+      <MascotTeam phase="investigating" replayStageId="semantic_guard" evidenceConflict={false} />,
+    );
+    const figures = screen.getAllByRole("figure");
+
+    rerender(<MascotTeam phase="guessing" replayStageId={null} evidenceConflict={false} />);
+
+    expect(screen.getAllByRole("figure")).toHaveLength(3);
+    expect(screen.getAllByRole("figure")).toEqual(figures);
+  });
+
   it("marks status icons as decorative", () => {
     const { container } = render(
       <MascotTeam phase="complete" replayStageId={null} evidenceConflict={false} />,
