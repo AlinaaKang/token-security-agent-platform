@@ -78,16 +78,9 @@ class LabService:
         ]
         if self.demo_service is None:
             return tuple(scenarios)
-        samples = self.demo_service.list_samples(family=None, limit=100)
         for family, label in _PROTECTED_FAMILY_ORDER:
-            selected = next(
-                (
-                    sample
-                    for sample in samples
-                    if sample.family.casefold() == family
-                ),
-                None,
-            )
+            family_samples = self.demo_service.list_samples(family=family, limit=1)
+            selected = family_samples[0] if family_samples else None
             if selected is not None:
                 scenarios.append(
                     LabScenario(

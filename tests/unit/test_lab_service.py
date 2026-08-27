@@ -164,12 +164,15 @@ class ProtectedDemoService:
         self.calls: list[tuple[str, str]] = []
 
     def list_samples(self, *, family: str | None, limit: int):
-        return [
+        samples = [
             SimpleNamespace(sample_id="direct_01", family="direct_unsafe"),
             SimpleNamespace(sample_id="gcg_01", family="gcg"),
             SimpleNamespace(sample_id="autodan_01", family="autodan"),
             SimpleNamespace(sample_id="adv_01", family="advprompter"),
-        ][:limit]
+        ]
+        if family is not None:
+            samples = [item for item in samples if item.family == family]
+        return samples[:limit]
 
     def analyze_for_lab(
         self,
@@ -207,6 +210,35 @@ def test_lab_lists_safe_synthetic_and_protected_id_scenarios_without_text() -> N
     serialized = "".join(item.model_dump_json() for item in scenarios)
     assert "PRIVATE" not in serialized
     assert "custom_input" not in serialized
+
+
+def test_lab_lists_each_attack_family_when_one_family_exceeds_global_limit() -> None:
+    class CrowdedDemoService(ProtectedDemoService):
+        def list_samples(self, *, family: str | None, limit: int):
+            samples = [
+                *[
+                    SimpleNamespace(
+                        sample_id=f"adv_{index:03d}", family="advprompter"
+                    )
+                    for index in range(100)
+                ],
+                SimpleNamespace(sample_id="gcg_01", family="gcg"),
+                SimpleNamespace(sample_id="autodan_01", family="autodan"),
+            ]
+            if family is not None:
+                samples = [item for item in samples if item.family == family]
+            return samples[:limit]
+
+    service = LabService(
+        workflow=RecordingWorkflow(), demo_service=CrowdedDemoService()
+    )
+
+    scenarios = service.list_scenarios()
+
+    protected_families = {
+        item.attack_family for item in scenarios if item.scenario_kind == "protected"
+    }
+    assert protected_families == {"gcg", "autodan", "advprompter"}
 
 
 def test_custom_run_executes_real_sequence_and_stores_only_public_signals() -> None:
