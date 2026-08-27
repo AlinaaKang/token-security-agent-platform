@@ -350,7 +350,7 @@ git commit -m "feat: add in-memory challenge session"
 - Consumes: returned `LabStage[]`, current challenge phase, evidence conflict flag, `prefers-reduced-motion` CSS.
 - Produces: `<MascotTeam phase replayStageId evidenceConflict />` with stable role labels and accessible images.
 
-- [ ] **Step 1: Write failing mascot component tests**
+- [x] **Step 1: Write failing mascot component tests**
 
 Create tests that assert exact roles and state classes:
 
@@ -363,7 +363,7 @@ expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure")
 
 Also assert semantic stage activates Guard, fixed-fusion/knowledge stages activate Agent, `evidenceConflict` renders text “证据分歧”, all three figures remain mounted across phases, and decorative status icons have `aria-hidden="true"`.
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run:
 
@@ -373,9 +373,9 @@ npm.cmd test -- src/components/MascotTeam.test.tsx
 
 Expected: import failure because `MascotTeam` is absent.
 
-- [ ] **Step 3: Generate and verify the three transparent mascot bitmaps**
+- [x] **Step 3: Export and verify the three transparent mascot bitmaps**
 
-Use the `imagegen` skill once to produce a coherent three-character set, with this content requirement:
+Use the `imagegen` skill workflow. Prefer the user-approved `detective_academy` visual-study source when it is available; otherwise generate a coherent three-character set with this content requirement:
 
 ```text
 Three separate full-body chibi detective academy mascots on transparent backgrounds,
@@ -388,11 +388,11 @@ soft studio lighting, clean edges, suitable for a work-focused security dashboar
 
 Export each character as a separate 512×512 transparent WebP under `frontend/public/mascots/`. Use `view_image` to verify the background is transparent, characters are not cropped, faces are distinct, badges match roles, and no text or unintended symbols appear. Record generation date, dimensions, intended role, and the prompt summary in `frontend/public/mascots/README.md`; do not add remote source URLs.
 
-- [ ] **Step 4: Implement the stable mascot component and scoped styles**
+- [x] **Step 4: Implement the stable mascot component and scoped styles**
 
 `MascotTeam` uses a literal role table and renders all three figures at fixed aspect ratio. Add only `.challenge-mascot-*` selectors. Waiting, active, evidence, conflict, and celebration states use opacity, transform, filter, Lucide status icons, and fixed text labels; do not swap image sources or dimensions between states.
 
-- [ ] **Step 5: Run mascot tests, build, and asset checks**
+- [x] **Step 5: Run mascot tests, build, and asset checks**
 
 Run:
 
@@ -404,7 +404,7 @@ Get-ChildItem public/mascots/*.webp | Select-Object Name,Length
 
 Expected: tests/build pass and exactly three non-empty WebP files are listed.
 
-- [ ] **Step 6: Commit the approved character set**
+- [x] **Step 6: Commit the approved character set**
 
 ```powershell
 git add frontend/public/mascots frontend/src/components/MascotTeam.tsx frontend/src/components/MascotTeam.test.tsx frontend/src/styles.css
