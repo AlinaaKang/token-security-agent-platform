@@ -183,7 +183,7 @@ git commit -m "feat: add deterministic challenge scoring"
 - Consumes: `LabScenario` from `frontend/src/types.ts`.
 - Produces: `ChallengeMode`, `ResolvedChallengeRound`, `ChallengeResolution`, `resolveChallenge(mode, scenarios)`.
 
-- [ ] **Step 1: Write failing catalog resolution tests**
+- [x] **Step 1: Write failing catalog resolution tests**
 
 Use literal scenario metadata only:
 
@@ -211,7 +211,7 @@ it("resolves full challenge families case-insensitively in fixed order", () => {
 
 Also assert speed fallback order AutoDAN → GCG → AdvPrompter, unavailable scenarios are ignored, a missing full-mode family appears in `missingFamilies`, and no returned object contains any of the seven forbidden field names.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -221,7 +221,7 @@ npm.cmd test -- src/challenge/definitions.test.ts
 
 Expected: import failure for `./definitions`.
 
-- [ ] **Step 3: Implement literal definitions and resolver**
+- [x] **Step 3: Implement literal definitions and resolver**
 
 Define:
 
@@ -245,7 +245,7 @@ export interface ChallengeResolution {
 
 Normalize `attack_family` with `.trim().toLocaleLowerCase("en-US")`. Never derive a round from labels or sample ID text. Full mode is ready only with both synthetic IDs and all three protected families. Speed mode is ready with both synthetic IDs and at least one protected family.
 
-- [ ] **Step 4: Run definitions tests and the frontend suite**
+- [x] **Step 4: Run definitions tests and the frontend suite**
 
 Run:
 
@@ -256,7 +256,7 @@ npm.cmd test
 
 Expected: focused and existing tests pass.
 
-- [ ] **Step 5: Commit challenge resolution**
+- [x] **Step 5: Commit challenge resolution**
 
 ```powershell
 git add frontend/src/challenge/definitions.ts frontend/src/challenge/definitions.test.ts
