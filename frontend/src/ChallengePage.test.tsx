@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -108,17 +108,27 @@ function response(payload: unknown, ok = true) {
   return Promise.resolve({ ok, status: ok ? 200 : 503, json: async () => payload });
 }
 
-function installFetch(options: { health?: unknown; scenarios?: unknown } = {}) {
+function installFetch(options: {
+  health?: unknown;
+  scenarios?: unknown;
+  failRunAttempts?: number;
+  run?: typeof runResult;
+} = {}) {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
+  let runAttempts = 0;
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     requests.push({ url, init });
     if (url === "/health") return response(options.health ?? health);
     if (url === "/api/v1/lab/scenarios") return response(options.scenarios ?? scenarios);
     if (url === "/api/v1/lab/runs") {
+      runAttempts += 1;
+      if (runAttempts <= (options.failRunAttempts ?? 0)) {
+        return Promise.reject(new Error("private upstream detail"));
+      }
       const body = JSON.parse(String(init?.body));
       return response({
-        ...runResult,
+        ...(options.run ?? runResult),
         run_id: `challenge_run_${requests.length}`,
         scenario_id: body.sample_id,
         scenario_kind: body.sample_id.startsWith("synthetic_") ? "synthetic" : "protected",
@@ -137,6 +147,7 @@ describe("token detective challenge setup", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -195,6 +206,8 @@ describe("token detective challenge setup", () => {
     await screen.findByRole("button", { name: "三关速战" });
     fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
 
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
+
     const clues = await screen.findByRole("region", { name: "本关线索" });
     expect(JSON.parse(String(requests.find((item) => item.url === "/api/v1/lab/runs")?.init?.body))).toEqual({
       scenario_kind: "frozen",
@@ -226,11 +239,13 @@ describe("token detective challenge setup", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "下一关" }));
     await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(2));
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     await screen.findByRole("region", { name: "本关线索" });
     await answerRound();
 
     fireEvent.click(screen.getByRole("button", { name: "下一关" }));
     await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(3));
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     await screen.findByRole("region", { name: "本关线索" });
     await answerRound();
 
@@ -249,5 +264,70 @@ describe("token detective challenge setup", () => {
     fireEvent.click(screen.getByRole("button", { name: "退出挑战" }));
     expect(screen.getByRole("button", { name: "进入挑战" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本关揭晓" })).not.toBeInTheDocument();
+  });
+
+  it("replays returned stages at a presentation interval and preserves server latency", async () => {
+    vi.useFakeTimers();
+    installFetch();
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("region", { name: "调查过程回放" })).toBeInTheDocument();
+    expect(screen.getByText("4 ms")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure")).toHaveClass("active");
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(screen.getByRole("img", { name: "CPD 曲线侦探" }).closest("figure")).toHaveClass("active");
+    fireEvent.click(screen.getByRole("button", { name: "跳过回放" }));
+    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "证据关系" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "处置动作" })).toBeInTheDocument();
+  });
+
+  it("shows fixed failure copy and retries the same round without a score penalty", async () => {
+    const requests = installFetch({ failRunAttempts: 1 });
+    render(<App />);
+
+    await screen.findByRole("button", { name: "进入挑战" });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    expect(await screen.findByText("本关调查失败")).toBeInTheDocument();
+    expect(screen.queryByText("private upstream detail")).not.toBeInTheDocument();
+    expect(screen.getByText("当前总分").parentElement).toHaveTextContent("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "重试本关" }));
+    await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(2));
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
+    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+  });
+
+  it("allows scoring when the returned knowledge stage is unavailable", async () => {
+    installFetch({
+      run: {
+        ...runResult,
+        stages: runResult.stages.map((stage) => stage.stage_id === "knowledge_retrieval"
+          ? { ...stage, status: "unavailable", latency_ms: null, timing_basis: "unavailable" }
+          : stage),
+      },
+    });
+    render(<App />);
+
+    await screen.findByRole("button", { name: "进入挑战" });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
+    fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
+
+    expect(screen.getByRole("region", { name: "本关揭晓" })).toBeInTheDocument();
   });
 });

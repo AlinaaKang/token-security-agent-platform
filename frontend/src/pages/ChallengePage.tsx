@@ -91,6 +91,8 @@ export function ChallengePage() {
   const [selectedMode, setSelectedMode] = useState<ChallengeMode>("speed");
   const [session, setSession] = useState<ChallengeSessionState>(createChallengeSetup);
   const [draft, setDraft] = useState<DraftAnswer>(EMPTY_DRAFT);
+  const [replayStageIndex, setReplayStageIndex] = useState<number | null>(null);
+  const [replayComplete, setReplayComplete] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
@@ -107,6 +109,25 @@ export function ChallengePage() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (session.phase !== "guessing" || replayComplete || replayStageIndex === null) return;
+    const stages = session.currentRun?.stages ?? [];
+    if (stages.length === 0) {
+      setReplayComplete(true);
+      setReplayStageIndex(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (replayStageIndex >= stages.length - 1) {
+        setReplayComplete(true);
+        setReplayStageIndex(null);
+      } else {
+        setReplayStageIndex(replayStageIndex + 1);
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [replayComplete, replayStageIndex, session.currentRun, session.phase]);
+
   const speed = useMemo(() => resolveChallenge("speed", scenarios), [scenarios]);
   const full = useMemo(() => resolveChallenge("full", scenarios), [scenarios]);
   const selected = selectedMode === "speed" ? speed : full;
@@ -120,6 +141,8 @@ export function ChallengePage() {
     const round = baseState.rounds[baseState.roundIndex];
     if (!round) return;
     setDraft(EMPTY_DRAFT);
+    setReplayStageIndex(null);
+    setReplayComplete(false);
     setSession(challengeSessionReducer(baseState, { type: "start_round" }));
     try {
       const run = await api.createLabRun({
@@ -128,7 +151,10 @@ export function ChallengePage() {
         mode: "analysis",
       });
       setSession((current) => challengeSessionReducer(current, { type: "receive_run", run }));
+      setReplayStageIndex(run.stages.length > 0 ? 0 : null);
+      setReplayComplete(run.stages.length === 0);
     } catch {
+      setReplayStageIndex(null);
       setSession((current) => challengeSessionReducer(current, { type: "fail_round" }));
     }
   }
@@ -171,9 +197,18 @@ export function ChallengePage() {
   function exitChallenge() {
     setSession(challengeSessionReducer(session, { type: "exit" }));
     setDraft(EMPTY_DRAFT);
+    setReplayStageIndex(null);
+    setReplayComplete(false);
+  }
+
+  function skipReplay() {
+    setReplayComplete(true);
+    setReplayStageIndex(null);
   }
 
   const run = session.currentRun;
+  const replaying = session.phase === "guessing" && run !== null && !replayComplete;
+  const activeReplayStage = replayStageIndex === null ? null : run?.stages[replayStageIndex] ?? null;
   const onsetRequired = Boolean(run?.detection.suspicious_span);
   const canSubmit = session.phase === "guessing"
     && draft.decision !== null
@@ -246,8 +281,8 @@ export function ChallengePage() {
             <div><span>当前总分</span><strong>{session.totalScore}</strong></div>
           </section>
           <MascotTeam
-            phase={session.phase}
-            replayStageId={session.phase === "revealed" ? "fixed_fusion" : session.phase === "guessing" ? "entropy_cpd" : "semantic_guard"}
+            phase={replaying ? "investigating" : session.phase}
+            replayStageId={activeReplayStage?.stage_id ?? (session.phase === "revealed" ? "fixed_fusion" : session.phase === "guessing" ? "entropy_cpd" : "semantic_guard")}
             evidenceConflict={Boolean(run && run.detection.semantic_severity === "safe" && run.detection.detector_status === "token_anomaly_candidate")}
           />
         </>
@@ -269,7 +304,19 @@ export function ChallengePage() {
         </section>
       ) : null}
 
-      {session.phase === "guessing" && run ? (
+      {replaying && activeReplayStage ? (
+        <section className="challenge-stage-replay" aria-label="调查过程回放">
+          <div>
+            <span>已完成结果回放 · {replayStageIndex! + 1} / {run!.stages.length}</span>
+            <strong>{activeReplayStage.summary}</strong>
+            <small>{activeReplayStage.latency_ms === null ? "服务端耗时不可用" : `${activeReplayStage.latency_ms} ms`}</small>
+          </div>
+          <button type="button" onClick={skipReplay}>跳过回放</button>
+          <p>这是返回结果的界面回放，不代表模型正在实时推理。</p>
+        </section>
+      ) : null}
+
+      {session.phase === "guessing" && run && replayComplete ? (
         <section className="challenge-round-workspace" aria-label="本关线索">
           <div className="challenge-clue-heading">
             <div><span>Guard 线索</span><strong>{SEMANTIC_LABELS[run.detection.semantic_severity]}</strong></div>

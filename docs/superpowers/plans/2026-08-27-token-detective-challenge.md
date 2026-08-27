@@ -602,7 +602,7 @@ git commit -m "feat: add playable token evidence rounds"
 - Consumes: returned `LabStage[]`, reducer `round_error`/retry actions, `window.matchMedia("(prefers-reduced-motion: reduce)")` through CSS.
 - Produces: skippable recorded replay, stable fixed dimensions, retry without penalty, keyboard-complete workflow, responsive/reduced-motion behavior.
 
-- [ ] **Step 1: Write failing replay, error, and accessibility tests**
+- [x] **Step 1: Write failing replay, error, and accessibility tests**
 
 Use fake timers to prove replay is presentation-only:
 
@@ -617,7 +617,7 @@ expect(screen.getByRole("img", { name: "CPD 曲线侦探" }).closest("figure")).
 
 Also assert “跳过回放” immediately enters guessing, displayed stage latency is the server value rather than 350ms, a rejected POST shows fixed “本关调查失败” and retry without score loss, all answer groups have accessible names, keyboard activation completes a round, and an unavailable knowledge stage does not block scoring.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -627,15 +627,15 @@ npm.cmd test -- src/ChallengePage.test.tsx src/components/MascotTeam.test.tsx
 
 Expected: failures for absent replay progression, skip, and recovery behavior.
 
-- [ ] **Step 3: Implement replay controller and deterministic failure copy**
+- [x] **Step 3: Implement replay controller and deterministic failure copy**
 
 After `receive_run`, replay returned stages at a fixed 350ms presentation interval, store only the current stage index, and expose a “跳过回放” button. The replay never delays API invocation or changes `LabStage.latency_ms`. Clear timers on round change, retry, exit, and unmount. Map any request exception to the fixed `challenge_run_failed` UI without rendering the exception body.
 
-- [ ] **Step 4: Implement responsive and reduced-motion styles**
+- [x] **Step 4: Implement responsive and reduced-motion styles**
 
 Add stable min/max dimensions for header, mascot stage, chart/picker, answer controls, reveal, and summary. At 760px stack in progress → mascots → chart → answers order. Put chart overflow on `.challenge-chart-scroll`. Under `@media (prefers-reduced-motion: reduce)`, set challenge transition/animation durations to `0.01ms`, disable transform travel/bounce, and retain text/icon state changes.
 
-- [ ] **Step 5: Run frontend tests and production build**
+- [x] **Step 5: Run frontend tests and production build**
 
 Run:
 
@@ -646,7 +646,7 @@ npm.cmd run build
 
 Expected: complete frontend suite and build pass with no console warnings from tests.
 
-- [ ] **Step 6: Commit replay and polish**
+- [x] **Step 6: Commit replay and polish**
 
 ```powershell
 git add frontend/src/pages/ChallengePage.tsx frontend/src/ChallengePage.test.tsx frontend/src/components/MascotTeam.tsx frontend/src/components/MascotTeam.test.tsx frontend/src/styles.css
