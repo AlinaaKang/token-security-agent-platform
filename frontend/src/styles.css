@@ -353,7 +353,7 @@
 .challenge-presentation-mode { min-width: 0; margin: 16px 0 0; padding: 0; border: 0; }
 .challenge-presentation-mode legend { margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .challenge-presentation-mode > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: #edf1f4; }
-.challenge-presentation-mode button { min-width: 0; min-height: 36px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; }
+.challenge-presentation-mode button { min-width: 0; min-height: 44px; padding: 0 8px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; line-height: 1.2; }
 .challenge-presentation-mode button.active { color: #123f36; background: var(--surface); box-shadow: 0 1px 4px rgba(35, 53, 70, .12); font-weight: 750; }
 
 .challenge-availability,
@@ -560,7 +560,7 @@
 .challenge-investigation-conclusion span { color: var(--muted); font-size: 10px; }
 .challenge-investigation-facts strong { overflow-wrap: anywhere; font-size: 12px; }
 .challenge-investigation-caveat { margin: 12px 0; color: var(--review); font-size: 11px; }
-.challenge-investigation-conclusion { margin-top: 14px; padding: 14px; border-left: 3px solid var(--trusted); background: var(--trusted-soft); display: grid; gap: 6px; }
+.challenge-investigation-conclusion { margin-top: 14px; padding: 14px; border: 1px solid var(--line); background: var(--trusted-soft); display: grid; gap: 6px; }
 .challenge-investigation-conclusion p { margin: 0; color: var(--muted); font-size: 11px; }
 
 .challenge-answer-grid {
@@ -673,8 +673,12 @@
   .challenge-progress > div:nth-child(2) { border-right: 0; }
   .challenge-progress > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
   .challenge-investigation-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .challenge-investigation-facts > div:nth-child(2n) { border-right: 0; }
-  .challenge-investigation-facts > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .challenge-investigation-facts > div { border-right: 0; border-bottom: 0; }
+  .challenge-investigation-facts > div:only-child,
+  .challenge-investigation-facts > div:nth-child(3):last-child { grid-column: 1 / -1; }
+  .challenge-investigation-facts > div:nth-child(odd):not(:last-child) { border-right: 1px solid var(--line); }
+  .challenge-investigation-facts > div:first-child:nth-last-child(n + 3),
+  .challenge-investigation-facts > div:nth-child(2):nth-last-child(n + 2) { border-bottom: 1px solid var(--line); }
   .challenge-investigation-desk { padding: 14px; }
   .challenge-answer-grid { grid-template-columns: 1fr; }
   .challenge-action-options { grid-template-columns: 1fr; }
@@ -963,6 +967,8 @@ button {
 button:not(:disabled) { cursor: pointer; }
 button:not(:disabled):hover { background: #0f6755; }
 button:disabled { cursor: not-allowed; opacity: .58; }
+.challenge-mascot-control:not(:disabled):hover,
+.challenge-mascot-control:not(:disabled):active { background: transparent; }
 .secondary-button {
   flex: 0 0 auto;
   color: var(--ink);
