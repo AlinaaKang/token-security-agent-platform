@@ -330,6 +330,14 @@ describe("token detective challenge setup", () => {
     expect(screen.getByRole("button", { name: "进入挑战" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "中央证据台" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /语义侦探.*汇报/ })).not.toBeInTheDocument();
+
+    await beginChallengeWhenReady();
+    await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(5));
+    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ })).toBeDisabled();
+    expect(screen.queryByRole("region", { name: "中央证据台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本关线索" })).not.toBeInTheDocument();
   });
 
   it("plays three redacted rounds, reveals deterministic scoring, and clears on exit", async () => {
