@@ -184,6 +184,8 @@ describe("security lab workspace", () => {
 
     expect(await screen.findByRole("main", { name: "AI 安全攻防实验舱" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "攻防实验舱" })).toHaveClass("active");
+    expect(screen.getByRole("link", { name: "专业调查" })).toHaveClass("active");
+    expect(screen.getByRole("link", { name: "侦探挑战" })).toHaveAttribute("href", "/challenge");
     expect(screen.getByText("普通无害")).toBeInTheDocument();
     expect(screen.getByText("AutoDAN 优化攻击")).toBeInTheDocument();
   });

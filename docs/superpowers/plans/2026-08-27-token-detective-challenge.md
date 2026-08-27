@@ -427,7 +427,7 @@ git commit -m "feat: add detective academy mascot team"
 - Consumes: `api.health()`, `api.labScenarios()`, `resolveChallenge`, `createChallengeSession`, `MascotTeam`.
 - Produces: `/challenge`, an accessible professional/challenge switch, speed/full setup selection, missing-family and unavailable states.
 
-- [ ] **Step 1: Write failing route and stability tests**
+- [x] **Step 1: Write failing route and stability tests**
 
 In `ChallengePage.test.tsx`, mock only `/health` and `/api/v1/lab/scenarios`, then assert:
 
@@ -442,7 +442,7 @@ expect(screen.getByRole("button", { name: "五关完整挑战" })).toBeEnabled()
 
 Add cases for `health.lab.ready=false`, missing GCG disabling only full mode with visible missing-family text, and legacy health without `lab`. Extend `App.test.tsx` to assert `/analyze`, `/events`, `/evaluation`, and `/lab` still render their existing main landmarks. Extend `LabPage.test.tsx` only to assert the mode switch links to `/challenge` and the professional tab remains selected on `/lab`.
 
-- [ ] **Step 2: Run the focused UI tests and verify RED**
+- [x] **Step 2: Run the focused UI tests and verify RED**
 
 Run:
 
@@ -452,7 +452,7 @@ npm.cmd test -- src/ChallengePage.test.tsx src/App.test.tsx src/LabPage.test.tsx
 
 Expected: failures for the absent route, switch, and challenge page; existing stable-page assertions continue to pass.
 
-- [ ] **Step 3: Add the isolated route and minimal setup page**
+- [x] **Step 3: Add the isolated route and minimal setup page**
 
 Add `Gamepad2` from Lucide to the navigation and route table:
 
@@ -463,11 +463,11 @@ Add `Gamepad2` from Lucide to the navigation and route table:
 
 `LabModeSwitch` renders two `NavLink`s for `/lab` and `/challenge`. `ChallengePage` loads health then scenarios, derives both resolutions, and renders fixed-size mode buttons plus `<MascotTeam phase="setup" ... />`. It must not call `api.createLabRun` before the player starts a session.
 
-- [ ] **Step 4: Add scoped setup and degraded-state styles**
+- [x] **Step 4: Add scoped setup and degraded-state styles**
 
 Use `.challenge-*` selectors, 8px maximum radii, fixed button heights, 44px touch targets, no viewport-scaled font sizes, no decorative gradient/orbs, and a stable mascot stage aspect ratio. Keep the existing `.lab-*` declarations unchanged except the small shared mode switch placement.
 
-- [ ] **Step 5: Run focused tests and full frontend tests**
+- [x] **Step 5: Run focused tests and full frontend tests**
 
 Run:
 
@@ -478,7 +478,7 @@ npm.cmd test
 
 Expected: route/setup tests and all prior UI tests pass.
 
-- [ ] **Step 6: Commit the isolated challenge shell**
+- [x] **Step 6: Commit the isolated challenge shell**
 
 ```powershell
 git add frontend/src/components/LabModeSwitch.tsx frontend/src/pages/ChallengePage.tsx frontend/src/ChallengePage.test.tsx frontend/src/App.tsx frontend/src/App.test.tsx frontend/src/pages/LabPage.tsx frontend/src/LabPage.test.tsx frontend/src/styles.css

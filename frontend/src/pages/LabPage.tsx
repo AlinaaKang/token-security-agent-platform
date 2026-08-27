@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
+import { LabModeSwitch } from "../components/LabModeSwitch";
 import { LabSignalChart } from "../components/LabSignalChart";
 import type {
   Decision,
@@ -321,6 +322,7 @@ export function LabPage() {
     <main className="page lab-page" aria-label="AI 安全攻防实验舱">
       <header className="page-header">
         <div>
+          <LabModeSwitch />
           <h1>AI 安全攻防实验舱</h1>
           <p>按证据顺序调查异常，验证反事实敏感性，并在无外部副作用的沙箱中预演处置。</p>
         </div>
