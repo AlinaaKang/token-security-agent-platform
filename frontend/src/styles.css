@@ -350,6 +350,12 @@
 .challenge-mode-options strong { display: block; font-size: 13px; }
 .challenge-mode-options span { display: block; margin-top: 7px; font-size: 10px; line-height: 1.45; }
 
+.challenge-presentation-mode { min-width: 0; margin: 16px 0 0; padding: 0; border: 0; }
+.challenge-presentation-mode legend { margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.challenge-presentation-mode > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: #edf1f4; }
+.challenge-presentation-mode button { min-width: 0; min-height: 36px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; }
+.challenge-presentation-mode button.active { color: #123f36; background: var(--surface); box-shadow: 0 1px 4px rgba(35, 53, 70, .12); font-weight: 750; }
+
 .challenge-availability,
 .challenge-ready-state {
   min-height: 38px;
@@ -660,6 +666,7 @@
   .challenge-header { align-items: flex-start; flex-direction: column; }
   .challenge-mode-options { grid-template-columns: 1fr; }
   .challenge-mode-options button { height: 76px; }
+  .challenge-presentation-mode > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lab-mode-switch { width: 100%; }
   .lab-mode-switch a { min-width: 0; flex: 1; }
   .challenge-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }

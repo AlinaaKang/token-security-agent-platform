@@ -15,6 +15,14 @@ import { api } from "../api";
 import type { ChallengeMode } from "../challenge/definitions";
 import { resolveChallenge } from "../challenge/definitions";
 import {
+  createInvestigationState,
+  inspectRole,
+} from "../challenge/investigation";
+import type {
+  InvestigationState,
+  PresentationMode,
+} from "../challenge/investigation";
+import {
   expectedEvidenceRelation,
   scoreChallengeRound,
 } from "../challenge/scoring";
@@ -29,6 +37,7 @@ import type {
   PlayerDecision,
 } from "../challenge/types";
 import { ChallengeSignalPicker } from "../components/ChallengeSignalPicker";
+import { InvestigationDesk } from "../components/InvestigationDesk";
 import { LabModeSwitch } from "../components/LabModeSwitch";
 import { MascotTeam } from "../components/MascotTeam";
 import type { Decision, HealthResponse, LabScenario, SemanticSeverity } from "../types";
@@ -91,7 +100,9 @@ export function ChallengePage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [scenarios, setScenarios] = useState<LabScenario[]>([]);
   const [selectedMode, setSelectedMode] = useState<ChallengeMode>("speed");
+  const [presentationMode, setPresentationMode] = useState<PresentationMode>("interactive");
   const [session, setSession] = useState<ChallengeSessionState>(createChallengeSetup);
+  const [investigation, setInvestigation] = useState<InvestigationState>(createInvestigationState);
   const [draft, setDraft] = useState<DraftAnswer>(EMPTY_DRAFT);
   const [replayStageIndex, setReplayStageIndex] = useState<number | null>(null);
   const [replayComplete, setReplayComplete] = useState(false);
@@ -112,7 +123,7 @@ export function ChallengePage() {
   }, []);
 
   useEffect(() => {
-    if (session.phase !== "guessing" || replayComplete || replayStageIndex === null) return;
+    if (presentationMode !== "auto" || session.phase !== "guessing" || replayComplete || replayStageIndex === null) return;
     const stages = session.currentRun?.stages ?? [];
     if (stages.length === 0) {
       setReplayComplete(true);
@@ -128,7 +139,7 @@ export function ChallengePage() {
       }
     }, REPLAY_PRESENTATION_MS);
     return () => window.clearTimeout(timer);
-  }, [replayComplete, replayStageIndex, session.currentRun, session.phase]);
+  }, [presentationMode, replayComplete, replayStageIndex, session.currentRun, session.phase]);
 
   const speed = useMemo(() => resolveChallenge("speed", scenarios), [scenarios]);
   const full = useMemo(() => resolveChallenge("full", scenarios), [scenarios]);
@@ -138,7 +149,12 @@ export function ChallengePage() {
   const canBegin = labReady && selected.ready && session.phase === "setup";
   const missingFull = full.missingFamilies.map((family) => FAMILY_LABELS[family]).join("、");
 
+  function resetInvestigation() {
+    setInvestigation(createInvestigationState());
+  }
+
   async function executeRound(baseState: ChallengeSessionState) {
+    resetInvestigation();
     if (baseState.phase !== "ready") return;
     const round = baseState.rounds[baseState.roundIndex];
     if (!round) return;
@@ -153,8 +169,13 @@ export function ChallengePage() {
         mode: "analysis",
       });
       setSession((current) => challengeSessionReducer(current, { type: "receive_run", run }));
-      setReplayStageIndex(run.stages.length > 0 ? 0 : null);
-      setReplayComplete(run.stages.length === 0);
+      if (presentationMode === "auto") {
+        setReplayStageIndex(run.stages.length > 0 ? 0 : null);
+        setReplayComplete(run.stages.length === 0);
+      } else {
+        setReplayStageIndex(null);
+        setReplayComplete(false);
+      }
     } catch {
       setReplayStageIndex(null);
       setSession((current) => challengeSessionReducer(current, { type: "fail_round" }));
@@ -187,7 +208,10 @@ export function ChallengePage() {
   function advanceRound() {
     const advanced = challengeSessionReducer(session, { type: "advance" });
     setSession(advanced);
-    if (advanced.phase === "ready") void executeRound(advanced);
+    if (advanced.phase === "ready") {
+      resetInvestigation();
+      void executeRound(advanced);
+    }
   }
 
   function retryRound() {
@@ -195,6 +219,7 @@ export function ChallengePage() {
     setSession(retrying);
     if (retrying.phase === "investigating") {
       const readyState: ChallengeSessionState = { ...retrying, phase: "ready" };
+      resetInvestigation();
       void executeRound(readyState);
     }
   }
@@ -204,17 +229,28 @@ export function ChallengePage() {
     setDraft(EMPTY_DRAFT);
     setReplayStageIndex(null);
     setReplayComplete(false);
+    resetInvestigation();
   }
 
   function skipReplay() {
+    if (presentationMode !== "auto") return;
     setReplayComplete(true);
     setReplayStageIndex(null);
   }
 
   const run = session.currentRun;
-  const replaying = session.phase === "guessing" && run !== null && !replayComplete;
+  const autoReplaying = presentationMode === "auto"
+    && session.phase === "guessing"
+    && run !== null
+    && !replayComplete;
+  const interactiveInvestigating = presentationMode === "interactive"
+    && session.phase === "guessing"
+    && run !== null;
+  const investigationComplete = presentationMode === "auto"
+    ? replayComplete
+    : investigation.step === "complete";
   const activeReplayStage = replayStageIndex === null ? null : run?.stages[replayStageIndex] ?? null;
-  const mascotReplayStageId = replaying ? activeReplayStage?.stage_id ?? null : null;
+  const mascotReplayStageId = autoReplaying ? activeReplayStage?.stage_id ?? null : null;
   const revealEvidenceConflict = session.phase === "revealed"
     && Boolean(run && run.detection.semantic_severity === "safe"
       && run.detection.detector_status === "token_anomaly_candidate");
@@ -222,6 +258,7 @@ export function ChallengePage() {
   const onsetRequired = Boolean(run?.detection.suspicious_span);
   const onsetSelectable = (run?.detection.signals.length ?? 0) >= 2;
   const canSubmit = session.phase === "guessing"
+    && investigationComplete
     && draft.decision !== null
     && (!evidenceRequired || draft.evidenceRelation !== null)
     && (!onsetRequired || !onsetSelectable || draft.onsetIndex !== null);
@@ -269,6 +306,25 @@ export function ChallengePage() {
                 <strong>五关完整挑战</strong><span>增加 GCG、AutoDAN、AdvPrompter</span>
               </button>
             </div>
+            <fieldset className="challenge-presentation-mode">
+              <legend>调查方式</legend>
+              <div role="group" aria-label="调查方式">
+                <button
+                  type="button"
+                  aria-label="互动调查"
+                  aria-pressed={presentationMode === "interactive"}
+                  className={presentationMode === "interactive" ? "active" : ""}
+                  onClick={() => setPresentationMode("interactive")}
+                >互动调查</button>
+                <button
+                  type="button"
+                  aria-label="自动演示"
+                  aria-pressed={presentationMode === "auto"}
+                  className={presentationMode === "auto" ? "active" : ""}
+                  onClick={() => setPresentationMode("auto")}
+                >自动演示</button>
+              </div>
+            </fieldset>
             {!labReady && !loading ? (
               <div className="challenge-availability unavailable"><CircleAlert size={17} aria-hidden="true" />挑战模式不可用</div>
             ) : null}
@@ -292,10 +348,17 @@ export function ChallengePage() {
             <div><span>当前总分</span><strong>{session.totalScore}</strong></div>
           </section>
           <MascotTeam
-            phase={replaying ? "investigating" : session.phase}
+            phase={autoReplaying ? "investigating" : session.phase}
             replayStageId={mascotReplayStageId}
             evidenceConflict={revealEvidenceConflict}
+            interaction={interactiveInvestigating ? {
+              state: investigation,
+              onSelect: (role) => setInvestigation((current) => inspectRole(current, role)),
+            } : undefined}
           />
+          {interactiveInvestigating && run && investigation.selectedRole ? (
+            <InvestigationDesk run={run} role={investigation.selectedRole} />
+          ) : null}
         </>
       ) : null}
 
@@ -315,7 +378,7 @@ export function ChallengePage() {
         </section>
       ) : null}
 
-      {replaying && activeReplayStage ? (
+      {autoReplaying && activeReplayStage ? (
         <section className="challenge-stage-replay" aria-label="检测结果回放">
           <div role="status" aria-live="polite" aria-atomic="true">
             <span>检测结果回放 · {replayStageIndex! + 1} / {run!.stages.length}</span>
@@ -327,7 +390,7 @@ export function ChallengePage() {
         </section>
       ) : null}
 
-      {session.phase === "guessing" && run && replayComplete ? (
+      {session.phase === "guessing" && run && investigationComplete ? (
         <section className="challenge-round-workspace" aria-label="本关线索">
           <div className="challenge-clue-heading">
             <div><span>Guard 线索</span><strong>{SEMANTIC_LABELS[run.detection.semantic_severity]}</strong></div>

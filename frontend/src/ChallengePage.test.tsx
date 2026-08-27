@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import type { LabRunResult } from "./types";
 
 const health = {
   status: "ok",
@@ -102,7 +103,7 @@ const runResult = {
     limitations: ["敏感性证据不构成严格因果证明。"],
     tool_statuses: {},
   },
-};
+} satisfies LabRunResult;
 
 function response(payload: unknown, ok = true) {
   return Promise.resolve({ ok, status: ok ? 200 : 503, json: async () => payload });
@@ -120,8 +121,8 @@ function installFetch(options: {
   health?: unknown;
   scenarios?: unknown;
   failRunAttempts?: number;
-  run?: typeof runResult;
-  pendingRun?: Promise<typeof runResult>;
+  run?: LabRunResult;
+  pendingRun?: Promise<LabRunResult>;
 } = {}) {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
   let runAttempts = 0;
@@ -153,6 +154,10 @@ async function beginChallengeWhenReady() {
   const beginButton = await screen.findByRole("button", { name: "进入挑战" });
   await waitFor(() => expect(beginButton).toBeEnabled());
   fireEvent.click(beginButton);
+}
+
+function selectAutomaticPresentation() {
+  fireEvent.click(screen.getByRole("button", { name: "自动演示" }));
 }
 
 describe("token detective challenge setup", () => {
@@ -214,11 +219,125 @@ describe("token detective challenge setup", () => {
     expect(screen.getByRole("button", { name: "三关速战" })).toBeDisabled();
   });
 
+  it("defaults to interactive investigation and keeps auto mode selectable before start", async () => {
+    installFetch();
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "互动调查" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "自动演示" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("reveals evidence in strict detective order before showing the answer workspace", async () => {
+    installFetch();
+    render(<App />);
+    await beginChallengeWhenReady();
+
+    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
+    expect(screen.queryByRole("region", { name: "本关线索" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
+    expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("语义侦探汇报");
+    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
+    expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("曲线侦探汇报");
+    fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
+    expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("小队队长总结");
+    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+  });
+
+  it("does not expose the system decision before the player answers", async () => {
+    installFetch({ run: { ...runResult, detection: { ...runResult.detection, decision: "block" } } });
+    render(<App />);
+    await beginChallengeWhenReady();
+    fireEvent.click(await screen.findByRole("button", { name: /Guard 语义侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
+    expect(screen.getByRole("region", { name: "中央证据台" })).not.toHaveTextContent("拦截");
+  });
+
+  it("reviews an earlier report without locking the captain again", async () => {
+    installFetch();
+    render(<App />);
+    await beginChallengeWhenReady();
+    fireEvent.click(await screen.findByRole("button", { name: /Guard 语义侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
+    expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("语义侦探汇报");
+    expect(screen.getByRole("button", { name: /Agent 小队队长.*可以汇报/ })).toBeEnabled();
+  });
+
+  it("lets unavailable evidence complete all three investigation steps", async () => {
+    installFetch({
+      run: {
+        ...runResult,
+        detection: {
+          ...runResult.detection,
+          semantic_severity: "unavailable",
+          semantic_categories: [],
+          suspicious_span: null,
+          signals: [],
+        },
+      },
+    });
+    render(<App />);
+    await beginChallengeWhenReady();
+    fireEvent.click(await screen.findByRole("button", { name: /Guard 语义侦探/ }));
+    expect(screen.getByText("语义证据不可用")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
+    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+  });
+
+  it("resets interactive progress on retry, next round, and exit", async () => {
+    const requests = installFetch({ failRunAttempts: 1 });
+    render(<App />);
+    await beginChallengeWhenReady();
+
+    expect(await screen.findByText("本关调查失败")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /语义侦探.*可以汇报/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试本关" }));
+    await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(2));
+    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Agent 小队队长.*等待曲线侦探/ })).toBeDisabled();
+
+    async function investigateAndAnswerRound() {
+      fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
+      fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
+      fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
+      fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
+      fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
+      fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
+      await screen.findByRole("region", { name: "本关揭晓" });
+    }
+
+    await investigateAndAnswerRound();
+    fireEvent.click(screen.getByRole("button", { name: "下一关" }));
+    await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(3));
+    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /CPD 曲线侦探.*等待语义侦探/ })).toBeDisabled();
+    expect(screen.queryByRole("region", { name: "中央证据台" })).not.toBeInTheDocument();
+
+    await investigateAndAnswerRound();
+    fireEvent.click(screen.getByRole("button", { name: "下一关" }));
+    await waitFor(() => expect(requests.filter((item) => item.url === "/api/v1/lab/runs")).toHaveLength(4));
+    expect(await screen.findByRole("button", { name: /Guard 语义侦探.*可以汇报/ })).toBeEnabled();
+    await investigateAndAnswerRound();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看总分" }));
+    fireEvent.click(screen.getByRole("button", { name: "退出挑战" }));
+    expect(screen.getByRole("button", { name: "进入挑战" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "中央证据台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /语义侦探.*汇报/ })).not.toBeInTheDocument();
+  });
+
   it("plays three redacted rounds, reveals deterministic scoring, and clears on exit", async () => {
     const requests = installFetch();
     render(<App />);
 
     await screen.findByRole("button", { name: "三关速战" });
+    selectAutomaticPresentation();
     await beginChallengeWhenReady();
 
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
@@ -295,6 +414,7 @@ describe("token detective challenge setup", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    selectAutomaticPresentation();
     fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
     await act(async () => {
       await Promise.resolve();
@@ -351,6 +471,7 @@ describe("token detective challenge setup", () => {
     installFetch({ pendingRun: pendingRun.promise });
     render(<App />);
 
+    selectAutomaticPresentation();
     await beginChallengeWhenReady();
 
     expect(screen.getByText("正在等待脱敏检测结果")).toBeInTheDocument();
@@ -375,6 +496,7 @@ describe("token detective challenge setup", () => {
     installFetch();
     render(<App />);
 
+    selectAutomaticPresentation();
     await beginChallengeWhenReady();
     await screen.findByRole("region", { name: "检测结果回放" });
     expect(screen.queryByText("证据分歧")).not.toBeInTheDocument();
@@ -405,6 +527,7 @@ describe("token detective challenge setup", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    selectAutomaticPresentation();
     fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
     await act(async () => {
       await Promise.resolve();
@@ -428,6 +551,7 @@ describe("token detective challenge setup", () => {
     const requests = installFetch({ failRunAttempts: 1 });
     render(<App />);
 
+    selectAutomaticPresentation();
     await beginChallengeWhenReady();
     expect(await screen.findByText("本关调查失败")).toBeInTheDocument();
     expect(screen.queryByText("private upstream detail")).not.toBeInTheDocument();
@@ -450,6 +574,7 @@ describe("token detective challenge setup", () => {
     });
     render(<App />);
 
+    selectAutomaticPresentation();
     await beginChallengeWhenReady();
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
@@ -473,6 +598,7 @@ describe("token detective challenge setup", () => {
     });
     render(<App />);
 
+    selectAutomaticPresentation();
     await beginChallengeWhenReady();
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     expect(screen.getByText("证据关系不适用")).toBeInTheDocument();
@@ -495,6 +621,7 @@ describe("token detective challenge setup", () => {
     });
     render(<App />);
 
+    selectAutomaticPresentation();
     await beginChallengeWhenReady();
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
