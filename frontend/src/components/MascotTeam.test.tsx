@@ -40,6 +40,28 @@ describe("MascotTeam", () => {
     expect(screen.getByRole("img", { name: roleName }).closest("figure")).toHaveClass("active");
   });
 
+  it.each([
+    ["semantic_guard", "Guard 语义侦探", "approach"],
+    ["token_observation", "CPD 曲线侦探", "approach"],
+    ["entropy_cpd", "CPD 曲线侦探", "inspect"],
+    ["fixed_fusion", "Agent 小队队长", "approach"],
+    ["knowledge_retrieval", "Agent 小队队长", "conclude"],
+  ] as const)("maps %s to %s motion", (stageId, roleName, motion) => {
+    render(<MascotTeam phase="investigating" replayStageId={stageId} evidenceConflict={false} />);
+    expect(screen.getByRole("img", { name: roleName }).closest("figure"))
+      .toHaveAttribute("data-motion", motion);
+    expect(screen.getAllByRole("figure").filter((figure) => figure.dataset.motion !== "idle"))
+      .toHaveLength(1);
+  });
+
+  it("returns every mascot to quiet idle while the player answers", () => {
+    render(<MascotTeam phase="guessing" replayStageId="entropy_cpd" evidenceConflict={false} />);
+    screen.getAllByRole("figure").forEach((figure) => {
+      expect(figure).toHaveAttribute("data-motion", "idle");
+      expect(figure).not.toHaveClass("active");
+    });
+  });
+
   it("shows a fixed evidence disagreement label", () => {
     render(
       <MascotTeam
@@ -51,6 +73,24 @@ describe("MascotTeam", () => {
     expect(screen.getByText("证据分歧")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
       .toHaveClass("conflict");
+  });
+
+  it("uses conflict only for the captain and renders a decorative evidence desk", () => {
+    const { container } = render(
+      <MascotTeam phase="revealed" replayStageId="fixed_fusion" evidenceConflict />,
+    );
+    expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+      .toHaveAttribute("data-motion", "conflict");
+    expect(container.querySelector("[data-evidence-desk]"))
+      .toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("marks all three mascots for a one-shot completion celebration", () => {
+    render(<MascotTeam phase="complete" replayStageId={null} evidenceConflict={false} />);
+    expect(screen.getAllByRole("figure")).toHaveLength(3);
+    screen.getAllByRole("figure").forEach((figure) => {
+      expect(figure).toHaveAttribute("data-motion", "celebrate");
+    });
   });
 
   it("marks status icons as decorative", () => {

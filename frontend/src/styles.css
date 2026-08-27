@@ -40,12 +40,109 @@
   font-weight: 700;
 }
 
+.challenge-evidence-desk {
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  bottom: 48px;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 34px;
+  color: #526273;
+  border: 1px solid #bdc8d2;
+  border-radius: 6px;
+  background: #e5eaee;
+  transform: translateX(-50%);
+}
+
 .challenge-mascot-lineup {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: end;
   gap: 12px;
   min-height: 182px;
+}
+
+.challenge-mascot-guard { --mascot-travel-x: 56%; --mascot-delay: 0ms; }
+.challenge-mascot-cpd { --mascot-travel-x: 0%; --mascot-delay: 90ms; }
+.challenge-mascot-agent { --mascot-travel-x: -56%; --mascot-delay: 180ms; }
+
+.challenge-mascot-team[data-phase="setup"] .challenge-mascot {
+  animation: challenge-mascot-enter 440ms ease-out both;
+  animation-delay: var(--mascot-delay);
+}
+
+.challenge-mascot-team[data-phase="setup"] .challenge-mascot-image-wrap,
+.challenge-mascot-team[data-phase="guessing"] .challenge-mascot-image-wrap {
+  animation: challenge-mascot-idle 2800ms ease-in-out infinite;
+  animation-delay: var(--mascot-delay);
+}
+
+.challenge-mascot[data-motion="approach"] {
+  animation: challenge-mascot-approach 620ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.challenge-mascot[data-motion="inspect"],
+.challenge-mascot[data-motion="conclude"] {
+  transform: translateX(var(--mascot-travel-x)) translateY(-6px);
+}
+
+.challenge-mascot[data-motion="inspect"] .challenge-mascot-image-wrap {
+  animation: challenge-mascot-inspect 620ms ease-in-out both;
+}
+
+.challenge-mascot[data-motion="conclude"] .challenge-mascot-image-wrap {
+  animation: challenge-mascot-conclude 620ms ease-out both;
+}
+
+.challenge-mascot[data-motion="conflict"] .challenge-mascot-image-wrap {
+  animation: challenge-mascot-conflict 520ms ease-in-out 1;
+}
+
+.challenge-mascot[data-motion="celebrate"] .challenge-mascot-image-wrap {
+  animation: challenge-mascot-celebrate 560ms ease-out 1 both;
+  animation-delay: var(--mascot-delay);
+}
+
+@keyframes challenge-mascot-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: .58; transform: translateY(6px); }
+}
+
+@keyframes challenge-mascot-idle {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-2px) rotate(1deg); }
+}
+
+@keyframes challenge-mascot-approach {
+  from { transform: translateX(0) translateY(6px); }
+  to { transform: translateX(var(--mascot-travel-x)) translateY(-6px); }
+}
+
+@keyframes challenge-mascot-inspect {
+  0%, 100% { transform: rotate(0); }
+  55% { transform: rotate(4deg) translateY(1px); }
+}
+
+@keyframes challenge-mascot-conclude {
+  0% { transform: translateY(0) rotate(0); }
+  45% { transform: translateY(-3px) rotate(-2deg); }
+  100% { transform: translateY(0) rotate(0); }
+}
+
+@keyframes challenge-mascot-conflict {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(-4px) rotate(-2deg); }
+  70% { transform: translateX(4px) rotate(2deg); }
+}
+
+@keyframes challenge-mascot-celebrate {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  45% { transform: translateY(-10px) rotate(-2deg); }
+  70% { transform: translateY(-3px) rotate(2deg); }
 }
 
 .challenge-mascot {

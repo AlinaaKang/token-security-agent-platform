@@ -1,4 +1,4 @@
-import { Activity, BadgeCheck, ShieldCheck } from "lucide-react";
+import { Activity, BadgeCheck, ScanSearch, ShieldCheck } from "lucide-react";
 
 import type { LabStage } from "../types";
 import type { ChallengePhase } from "../challenge/session";
@@ -10,6 +10,7 @@ interface MascotTeamProps {
 }
 
 type MascotRole = "guard" | "cpd" | "agent";
+type MascotMotion = "idle" | "approach" | "inspect" | "conclude" | "conflict" | "celebrate";
 
 const MASCOTS = [
   {
@@ -42,27 +43,50 @@ function activeRole(stageId: LabStage["stage_id"] | null): MascotRole | null {
   return null;
 }
 
+function motionFor(
+  role: MascotRole,
+  phase: ChallengePhase,
+  stageId: LabStage["stage_id"] | null,
+  evidenceConflict: boolean,
+): MascotMotion {
+  if (phase === "complete") return "celebrate";
+  if (phase === "revealed" && evidenceConflict && role === "agent") return "conflict";
+  if (phase !== "investigating" || activeRole(stageId) !== role) return "idle";
+  if (stageId === "entropy_cpd") return "inspect";
+  if (stageId === "knowledge_retrieval") return "conclude";
+  return "approach";
+}
+
 export function MascotTeam({ phase, replayStageId, evidenceConflict }: MascotTeamProps) {
   const active = activeRole(replayStageId);
 
   return (
-    <section className="challenge-mascot-team" aria-label="侦探学院调查小队">
+    <section
+      className="challenge-mascot-team"
+      aria-label="侦探学院调查小队"
+      data-phase={phase}
+      data-stage={replayStageId ?? undefined}
+    >
       <div className="challenge-mascot-status" aria-live="polite">
         {evidenceConflict ? "证据分歧" : phase === "complete" ? "调查完成" : "调查小队"}
       </div>
+      <div className="challenge-evidence-desk" data-evidence-desk aria-hidden="true">
+        <ScanSearch size={22} strokeWidth={2} />
+      </div>
       <div className="challenge-mascot-lineup">
         {MASCOTS.map(({ role, name, shortName, image, Icon }) => {
+          const motion = motionFor(role, phase, replayStageId, evidenceConflict);
           const classNames = [
             "challenge-mascot",
             `challenge-mascot-${role}`,
-            active === role ? "active" : "",
+            phase === "investigating" && active === role ? "active" : "",
             evidenceConflict && role === "agent" ? "conflict" : "",
             phase === "revealed" ? "evidence" : "",
             phase === "complete" ? "celebration" : "",
           ].filter(Boolean).join(" ");
 
           return (
-            <figure className={classNames} key={role}>
+            <figure className={classNames} data-motion={motion} key={role}>
               <div className="challenge-mascot-image-wrap">
                 <img src={image} alt={name} width="512" height="512" />
                 <Icon data-mascot-status-icon aria-hidden="true" size={18} strokeWidth={2.2} />
