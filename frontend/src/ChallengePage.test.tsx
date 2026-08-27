@@ -108,11 +108,20 @@ function response(payload: unknown, ok = true) {
   return Promise.resolve({ ok, status: ok ? 200 : 503, json: async () => payload });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function installFetch(options: {
   health?: unknown;
   scenarios?: unknown;
   failRunAttempts?: number;
   run?: typeof runResult;
+  pendingRun?: Promise<typeof runResult>;
 } = {}) {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
   let runAttempts = 0;
@@ -127,13 +136,13 @@ function installFetch(options: {
         return Promise.reject(new Error("private upstream detail"));
       }
       const body = JSON.parse(String(init?.body));
-      return response({
-        ...(options.run ?? runResult),
+      return (options.pendingRun ?? Promise.resolve(options.run ?? runResult)).then((run) => response({
+        ...run,
         run_id: `challenge_run_${requests.length}`,
         scenario_id: body.sample_id,
         scenario_kind: body.sample_id.startsWith("synthetic_") ? "synthetic" : "protected",
         attack_family: body.sample_id.startsWith("autodan") ? "autodan" : null,
-      });
+      }));
     }
     throw new Error(`Unexpected request: ${url}`);
   }));
@@ -287,21 +296,128 @@ describe("token detective challenge setup", () => {
     });
 
     expect(screen.getByRole("region", { name: "检测结果回放" })).toBeInTheDocument();
-    expect(screen.getByText("4 ms")).toBeInTheDocument();
+    const liveStage = screen.getByRole("status");
+    expect(liveStage).toHaveAttribute("aria-live", "polite");
+    expect(liveStage).toHaveAttribute("aria-atomic", "true");
+    expect(liveStage).toHaveTextContent("检测结果回放 · 1 / 5");
+    expect(liveStage).toHaveTextContent("语义等级已归一化。");
+    expect(liveStage).toHaveTextContent("4 ms");
     expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
       .toHaveAttribute("data-motion", "approach");
 
     await act(async () => { await vi.advanceTimersByTimeAsync(699); });
+    expect(screen.getByRole("status")).toBe(liveStage);
+    expect(liveStage).toHaveTextContent("语义等级已归一化。");
     expect(screen.getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
       .toHaveAttribute("data-motion", "approach");
 
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByRole("status")).toBe(liveStage);
+    expect(liveStage).toHaveTextContent("Token 观测已完成。");
+    expect(liveStage).toHaveTextContent("21 ms");
     expect(screen.getByRole("img", { name: "CPD 曲线侦探" }).closest("figure"))
       .toHaveAttribute("data-motion", "approach");
-    fireEvent.click(screen.getByRole("button", { name: "跳过回放" }));
+
+    const expectedStages = [
+      ["CPD 候选已生成。", "服务端耗时不可用", "inspect"],
+      ["固定融合已完成。", "服务端耗时不可用", "approach"],
+      ["知识证据已附加。", "3 ms", "conclude"],
+    ] as const;
+    for (const [summary, latency, motion] of expectedStages) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+      expect(screen.getByRole("status")).toBe(liveStage);
+      expect(liveStage).toHaveTextContent(summary);
+      expect(liveStage).toHaveTextContent(latency);
+      expect(screen.getAllByRole("figure").find((figure) => figure.dataset.motion !== "idle"))
+        .toHaveAttribute("data-motion", motion);
+    }
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
     expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "证据关系" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "处置动作" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps every mascot idle until the run response returns", async () => {
+    const pendingRun = deferred<typeof runResult>();
+    installFetch({ pendingRun: pendingRun.promise });
+    render(<App />);
+
+    await screen.findByRole("button", { name: "进入挑战" });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+
+    expect(screen.getByText("正在等待脱敏检测结果")).toBeInTheDocument();
+    const team = screen.getByRole("region", { name: "侦探学院调查小队" });
+    expect(team).not.toHaveAttribute("data-stage");
+    within(team).getAllByRole("figure").forEach((figure) => {
+      expect(figure).toHaveAttribute("data-motion", "idle");
+      expect(figure).not.toHaveClass("active");
+    });
+
+    await act(async () => {
+      pendingRun.resolve(runResult);
+      await pendingRun.promise;
+    });
+    expect(await screen.findByRole("region", { name: "检测结果回放" })).toBeInTheDocument();
+    expect(team).toHaveAttribute("data-stage", "semantic_guard");
+    expect(within(team).getByRole("img", { name: "Guard 语义侦探" }).closest("figure"))
+      .toHaveAttribute("data-motion", "approach");
+  });
+
+  it("keeps evidence conflict hidden during replay and guessing", async () => {
+    installFetch();
+    render(<App />);
+
+    await screen.findByRole("button", { name: "进入挑战" });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await screen.findByRole("region", { name: "检测结果回放" });
+    expect(screen.queryByText("证据分歧")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+      .not.toHaveClass("conflict");
+
+    fireEvent.click(screen.getByRole("button", { name: "跳过回放" }));
+    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+    expect(screen.queryByText("证据分歧")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+      .not.toHaveClass("conflict");
+
+    fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
+    fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
+    expect(screen.getByText("证据分歧")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+      .toHaveClass("conflict");
+  });
+
+  it("stops the replay timer permanently after skip", async () => {
+    vi.useFakeTimers();
+    installFetch();
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "进入挑战" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("region", { name: "检测结果回放" }))
+      .toHaveTextContent("检测结果回放 · 1 / 5");
+    expect(vi.getTimerCount()).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "跳过回放" }));
+    expect(vi.getTimerCount()).toBe(0);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(7_000); });
+    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "检测结果回放" })).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("shows fixed failure copy and retries the same round without a score penalty", async () => {

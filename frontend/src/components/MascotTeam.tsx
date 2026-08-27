@@ -59,6 +59,7 @@ function motionFor(
 
 export function MascotTeam({ phase, replayStageId, evidenceConflict }: MascotTeamProps) {
   const active = activeRole(replayStageId);
+  const revealEvidenceConflict = phase === "revealed" && evidenceConflict;
 
   return (
     <section
@@ -68,19 +69,19 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict }: MascotTea
       data-stage={replayStageId ?? undefined}
     >
       <div className="challenge-mascot-status" aria-live="polite">
-        {evidenceConflict ? "证据分歧" : phase === "complete" ? "调查完成" : "调查小队"}
+        {revealEvidenceConflict ? "证据分歧" : phase === "complete" ? "调查完成" : "调查小队"}
       </div>
       <div className="challenge-evidence-desk" data-evidence-desk aria-hidden="true">
         <ScanSearch size={22} strokeWidth={2} />
       </div>
       <div className="challenge-mascot-lineup">
         {MASCOTS.map(({ role, name, shortName, image, Icon }) => {
-          const motion = motionFor(role, phase, replayStageId, evidenceConflict);
+          const motion = motionFor(role, phase, replayStageId, revealEvidenceConflict);
           const classNames = [
             "challenge-mascot",
             `challenge-mascot-${role}`,
             phase === "investigating" && active === role ? "active" : "",
-            evidenceConflict && role === "agent" ? "conflict" : "",
+            revealEvidenceConflict && role === "agent" ? "conflict" : "",
             phase === "revealed" ? "evidence" : "",
             phase === "complete" ? "celebration" : "",
           ].filter(Boolean).join(" ");

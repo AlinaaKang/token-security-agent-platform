@@ -75,6 +75,26 @@ describe("MascotTeam", () => {
       .toHaveClass("conflict");
   });
 
+  it.each(["investigating", "guessing"] as const)(
+    "keeps evidence conflict hidden during %s",
+    (phase) => {
+      render(
+        <MascotTeam
+          phase={phase}
+          replayStageId="fixed_fusion"
+          evidenceConflict
+        />,
+      );
+
+      expect(screen.queryByText("证据分歧")).not.toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "Agent 小队队长" }).closest("figure"))
+        .not.toHaveClass("conflict");
+      screen.getAllByRole("figure").forEach((figure) => {
+        expect(figure).not.toHaveAttribute("data-motion", "conflict");
+      });
+    },
+  );
+
   it("uses conflict only for the captain and renders a decorative evidence desk", () => {
     const { container } = render(
       <MascotTeam phase="revealed" replayStageId="fixed_fusion" evidenceConflict />,

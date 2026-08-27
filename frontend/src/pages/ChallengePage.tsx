@@ -214,6 +214,10 @@ export function ChallengePage() {
   const run = session.currentRun;
   const replaying = session.phase === "guessing" && run !== null && !replayComplete;
   const activeReplayStage = replayStageIndex === null ? null : run?.stages[replayStageIndex] ?? null;
+  const mascotReplayStageId = replaying ? activeReplayStage?.stage_id ?? null : null;
+  const revealEvidenceConflict = session.phase === "revealed"
+    && Boolean(run && run.detection.semantic_severity === "safe"
+      && run.detection.detector_status === "token_anomaly_candidate");
   const evidenceRequired = run ? expectedEvidenceRelation(run) !== null : false;
   const onsetRequired = Boolean(run?.detection.suspicious_span);
   const onsetSelectable = (run?.detection.signals.length ?? 0) >= 2;
@@ -289,8 +293,8 @@ export function ChallengePage() {
           </section>
           <MascotTeam
             phase={replaying ? "investigating" : session.phase}
-            replayStageId={activeReplayStage?.stage_id ?? (session.phase === "revealed" ? "fixed_fusion" : session.phase === "guessing" ? "entropy_cpd" : "semantic_guard")}
-            evidenceConflict={Boolean(run && run.detection.semantic_severity === "safe" && run.detection.detector_status === "token_anomaly_candidate")}
+            replayStageId={mascotReplayStageId}
+            evidenceConflict={revealEvidenceConflict}
           />
         </>
       ) : null}
@@ -313,7 +317,7 @@ export function ChallengePage() {
 
       {replaying && activeReplayStage ? (
         <section className="challenge-stage-replay" aria-label="检测结果回放">
-          <div>
+          <div role="status" aria-live="polite" aria-atomic="true">
             <span>检测结果回放 · {replayStageIndex! + 1} / {run!.stages.length}</span>
             <strong>{activeReplayStage.summary}</strong>
             <small>{activeReplayStage.latency_ms === null ? "服务端耗时不可用" : `${activeReplayStage.latency_ms} ms`}</small>

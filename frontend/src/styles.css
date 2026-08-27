@@ -76,8 +76,9 @@
 }
 
 .challenge-mascot-team[data-phase="setup"] .challenge-mascot-image-wrap,
-.challenge-mascot-team[data-phase="guessing"] .challenge-mascot-image-wrap {
-  animation: challenge-mascot-idle 2800ms ease-in-out infinite;
+.challenge-mascot-team[data-phase="guessing"] .challenge-mascot-image-wrap,
+.challenge-mascot-team[data-phase="investigating"][data-stage] .challenge-mascot[data-motion="idle"] .challenge-mascot-image-wrap {
+  animation: challenge-mascot-idle 2800ms ease-in-out 1 both;
   animation-delay: var(--mascot-delay);
 }
 
@@ -85,8 +86,8 @@
   animation: challenge-mascot-approach 620ms cubic-bezier(.2, .75, .25, 1) both;
 }
 
-.challenge-mascot[data-motion="inspect"],
-.challenge-mascot[data-motion="conclude"] {
+.challenge-mascot.active[data-motion="inspect"],
+.challenge-mascot.active[data-motion="conclude"] {
   transform: translateX(var(--mascot-travel-x)) translateY(-6px);
 }
 
@@ -108,8 +109,8 @@
 }
 
 @keyframes challenge-mascot-enter {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: .58; transform: translateY(6px); }
+  from { transform: translateY(12px); }
+  to { transform: translateY(6px); }
 }
 
 @keyframes challenge-mascot-idle {
@@ -151,16 +152,17 @@
   gap: 2px;
   min-width: 0;
   margin: 0;
-  opacity: 0.58;
-  filter: saturate(0.72);
   transform: translateY(6px);
-  transition: opacity 180ms ease, filter 180ms ease, transform 180ms ease;
+  transition: transform 180ms ease;
 }
 
 .challenge-mascot-image-wrap {
   position: relative;
   width: min(100%, 148px);
   aspect-ratio: 1;
+  opacity: 0.58;
+  filter: saturate(0.72);
+  transition: opacity 180ms ease;
 }
 
 .challenge-mascot img {
@@ -193,9 +195,9 @@
   text-align: center;
 }
 
-.challenge-mascot.active,
-.challenge-mascot.evidence,
-.challenge-mascot.celebration {
+.challenge-mascot.active .challenge-mascot-image-wrap,
+.challenge-mascot.evidence .challenge-mascot-image-wrap,
+.challenge-mascot.celebration .challenge-mascot-image-wrap {
   opacity: 1;
   filter: none;
 }

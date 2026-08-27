@@ -73,7 +73,7 @@
 ## 2026-08-27 验证记录
 
 - 后端：`307 passed, 1 skipped`；跳过项是本机未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的真实 GPU 集成测试。
-- 前端：`78 passed`；TypeScript 与 Vite 构建成功，`1605 modules transformed`。
+- 前端：`92 passed`；TypeScript 与 Vite 构建成功，`1605 modules transformed`。
 - 隐私验证：`forbidden_key_hits=0`、`tracked_path_hits=0`、`json_errors=0`。
 - 浏览器：`1440x900` 和 `390x844` 下，设置、回放、答题、揭晓、失败重试和完整模式设置均无全局横向溢出或控制台错误；6 次公仔像素检查、6 条 SVG 路径检查均非空，手机曲线滚动限制在局部容器，两个键盘回合可完成，减少动态效果生效。
 - AutoDL：三关速战和五关完整挑战共运行 8 次，全部请求固定为 3 个字段和 `analysis` 模式；GCG、AutoDAN、AdvPrompter 三族均通过受保护 ID 执行。
