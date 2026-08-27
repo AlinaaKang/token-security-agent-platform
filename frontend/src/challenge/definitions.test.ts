@@ -38,9 +38,10 @@ describe("resolveChallenge", () => {
     [["gcg", "advprompter"], "gcg"],
     [["advprompter"], "advprompter"],
   ] as const)("falls back through the fixed speed family preference %j", (families, expected) => {
+    const includedFamilies: readonly string[] = families;
     const filtered = catalog.filter((scenario) => (
       scenario.attack_family === null
-      || families.includes(scenario.attack_family.toLocaleLowerCase("en-US") as "gcg" | "advprompter")
+      || includedFamilies.includes(scenario.attack_family.toLocaleLowerCase("en-US"))
     ));
     const result = resolveChallenge("speed", filtered);
     expect(result.rounds.at(2)?.family).toBe(expected);

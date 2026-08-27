@@ -273,7 +273,7 @@ git commit -m "feat: resolve privacy-safe challenge rounds"
 - Consumes: `ResolvedChallengeRound`, `ChallengeAnswer`, `RoundScoreBreakdown`, `LabRunResult`.
 - Produces: `ChallengePhase`, `ChallengeSessionState`, `ChallengeSessionAction`, `createChallengeSetup()`, `createChallengeSession(rounds)`, and `challengeSessionReducer(state, action)`.
 
-- [ ] **Step 1: Write failing transition tests**
+- [x] **Step 1: Write failing transition tests**
 
 Cover the exact state sequence and illegal transition stability:
 
@@ -294,7 +294,7 @@ it("runs a round through loading, guessing, reveal, and next", () => {
 
 Also prove: `createChallengeSetup()` returns `phase: "setup"` with empty rounds and no current data; `createChallengeSession(rounds)` returns `phase: "ready"` with the supplied rounds; API failure moves to `round_error` without adding score; retry returns to `investigating`; submitting cannot happen before a run exists; combo increments only after a 100-point round and resets otherwise; total score is the rounded arithmetic mean of completed round normalized scores; final advance yields `complete`; `exit` returns `createChallengeSetup()` with no run, answer, score, or completed rounds.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -304,7 +304,7 @@ npm.cmd test -- src/challenge/session.test.ts
 
 Expected: import failure for `./session`.
 
-- [ ] **Step 3: Implement a discriminated reducer with no storage side effects**
+- [x] **Step 3: Implement a discriminated reducer with no storage side effects**
 
 Use these phases:
 
@@ -318,7 +318,7 @@ The state holds `rounds`, `roundIndex`, `currentRun`, `currentAnswer`, `currentS
 
 `createChallengeSetup()` is the sole constructor for the empty `phase: "setup"` state. `createChallengeSession(rounds)` starts a configured session in `phase: "ready"`. The `exit` reducer action returns `createChallengeSetup()` so leaving a challenge cannot retain prior round data.
 
-- [ ] **Step 4: Run session tests and all pure challenge tests**
+- [x] **Step 4: Run session tests and all pure challenge tests**
 
 Run:
 
@@ -328,7 +328,7 @@ npm.cmd test -- src/challenge/scoring.test.ts src/challenge/definitions.test.ts 
 
 Expected: all pure module tests pass.
 
-- [ ] **Step 5: Commit session logic**
+- [x] **Step 5: Commit session logic**
 
 ```powershell
 git add frontend/src/challenge/session.ts frontend/src/challenge/session.test.ts
