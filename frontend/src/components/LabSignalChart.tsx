@@ -1,35 +1,21 @@
 import { memo, useState } from "react";
 
 import type { LabPublicSignal } from "../types";
+import {
+  SIGNAL_CHART_HEIGHT,
+  SIGNAL_CHART_PAD_X,
+  SIGNAL_CHART_PAD_Y,
+  SIGNAL_CHART_WIDTH,
+  signalSeriesPath,
+  xAtPosition,
+} from "./signalGeometry";
+import type { SignalSeriesKey } from "./signalGeometry";
 
-
-const WIDTH = 920;
-const HEIGHT = 236;
-const PAD_X = 42;
-const PAD_Y = 24;
-
-type SeriesKey = "entropy" | "nll" | "cpd_entropy";
-
-const series: Array<{ key: SeriesKey; label: string; className: string }> = [
+const series: Array<{ key: SignalSeriesKey; label: string; className: string }> = [
   { key: "entropy", label: "Entropy", className: "entropy" },
   { key: "nll", label: "NLL", className: "nll" },
   { key: "cpd_entropy", label: "CPD 累积值", className: "cpd" },
 ];
-
-function xAt(index: number, count: number) {
-  if (count <= 1) return WIDTH / 2;
-  return PAD_X + (index / (count - 1)) * (WIDTH - PAD_X * 2);
-}
-
-function seriesPath(signals: LabPublicSignal[], key: SeriesKey) {
-  const values = signals.map((signal) => signal[key]);
-  const maximum = Math.max(...values, 1e-6);
-  return values.map((value, index) => {
-    const x = xAt(index, values.length);
-    const y = HEIGHT - PAD_Y - (value / maximum) * (HEIGHT - PAD_Y * 2);
-    return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(" ");
-}
 
 export const LabSignalChart = memo(function LabSignalChart({
   signals,
@@ -43,7 +29,7 @@ export const LabSignalChart = memo(function LabSignalChart({
     return <div className="lab-chart-empty">信号不足，至少需要两个 Token 观测点</div>;
   }
   const active = signals[Math.min(activeIndex, signals.length - 1)];
-  const cursorX = xAt(Math.min(activeIndex, signals.length - 1), signals.length);
+  const cursorX = xAtPosition(Math.min(activeIndex, signals.length - 1), signals.length);
   return (
     <div className="lab-chart-shell">
       <div className="lab-chart-legend" aria-hidden="true">
@@ -51,30 +37,30 @@ export const LabSignalChart = memo(function LabSignalChart({
       </div>
       <svg
         className="lab-signal-chart"
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        viewBox={`0 0 ${SIGNAL_CHART_WIDTH} ${SIGNAL_CHART_HEIGHT}`}
         role="img"
         aria-label="Token 信号同步曲线"
       >
         <title>Entropy、NLL 与 Entropy-CPD 累积值同步曲线</title>
-        <line className="lab-chart-axis" x1={PAD_X} y1={HEIGHT - PAD_Y} x2={WIDTH - PAD_X} y2={HEIGHT - PAD_Y} />
+        <line className="lab-chart-axis" x1={SIGNAL_CHART_PAD_X} y1={SIGNAL_CHART_HEIGHT - SIGNAL_CHART_PAD_Y} x2={SIGNAL_CHART_WIDTH - SIGNAL_CHART_PAD_X} y2={SIGNAL_CHART_HEIGHT - SIGNAL_CHART_PAD_Y} />
         {series.map((item) => (
           <path
             className={`lab-chart-line ${item.className}`}
-            d={seriesPath(signals, item.key)}
+            d={signalSeriesPath(signals, item.key)}
             key={item.key}
           />
         ))}
-        <line className="lab-chart-cursor" x1={cursorX} y1={PAD_Y} x2={cursorX} y2={HEIGHT - PAD_Y} />
+        <line className="lab-chart-cursor" x1={cursorX} y1={SIGNAL_CHART_PAD_Y} x2={cursorX} y2={SIGNAL_CHART_HEIGHT - SIGNAL_CHART_PAD_Y} />
         {signals.map((signal, index) => {
-          const x = xAt(index, signals.length);
+          const x = xAtPosition(index, signals.length);
           return (
             <rect
               className="lab-chart-hit"
               key={signal.index}
               x={x - 10}
-              y={PAD_Y}
+              y={SIGNAL_CHART_PAD_Y}
               width={20}
-              height={HEIGHT - PAD_Y * 2}
+              height={SIGNAL_CHART_HEIGHT - SIGNAL_CHART_PAD_Y * 2}
               tabIndex={0}
               aria-label={`Token ${signal.index}`}
               onFocus={() => setActiveIndex(index)}

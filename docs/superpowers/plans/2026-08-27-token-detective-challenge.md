@@ -501,7 +501,7 @@ git commit -m "feat: add isolated token detective challenge"
 - Consumes: `LabPublicSignal[]`, `ChallengeAnswer`, `scoreChallengeRound`, challenge reducer, `api.createLabRun({scenario_kind:"frozen", sample_id, mode:"analysis"})`.
 - Produces: keyboard/click onset selection, evidence/action controls, deterministic score reveal, next round, and final average.
 
-- [ ] **Step 1: Write failing shared geometry and picker tests**
+- [x] **Step 1: Write failing shared geometry and picker tests**
 
 Assert sparse Token indexes use observation position for geometry but emit real Token index:
 
@@ -517,7 +517,7 @@ expect(onSelect).toHaveBeenCalledWith(20);
 
 Keep the existing `LabSignalChart` sparse cursor assertion unchanged. Add a picker test for ArrowLeft/ArrowRight moving selection, Enter confirming the focused Token, nonblank three paths, and a two-signal minimum fallback.
 
-- [ ] **Step 2: Write failing full-round interaction tests**
+- [x] **Step 2: Write failing full-round interaction tests**
 
 In `ChallengePage.test.tsx`, use the complete redacted fixture from `LabPage.test.tsx` and assert:
 
@@ -529,7 +529,7 @@ In `ChallengePage.test.tsx`, use the complete redacted fixture from `LabPage.tes
 - after all speed rounds the page shows the arithmetic mean and clears current run data on exit;
 - serialized request bodies for protected rounds contain none of the seven forbidden keys.
 
-- [ ] **Step 3: Run focused tests and verify RED**
+- [x] **Step 3: Run focused tests and verify RED**
 
 Run:
 
@@ -539,7 +539,7 @@ npm.cmd test -- src/components/ChallengeSignalPicker.test.tsx src/ChallengePage.
 
 Expected: missing picker and missing gameplay controls fail; professional chart assertions still pass.
 
-- [ ] **Step 4: Extract geometry without changing the professional chart contract**
+- [x] **Step 4: Extract geometry without changing the professional chart contract**
 
 Move these pure values/functions to `signalGeometry.ts` and export them:
 
@@ -555,7 +555,7 @@ export function signalSeriesPath(signals: LabPublicSignal[], key: SignalSeriesKe
 
 `LabSignalChart` imports those helpers but retains the same props, classes, ARIA labels, readout, and focus behavior.
 
-- [ ] **Step 5: Implement picker and full round orchestration**
+- [x] **Step 5: Implement picker and full round orchestration**
 
 `ChallengeSignalPicker` renders three SVG paths plus actual `<button>` hit targets in a fixed overlay grid. It emits `signal.index`, not the array position. In `ChallengePage`, call `api.createLabRun` only from the reducer's `ready`/retry command, hold the returned run in memory, and submit a `ChallengeAnswer` to `scoreChallengeRound`. Hide answer fields with conditional rendering, not CSS-only visibility.
 
@@ -570,7 +570,7 @@ The reveal shows:
 
 It labels counterfactual output as sensitivity evidence and never strict causality.
 
-- [ ] **Step 6: Run focused tests, full suite, and build**
+- [x] **Step 6: Run focused tests, full suite, and build**
 
 Run:
 
@@ -582,7 +582,7 @@ npm.cmd run build
 
 Expected: all tests pass and Vite builds without TypeScript errors.
 
-- [ ] **Step 7: Commit playable challenge rounds**
+- [x] **Step 7: Commit playable challenge rounds**
 
 ```powershell
 git add frontend/src/components/signalGeometry.ts frontend/src/components/ChallengeSignalPicker.tsx frontend/src/components/ChallengeSignalPicker.test.tsx frontend/src/components/LabSignalChart.tsx frontend/src/LabPage.test.tsx frontend/src/pages/ChallengePage.tsx frontend/src/ChallengePage.test.tsx frontend/src/styles.css
