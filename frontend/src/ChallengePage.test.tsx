@@ -236,12 +236,16 @@ describe("token detective challenge setup", () => {
     expect(screen.queryByRole("region", { name: "本关线索" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
-    expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("语义侦探汇报");
+    const investigationDesk = screen.getByRole("region", { name: "中央证据台" });
+    expect(investigationDesk).toBeInTheDocument();
+    expect(investigationDesk).toHaveTextContent("语义侦探汇报");
     fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
     expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("曲线侦探汇报");
     fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
     expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("小队队长总结");
-    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+    const clues = screen.getByRole("region", { name: "本关线索" });
+    expect(screen.getAllByRole("figure")).toHaveLength(3);
+    expect(investigationDesk).not.toContainElement(clues);
   });
 
   it("does not expose the system decision before the player answers", async () => {

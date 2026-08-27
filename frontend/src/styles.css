@@ -675,6 +675,7 @@
   .challenge-investigation-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .challenge-investigation-facts > div:nth-child(2n) { border-right: 0; }
   .challenge-investigation-facts > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .challenge-investigation-desk { padding: 14px; }
   .challenge-answer-grid { grid-template-columns: 1fr; }
   .challenge-action-options { grid-template-columns: 1fr; }
   .challenge-score-table { grid-template-columns: 1fr 1fr; }
@@ -690,6 +691,13 @@
 @media (prefers-reduced-motion: reduce) {
   .challenge-mascot,
   .challenge-mascot-image-wrap {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .challenge-mascot-control,
+  .challenge-investigation-desk {
     animation: none !important;
     transition: none !important;
     transform: none !important;
