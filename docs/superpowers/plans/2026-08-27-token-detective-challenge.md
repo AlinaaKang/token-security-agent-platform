@@ -62,7 +62,7 @@
 - Consumes: `Decision`, `LabRunResult` from `frontend/src/types.ts`.
 - Produces: `PlayerDecision`, `EvidenceRelation`, `ChallengeAnswer`, `RoundScoreBreakdown`, `scorableDecision(decision)`, `expectedEvidenceRelation(run)`, and `scoreChallengeRound(answer, run)`.
 
-- [ ] **Step 1: Write literal failing score tests**
+- [x] **Step 1: Write literal failing score tests**
 
 Create `frontend/src/challenge/scoring.test.ts` with a complete redacted `LabRunResult` fixture and these literal cases:
 
@@ -99,7 +99,7 @@ it("scores sanitize-and-recheck as the review player category without mutating t
 
 Also assert the four exact evidence mappings, `controversial`/`unavailable` evidence non-applicability, missing player onset scoring zero when an onset exists, and combo values having no input to the scorer.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -110,7 +110,7 @@ npm.cmd test -- src/challenge/scoring.test.ts
 
 Expected: collection fails because `./scoring` and `./types` do not exist.
 
-- [ ] **Step 3: Implement exact challenge types and pure scoring**
+- [x] **Step 3: Implement exact challenge types and pure scoring**
 
 Define the contracts in `types.ts`:
 
@@ -155,7 +155,7 @@ export function expectedEvidenceRelation(run: LabRunResult): EvidenceRelation | 
 
 `scoreChallengeRound` derives `applicablePoints`, computes onset distance against `suspicious_span.token_start`, and returns `Math.round(earnedPoints / applicablePoints * 100)`. It must not accept session score or combo parameters.
 
-- [ ] **Step 4: Run score tests and TypeScript build**
+- [x] **Step 4: Run score tests and TypeScript build**
 
 Run:
 
@@ -166,7 +166,7 @@ npm.cmd run build
 
 Expected: all scoring tests pass and the build has no TypeScript errors.
 
-- [ ] **Step 5: Commit the score contract**
+- [x] **Step 5: Commit the score contract**
 
 ```powershell
 git add frontend/src/challenge/types.ts frontend/src/challenge/scoring.ts frontend/src/challenge/scoring.test.ts
