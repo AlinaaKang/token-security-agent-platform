@@ -78,6 +78,6 @@
 - 静态检查：`git diff --check` 退出码为 0；仅报告工作副本 LF/CRLF 转换提示，无 whitespace error。
 - 前端：`npm.cmd test -- --no-file-parallelism` 为 `10 passed` 测试文件、`120 passed` 测试；`npm.cmd run build` 成功，`1607 modules transformed`。
 - 结构和适配：互动流程测试确认三个角色始终存在，中央证据台与“本关线索”是独立区域；390px CSS 将证据字段重排为两列、证据台内边距为 14px。减少动态效果规则覆盖角色、图像容器、角色控制和证据台，且不使用 `display: none` 隐藏核心内容。
-- 浏览器：控制器在本轮 CSS 修复前完成 `1440x900` 与 `390x844` 挑战流程验收：无挑战页全局横向溢出，自动回放与跳过正常；`prefers-reduced-motion=reduce` 下角色、图像容器、角色控制和证据台的 animation 为 `none`、transition 为 `0s`、transform 为 `none`；无控制台、页面或 API 资源错误。`/analyze` 横向溢出与既有 56px 基线一致，`/lab` 保持 0。控制器将在本轮 CSS 变更后执行一次有界确认。
+- 浏览器：控制器在本轮 CSS 修复前完成 `1440x900` 与 `390x844` 挑战流程验收：无挑战页全局横向溢出，自动回放与跳过正常；`prefers-reduced-motion=reduce` 下角色、图像容器、角色控制和证据台的 animation 为 `none`、transition 为 `0s`、transform 为 `none`；无控制台、页面或 API 资源错误。`/analyze` 横向溢出与既有 56px 基线一致，`/lab` 保持 0。CSS 修复后的有界确认同样通过：挑战页无全局溢出或错误，自动回放与减少动态效果正常，`/analyze` 仍与基线一致，`/lab` 无变化。
 
 这些结果是当前部署和冻结样本的功能验收，不替代独立测试集上的准确率、召回率或 F1。
