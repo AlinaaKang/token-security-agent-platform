@@ -6,9 +6,9 @@
 
 | 范围 | 本轮结果 |
 | --- | --- |
-| 后端单元/集成/回归 | 488 passed，1 skipped，0 failed |
-| 前端交互 | 133 passed，0 failed |
-| TypeScript + Vite 构建 | 通过，1608 modules transformed |
+| 后端单元/集成/回归 | 514 passed，1 skipped，0 failed |
+| 前端交互 | 136 passed，0 failed |
+| TypeScript + Vite 构建 | 通过，1609 modules transformed |
 | `/lab` 聚焦前端 | 20 passed |
 | Windows PowerShell 5.1 API 隐私回归 | 1 passed |
 
@@ -78,3 +78,11 @@ api_violations=0
 - 不声明 BEAST、AutoDAN-HGA 检测覆盖。
 - 报告动作不变性有效状态为 `legacy_unverified`，目标未达标。
 - 自研平台参赛仍以赛事方书面允许替代为合规前提。
+
+## 8. 挑战任务增量
+
+新增 `/super-agent` 自主处置工作台和独立后端 API。一次任务复用一个实验舱 run，以五个固定角色生成 `PLAN / ACT / OBSERVE / REPLAN / COMPLETE` 结构化轨迹；最多重规划一次、调用三个平台内部工具、产生十二条公开事件。
+
+基础动作不可变：安全放行不执行处置工具，复核类动作只创建脱敏案件和证据包，拦截动作依次执行内部网关状态、脱敏案件和证据包。任一工具失败时进入 `degraded`，不降低动作、不无限重试。
+
+隐私扫描新增能力、任务创建、任务恢复和固定 422 四个响应面。页面和 API 均不返回原始 Prompt、攻击 suffix、Token 文本或 ID、检索词、模型原始输出或隐藏推理。完整边界与使用方式见 [挑战任务说明](../challenge-task.md)。

@@ -69,6 +69,12 @@ class _PrivacyApiHandler(BaseHTTPRequestHandler):
                     "reason": "ready",
                     "tool_storage": "sqlite",
                 },
+                "superagent": {
+                    "ready": True,
+                    "internal_only": True,
+                    "max_tool_calls": 3,
+                    "max_trace_events": 12,
+                },
             }
             self._response(
                 "api.health",
@@ -77,6 +83,18 @@ class _PrivacyApiHandler(BaseHTTPRequestHandler):
             )
         elif self.path == "/api/v1/lab/scenarios":
             self._response("api.scenarios", 200, [])
+        elif self.path == "/api/v1/superagent/capabilities":
+            self._response(
+                "api.superagent_capabilities",
+                200,
+                {"ready": True, "internal_only": True},
+            )
+        elif self.path == "/api/v1/superagent/missions/mission_1":
+            self._response(
+                "api.superagent_restore",
+                200,
+                {"mission_id": "mission_1", "final_status": "closed_safe"},
+            )
         elif self.path == "/api/v1/lab/runs/lab_1":
             self._response("api.get_run", 200, {"run_id": "lab_1"})
         elif self.path == "/api/v1/lab/runs/lab_1/executions":
@@ -95,6 +113,19 @@ class _PrivacyApiHandler(BaseHTTPRequestHandler):
         if self.path == "/api/v1/lab/runs":
             type(self).reflected_sentinel = payload["custom_input"]
             self._response("api.create_run", 201, {"run_id": "lab_1"})
+        elif self.path == "/api/v1/superagent/missions":
+            if "unexpected" in payload:
+                self._response(
+                    "api.superagent_validation_422",
+                    422,
+                    {"error": {"code": "request_validation_failed"}},
+                )
+            else:
+                self._response(
+                    "api.superagent_create",
+                    201,
+                    {"mission_id": "mission_1", "final_status": "closed_safe"},
+                )
         elif self.path.endswith("/tools/gateway_enforcement/dry-run"):
             self._response("api.dry_run", 200, {"run_id": "lab_1"})
         elif self.path.endswith("/tools/evidence_bundle/execute"):
@@ -592,10 +623,11 @@ def test_privacy_verifier_scans_every_advanced_api_surface() -> None:
         result = _run("-BaseUrl", base_url, "-SkipTrackedPathScan")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "api_requests=9" in result.stdout
+    assert "api_requests=13" in result.stdout
     assert _PrivacyApiHandler.requests == [
         ("GET", "/health"),
         ("GET", "/api/v1/lab/scenarios"),
+        ("GET", "/api/v1/superagent/capabilities"),
         ("POST", "/api/v1/lab/runs"),
         ("GET", "/api/v1/lab/runs/lab_1"),
         ("POST", "/api/v1/lab/runs/lab_1/tools/gateway_enforcement/dry-run"),
@@ -603,6 +635,9 @@ def test_privacy_verifier_scans_every_advanced_api_surface() -> None:
         ("GET", "/api/v1/lab/runs/lab_1/executions"),
         ("GET", "/api/v1/lab/artifacts/artifact_1/download"),
         ("POST", "/api/v1/lab/runs/lab_1/tools/security_case/execute"),
+        ("POST", "/api/v1/superagent/missions"),
+        ("GET", "/api/v1/superagent/missions/mission_1"),
+        ("POST", "/api/v1/superagent/missions"),
     ]
     assert _PrivacyApiHandler.reflected_sentinel is not None
     _assert_private_output_is_redacted(
@@ -623,7 +658,7 @@ def test_windows_powershell_scans_every_advanced_api_surface() -> None:
         )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "api_requests=9" in result.stdout
+    assert "api_requests=13" in result.stdout
 
 
 def test_privacy_verifier_fails_without_printing_reflected_api_sentinel() -> None:
@@ -662,6 +697,10 @@ def test_privacy_verifier_scans_dynamic_sentinel_in_api_property_name() -> None:
         "api.list",
         "api.artifact",
         "api.validation_422",
+        "api.superagent_capabilities",
+        "api.superagent_create",
+        "api.superagent_restore",
+        "api.superagent_validation_422",
     ],
 )
 def test_privacy_verifier_scans_forbidden_key_on_every_api_surface(

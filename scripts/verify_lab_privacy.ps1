@@ -462,6 +462,22 @@ if ($BaseUrl.Length -gt 0) {
             $null = Invoke-AndScanApiJson `
                 -Client $client -Method "GET" -Path "/api/v1/lab/scenarios" `
                 -Surface "api.scenarios" -ExpectedStatus @(200) -ExactSentinel $apiSentinel
+            $superHealth = Get-PrivacyProperty -Value $health -Name "superagent"
+            $supportsSuperAgent =
+                (Get-PrivacyProperty -Value $superHealth -Name "ready") -eq $true -and
+                (Get-PrivacyProperty -Value $superHealth -Name "internal_only") -eq $true
+            $superCapabilities = Invoke-AndScanApiJson `
+                -Client $client -Method "GET" -Path "/api/v1/superagent/capabilities" `
+                -Surface "api.superagent_capabilities" -ExpectedStatus @(200) `
+                -ExactSentinel $apiSentinel
+            if (
+                -not $supportsSuperAgent -or
+                $null -eq $superCapabilities -or
+                (Get-PrivacyViolationCount -Surface "api.superagent_capabilities") -ne 0
+            ) {
+                Add-PrivacyViolation -Surface "api.superagent_capabilities" -Category "unsupported"
+                $supportsSuperAgent = $false
+            }
             $createdResult = Invoke-AndScanApiJson `
                 -Client $client -Method "POST" -Path "/api/v1/lab/runs" `
                 -Surface "api.create_run" -ExpectedStatus @(201) `
@@ -562,6 +578,41 @@ if ($BaseUrl.Length -gt 0) {
                         -Client $client -Method $spec.Method -Path $spec.Path `
                         -Surface $spec.Surface -ExpectedStatus $spec.ExpectedStatus `
                         -Body $spec.Body -ExactSentinel $apiSentinel
+                }
+                if ($supportsSuperAgent) {
+                    $missionResult = Invoke-AndScanApiJson `
+                        -Client $client -Method "POST" -Path "/api/v1/superagent/missions" `
+                        -Surface "api.superagent_create" -ExpectedStatus @(201) `
+                        -Body @{
+                            objective="investigate_and_respond"
+                            scenario_kind="frozen"
+                            sample_id="synthetic_safe"
+                            mode="analysis"
+                        } `
+                        -ExactSentinel $apiSentinel
+                    $mission = if ($null -eq $missionResult) { $null } else { $missionResult.Payload }
+                    $missionId = [string](Get-PrivacyProperty -Value $mission -Name "mission_id")
+                    if ($missionId.Length -eq 0) {
+                        Add-PrivacyViolation -Surface "api.superagent_create" -Category "contract_error"
+                    }
+                    else {
+                        $null = Invoke-AndScanApiJson `
+                            -Client $client -Method "GET" `
+                            -Path ("/api/v1/superagent/missions/" + [uri]::EscapeDataString($missionId)) `
+                            -Surface "api.superagent_restore" -ExpectedStatus @(200) `
+                            -ExactSentinel $apiSentinel
+                    }
+                    $null = Invoke-AndScanApiJson `
+                        -Client $client -Method "POST" -Path "/api/v1/superagent/missions" `
+                        -Surface "api.superagent_validation_422" -ExpectedStatus @(422) `
+                        -Body @{
+                            objective="investigate_and_respond"
+                            scenario_kind="frozen"
+                            sample_id="synthetic_safe"
+                            mode="analysis"
+                            unexpected=$true
+                        } `
+                        -ExactSentinel $apiSentinel
                 }
             }
         }
