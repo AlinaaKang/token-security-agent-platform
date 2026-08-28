@@ -85,6 +85,22 @@ def test_evaluation_service_loads_safe_report_and_marks_deployment_match() -> No
     assert summary.deployment_match is True
 
 
+def test_evaluation_service_marks_legacy_knowledge_invariance_unverified() -> None:
+    path = Path("tmp/test-evaluation-legacy-knowledge.json")
+    write_report(path, safe_report())
+    try:
+        summary = EvaluationReportService(
+            path,
+            knowledge_path=Path("data/knowledge-evaluation-report-v1.json"),
+        ).load(active_calibration_version="cal-v1")
+    finally:
+        path.unlink(missing_ok=True)
+
+    assert summary.knowledge is not None
+    assert summary.knowledge.decision_invariance_basis == "legacy_unverified"
+    assert summary.knowledge.target_status["decision_invariance"] is False
+
+
 @pytest.mark.parametrize("forbidden_key", ["prompt", "suffix_text", "token_text"])
 def test_evaluation_service_rejects_forbidden_fields_at_any_depth(
     forbidden_key: str,

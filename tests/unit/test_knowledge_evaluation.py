@@ -10,6 +10,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 import app.evaluation.knowledge as knowledge_evaluation
 from app.evaluation.knowledge import (
     KnowledgeEvaluationCase,
+    KnowledgeEvaluationReport,
     evaluate_knowledge,
 )
 from app.knowledge.loader import load_knowledge_snapshot
@@ -105,6 +106,18 @@ def test_evaluation_detects_nested_decision_output(
     report = evaluate_knowledge(snapshot, [_case()], split="test")
 
     assert report.decision_invariance == 0.0
+    assert report.target_status["decision_invariance"] is False
+
+
+def test_legacy_v1_report_does_not_claim_verified_decision_invariance() -> None:
+    raw = json.loads(
+        Path("data/knowledge-evaluation-report-v1.json").read_text(encoding="ascii")
+    )
+
+    report = KnowledgeEvaluationReport.model_validate(raw)
+
+    assert report.decision_invariance_basis == "legacy_unverified"
+    assert report.decision_invariance_basis != "retrieval_has_no_decision_output"
     assert report.target_status["decision_invariance"] is False
 
 

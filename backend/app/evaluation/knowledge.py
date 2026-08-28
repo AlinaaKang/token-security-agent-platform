@@ -17,6 +17,10 @@ from app.knowledge.retriever import LocalKnowledgeRetriever
 
 EvaluationSplit = Literal["development", "test"]
 TargetName = Literal["hit_at_3", "citation_validity", "decision_invariance"]
+DecisionInvarianceBasis = Literal[
+    "retrieval_has_no_decision_output",
+    "legacy_unverified",
+]
 
 
 class KnowledgeEvaluationCase(BaseModel):
@@ -48,7 +52,7 @@ class KnowledgeEvaluationReport(BaseModel):
     mrr: float = Field(ge=0, le=1, allow_inf_nan=False)
     citation_validity: float = Field(ge=0, le=1, allow_inf_nan=False)
     decision_invariance: float = Field(ge=0, le=1, allow_inf_nan=False)
-    decision_invariance_basis: Literal["retrieval_has_no_decision_output"]
+    decision_invariance_basis: DecisionInvarianceBasis
     target_status: dict[TargetName, bool]
     domains: dict[RiskDomain, DomainRetrievalMetrics]
     snapshot_version: str = Field(min_length=1)
@@ -67,18 +71,16 @@ class KnowledgeEvaluationReport(BaseModel):
             return value
         migrated = dict(value)
         migrated.setdefault("split", "development")
-        migrated.setdefault(
-            "decision_invariance_basis",
-            "retrieval_has_no_decision_output",
-        )
-        migrated.setdefault(
-            "target_status",
-            {
+        if (
+            "decision_invariance_basis" not in value
+            or "target_status" not in value
+        ):
+            migrated["decision_invariance_basis"] = "legacy_unverified"
+            migrated["target_status"] = {
                 "hit_at_3": migrated.get("hit_at_3", 0.0) >= 0.95,
                 "citation_validity": migrated.get("citation_validity") == 1.0,
-                "decision_invariance": migrated.get("decision_invariance") == 1.0,
-            },
-        )
+                "decision_invariance": False,
+            }
         return migrated
 
 
