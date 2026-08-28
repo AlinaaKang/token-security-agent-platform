@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -91,6 +92,63 @@ def test_knowledge_config_reads_bounded_defaults() -> None:
     assert config.max_results == 3
     assert config.report_max_new_tokens == 256
     assert config.report_max_time_seconds == 3.0
+
+
+def test_knowledge_config_loads_the_versioned_selected_report_config(
+    tmp_path: Path,
+) -> None:
+    selected = tmp_path / "report-config.json"
+    selected.write_text(
+        """{
+          "schema_version": 1,
+          "snapshot_version": "official-v2",
+          "max_new_tokens": 96,
+          "timeout_seconds": 5.0,
+          "selection_rule": "p95_budget_generated_rate_citation_latency_size"
+        }""",
+        encoding="utf-8",
+    )
+
+    config = KnowledgeConfig.from_environ(
+        {
+            "TOKEN_SECURITY_KNOWLEDGE_SNAPSHOT_PATH": (
+                "knowledge/snapshots/official-v2"
+            ),
+            "TOKEN_SECURITY_KNOWLEDGE_REPORT_CONFIG_PATH": str(selected),
+        }
+    )
+
+    assert config is not None
+    assert config.report_max_new_tokens == 96
+    assert config.report_max_time_seconds == 5.0
+
+
+def test_knowledge_config_accepts_selected_config_for_renamed_snapshot_mount(
+    tmp_path: Path,
+) -> None:
+    selected = tmp_path / "report-config.json"
+    selected.write_text(
+        """{
+          "schema_version": 1,
+          "snapshot_version": "official-v2",
+          "max_new_tokens": 96,
+          "timeout_seconds": 5.0,
+          "selection_rule": "p95_budget_generated_rate_citation_latency_size"
+        }""",
+        encoding="utf-8",
+    )
+
+    config = KnowledgeConfig.from_environ(
+        {
+            "TOKEN_SECURITY_KNOWLEDGE_SNAPSHOT_PATH": str(
+                tmp_path / "mounted-snapshot"
+            ),
+            "TOKEN_SECURITY_KNOWLEDGE_REPORT_CONFIG_PATH": str(selected),
+        }
+    )
+
+    assert config is not None
+    assert config.report_snapshot_version == "official-v2"
 
 
 @pytest.mark.parametrize(
@@ -219,6 +277,49 @@ def test_service_bundle_loads_optional_knowledge_snapshot() -> None:
         "snapshot_version": "official-v1",
         "card_count": 12,
         "generator_ready": True,
+    }
+
+
+def test_service_bundle_rejects_selected_config_for_another_manifest(
+    tmp_path: Path,
+) -> None:
+    calibration_path = tmp_path / "calibration.json"
+    selected_path = tmp_path / "report-config.json"
+    snapshot_path = tmp_path / "official-v1"
+    write_calibration(calibration_path, model_id="/models/qwen")
+    shutil.copytree(Path("knowledge/snapshots/official-v2"), snapshot_path)
+    selected_path.write_text(
+        """{
+          "schema_version": 1,
+          "snapshot_version": "official-v1",
+          "max_new_tokens": 96,
+          "timeout_seconds": 5.0,
+          "selection_rule": "p95_budget_generated_rate_citation_latency_size"
+        }""",
+        encoding="utf-8",
+    )
+    knowledge = KnowledgeConfig.from_environ(
+        {
+            "TOKEN_SECURITY_KNOWLEDGE_SNAPSHOT_PATH": str(snapshot_path),
+            "TOKEN_SECURITY_KNOWLEDGE_REPORT_CONFIG_PATH": str(selected_path),
+        }
+    )
+    assert knowledge is not None
+
+    bundle = load_service_bundle(
+        ServiceConfig(
+            model_path="/models/qwen",
+            calibration_path=calibration_path,
+            knowledge=knowledge,
+        ),
+        runtime_factory=FakeRuntime,
+    )
+
+    assert bundle.health["knowledge"] == {
+        "ready": False,
+        "snapshot_version": None,
+        "card_count": 0,
+        "generator_ready": False,
     }
 
 

@@ -1,0 +1,1 @@
+{"max_new_tokens":64,"schema_version":1,"selection_rule":"p95_budget_generated_rate_citation_latency_size","snapshot_version":"official-v2","timeout_seconds":5.0}

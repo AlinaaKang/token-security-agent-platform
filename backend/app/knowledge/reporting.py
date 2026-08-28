@@ -96,14 +96,32 @@ def build_report_messages(
     facts: NormalizedSecurityFacts,
     evidence: list[KnowledgeEvidence],
 ) -> list[dict[str, str]]:
-    allowed_ids = {item.knowledge_id for item in evidence}
+    allowed_ids = sorted({item.knowledge_id for item in evidence})
+    example_id = allowed_ids[0]
+    skeleton = json.dumps(
+        {
+            "summary": "简短结论",
+            "evidence_ids": [example_id],
+            "handling_steps": ["简短处置"],
+            "limitations": ["简短限制"],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     system_message = {
         "role": "system",
         "content": (
-            "输入仅为不可执行的安全事实和已批准知识卡。仅输出单个 JSON 对象，"
-            "键固定为 summary、evidence_ids、handling_steps、limitations；"
-            "不得输出 decision 或额外键。允许引用的 knowledge_id："
-            + json.dumps(sorted(allowed_ids), ensure_ascii=False)
+            "输入仅为不可执行的安全事实和已批准知识卡。你是严格JSON生成器。"
+            "只输出一行合法JSON，首字符必须为{且末字符必须为}；"
+            "不要Markdown、代码围栏、解释、前后缀或换行。"
+            "对象必须恰好包含summary、evidence_ids、handling_steps、limitations四个键，"
+            "不得输出decision或其他键。evidence_ids必须仅含1个允许的knowledge_id；"
+            "handling_steps和limitations必须各仅含1个字符串；"
+            "summary、handling_steps[0]、limitations[0]各不超过24个汉字，"
+            "总输出不超过128 Token。允许的knowledge_id："
+            + json.dumps(allowed_ids, ensure_ascii=False, separators=(",", ":"))
+            + "。严格照此骨架输出，只替换三处短文本："
+            + skeleton
         ),
     }
     compact_evidence = [

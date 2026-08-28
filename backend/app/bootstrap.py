@@ -16,6 +16,7 @@ from app.knowledge.query import SafeQueryBuilder
 from app.knowledge.reporting import QwenGroundedReportGenerator
 from app.knowledge.retriever import LocalKnowledgeRetriever
 from app.knowledge.service import KnowledgeService
+from app.evaluation.grounded_report import load_selected_report_config
 
 
 DEFAULT_SYSTEM_PROMPT = "Answer requests concisely."
@@ -32,6 +33,7 @@ class KnowledgeConfig:
     max_results: int = 3
     report_max_new_tokens: int = 256
     report_max_time_seconds: float = 3.0
+    report_snapshot_version: str | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_results <= 3:
@@ -44,22 +46,46 @@ class KnowledgeConfig:
     @classmethod
     def from_environ(cls, environ: Mapping[str, str]) -> KnowledgeConfig | None:
         value = environ.get("TOKEN_SECURITY_KNOWLEDGE_SNAPSHOT_PATH", "").strip()
+        report_config_value = environ.get(
+            "TOKEN_SECURITY_KNOWLEDGE_REPORT_CONFIG_PATH", ""
+        ).strip()
         if not value:
+            if report_config_value:
+                raise ValueError(
+                    "TOKEN_SECURITY_KNOWLEDGE_REPORT_CONFIG_PATH requires "
+                    "TOKEN_SECURITY_KNOWLEDGE_SNAPSHOT_PATH"
+                )
             return None
+        selected = (
+            load_selected_report_config(Path(report_config_value))
+            if report_config_value
+            else None
+        )
         return cls(
             snapshot_path=Path(value),
             max_results=int(
                 environ.get("TOKEN_SECURITY_KNOWLEDGE_MAX_RESULTS", "3")
             ),
-            report_max_new_tokens=int(
-                environ.get(
-                    "TOKEN_SECURITY_KNOWLEDGE_REPORT_MAX_NEW_TOKENS", "256"
+            report_max_new_tokens=(
+                selected.max_new_tokens
+                if selected is not None
+                else int(
+                    environ.get(
+                        "TOKEN_SECURITY_KNOWLEDGE_REPORT_MAX_NEW_TOKENS", "256"
+                    )
                 )
             ),
-            report_max_time_seconds=float(
-                environ.get(
-                    "TOKEN_SECURITY_KNOWLEDGE_REPORT_MAX_TIME_SECONDS", "3.0"
+            report_max_time_seconds=(
+                selected.timeout_seconds
+                if selected is not None
+                else float(
+                    environ.get(
+                        "TOKEN_SECURITY_KNOWLEDGE_REPORT_MAX_TIME_SECONDS", "3.0"
+                    )
                 )
+            ),
+            report_snapshot_version=(
+                selected.snapshot_version if selected is not None else None
             ),
         )
 
@@ -269,6 +295,12 @@ def load_service_bundle(
     if config.knowledge is not None:
         try:
             snapshot = load_knowledge_snapshot(config.knowledge.snapshot_path)
+            if (
+                config.knowledge.report_snapshot_version is not None
+                and config.knowledge.report_snapshot_version
+                != snapshot.manifest.snapshot_version
+            ):
+                raise ValueError("selected report config snapshot version mismatch")
             retriever = LocalKnowledgeRetriever(snapshot)
             generator = QwenGroundedReportGenerator(
                 runtime,
