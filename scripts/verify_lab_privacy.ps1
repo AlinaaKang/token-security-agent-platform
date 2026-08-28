@@ -9,10 +9,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
-    $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-    $RepositoryRoot = (Resolve-Path (Join-Path $scriptDirectory "..")).Path
-}
 $forbiddenKeys = [System.Collections.Generic.HashSet[string]]::new(
     [string[]]@(
         "prompt",
@@ -64,6 +60,14 @@ function Find-PrivateJsonData {
             if ($forbiddenKeys.Contains($keyText)) {
                 Add-PrivacyViolation -Surface $Surface -Category "forbidden_key"
             }
+            if (
+                $ExactSentinel.Length -gt 0 -and
+                $keyText.IndexOf(
+                    $ExactSentinel, [System.StringComparison]::Ordinal
+                ) -ge 0
+            ) {
+                Add-PrivacyViolation -Surface $Surface -Category "sentinel"
+            }
             Find-PrivateJsonData -Value $Value[$key] -Surface $Surface -ExactSentinel $ExactSentinel
         }
         return
@@ -72,6 +76,14 @@ function Find-PrivateJsonData {
         foreach ($property in $Value.PSObject.Properties) {
             if ($forbiddenKeys.Contains($property.Name)) {
                 Add-PrivacyViolation -Surface $Surface -Category "forbidden_key"
+            }
+            if (
+                $ExactSentinel.Length -gt 0 -and
+                $property.Name.IndexOf(
+                    $ExactSentinel, [System.StringComparison]::Ordinal
+                ) -ge 0
+            ) {
+                Add-PrivacyViolation -Surface $Surface -Category "sentinel"
             }
             Find-PrivateJsonData `
                 -Value $property.Value -Surface $Surface -ExactSentinel $ExactSentinel
@@ -97,8 +109,7 @@ function ConvertAndScan-JsonText {
     param(
         [Parameter(Mandatory = $true)][string]$Text,
         [Parameter(Mandatory = $true)][string]$Surface,
-        [string]$ExactSentinel = "",
-        [switch]$CountJsonError
+        [string]$ExactSentinel = ""
     )
 
     try {
@@ -108,18 +119,27 @@ function ConvertAndScan-JsonText {
     }
     catch {
         Add-PrivacyViolation -Surface $Surface -Category "parse_error"
-        if ($CountJsonError) {
-            $script:jsonErrors += 1
-        }
+        $script:jsonErrors += 1
         return $null
     }
+}
+
+trap {
+    Write-Output "surface=runtime category=unhandled_error count=1"
+    Write-Output "privacy_verification=failed"
+    exit 1
+}
+
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+    $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $RepositoryRoot = (Resolve-Path (Join-Path $scriptDirectory "..")).Path
 }
 
 foreach ($path in $JsonPath) {
     try {
         $text = Get-Content -LiteralPath $path -Raw -Encoding UTF8
         $null = ConvertAndScan-JsonText `
-            -Text $text -Surface "json" -ExactSentinel $Sentinel -CountJsonError
+            -Text $text -Surface "json" -ExactSentinel $Sentinel
     }
     catch {
         $jsonErrors += 1
@@ -128,8 +148,10 @@ foreach ($path in $JsonPath) {
 }
 
 if (-not $SkipTrackedPathScan) {
-    Push-Location -LiteralPath $RepositoryRoot
+    $locationPushed = $false
     try {
+        Push-Location -LiteralPath $RepositoryRoot
+        $locationPushed = $true
         $trackedPaths = @(git ls-files 2>$null)
         if ($LASTEXITCODE -ne 0) {
             Add-PrivacyViolation -Surface "repository" -Category "scan_error"
@@ -150,10 +172,12 @@ if (-not $SkipTrackedPathScan) {
         }
     }
     catch {
-        Add-PrivacyViolation -Surface "repository" -Category "scan_error"
+        Add-PrivacyViolation -Surface "repository" -Category "read_error"
     }
     finally {
-        Pop-Location
+        if ($locationPushed) {
+            Pop-Location
+        }
     }
 }
 
@@ -168,28 +192,31 @@ from urllib.parse import quote
 config = json.load(sys.stdin)
 forbidden = set(config["forbidden"])
 sentinel = config["sentinel"]
-target_tables = (
-    "security_events",
-    "lab_execution_schema",
-    "lab_tool_executions",
-    "lab_security_cases",
-    "lab_artifacts",
-)
 counts = {}
 
 def add(surface, category, count=1):
     key = (surface, category)
     counts[key] = counts.get(key, 0) + count
 
+def has_sentinel(value):
+    return bool(sentinel) and sentinel in value
+
+def quote_identifier(value):
+    return '"' + value.replace('"', '""') + '"'
+
 def scan_json(value, surface):
     if isinstance(value, dict):
         for key, child in value.items():
             if key in forbidden:
                 add(surface, "forbidden_key")
+            if has_sentinel(key):
+                add(surface, "sentinel")
             scan_json(child, surface)
     elif isinstance(value, list):
         for child in value:
             scan_json(child, surface)
+    elif isinstance(value, str) and has_sentinel(value):
+        add(surface, "sentinel")
 
 for raw_path in config["paths"]:
     try:
@@ -200,21 +227,30 @@ for raw_path in config["paths"]:
         add("sqlite", "read_error")
         continue
     try:
-        existing = {
+        tables = [
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             )
-        }
-        for table in target_tables:
-            if table not in existing:
-                continue
-            surface = f"sqlite.{table}"
-            columns = [row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')]
+            if not row[0].startswith("sqlite_")
+        ]
+        surface = "sqlite"
+        for table in tables:
+            if table in forbidden:
+                add(surface, "forbidden_table")
+            if has_sentinel(table):
+                add(surface, "sentinel")
+            quoted_table = quote_identifier(table)
+            columns = [
+                row[1]
+                for row in connection.execute(f"PRAGMA table_info({quoted_table})")
+            ]
             for column in columns:
                 if column in forbidden:
                     add(surface, "forbidden_column")
-            for row in connection.execute(f'SELECT * FROM "{table}"'):
+                if has_sentinel(column):
+                    add(surface, "sentinel")
+            for row in connection.execute(f"SELECT * FROM {quoted_table}"):
                 for index, cell in enumerate(row):
                     if cell is None:
                         continue
@@ -222,20 +258,26 @@ for raw_path in config["paths"]:
                         try:
                             text = cell.decode("utf-8")
                         except UnicodeDecodeError:
-                            if table == "lab_artifacts" and columns[index] == "payload":
-                                add(surface, "parse_error")
+                            add(surface, "opaque_blob")
                             continue
+                        try:
+                            parsed = json.loads(text)
+                        except (json.JSONDecodeError, TypeError):
+                            add(surface, "parse_error")
+                            if has_sentinel(text):
+                                add(surface, "sentinel")
+                            continue
+                        scan_json(parsed, surface)
+                        continue
                     elif isinstance(cell, str):
                         text = cell
                     else:
                         text = str(cell)
-                    if sentinel and sentinel in text:
-                        add(surface, "sentinel")
                     try:
                         parsed = json.loads(text)
                     except (json.JSONDecodeError, TypeError):
-                        if table == "lab_artifacts" and columns[index] == "payload":
-                            add(surface, "parse_error")
+                        if has_sentinel(text):
+                            add(surface, "sentinel")
                         continue
                     scan_json(parsed, surface)
     except Exception:
@@ -255,16 +297,25 @@ print(json.dumps([
             forbidden = @($forbiddenKeys | Sort-Object)
             sentinel = $Sentinel
         } | ConvertTo-Json -Compress
-        $databaseOutput = $databaseConfig | & $pythonCommand.Source -c $databaseScanner 2>$null
+        $encodedScanner = [Convert]::ToBase64String(
+            [System.Text.Encoding]::UTF8.GetBytes($databaseScanner)
+        )
+        $databaseOutput = $databaseConfig | & $pythonCommand.Source `
+            -c "import base64,sys;exec(base64.b64decode(sys.argv[1]))" `
+            $encodedScanner 2>$null
         if ($LASTEXITCODE -ne 0) {
             throw "database scanner failed"
         }
-        $databaseFindings = $databaseOutput | ConvertFrom-Json -AsHashtable
+        $databaseFindings = $databaseOutput | ConvertFrom-Json
         foreach ($finding in $databaseFindings) {
+            $findingCount = [int]$finding.count
             Add-PrivacyViolation `
                 -Surface ([string]$finding.surface) `
                 -Category ([string]$finding.category) `
-                -Count ([int]$finding.count)
+                -Count $findingCount
+            if ($finding.category -in @("parse_error", "opaque_blob")) {
+                $jsonErrors += $findingCount
+            }
         }
     }
     catch {
@@ -369,6 +420,7 @@ function Invoke-AndScanApiJson {
     }
     catch {
         Add-PrivacyViolation -Surface $Surface -Category "parse_error"
+        $script:jsonErrors += 1
         return $null
     }
     $payload = ConvertAndScan-JsonText `
@@ -419,14 +471,43 @@ if ($BaseUrl.Length -gt 0) {
             }
             else {
                 $encodedRunId = [uri]::EscapeDataString($runId)
-                $null = Invoke-AndScanApiJson `
-                    -Client $client -Method "GET" -Path "/api/v1/lab/runs/$encodedRunId" `
-                    -Surface "api.get_run" -ExpectedStatus @(200) -ExactSentinel $apiSentinel
-                $null = Invoke-AndScanApiJson `
-                    -Client $client -Method "POST" `
-                    -Path "/api/v1/lab/runs/$encodedRunId/tools/gateway_enforcement/dry-run" `
-                    -Surface "api.dry_run" -ExpectedStatus @(200) `
-                    -Body @{inject_failure=$false} -ExactSentinel $apiSentinel
+                $runSurfaceSpecs = @(
+                    [pscustomobject]@{
+                        Phase="before_execute"; Method="GET"
+                        Path="/api/v1/lab/runs/$encodedRunId"
+                        Surface="api.get_run"; ExpectedStatus=@(200); Body=$null
+                    },
+                    [pscustomobject]@{
+                        Phase="before_execute"; Method="POST"
+                        Path="/api/v1/lab/runs/$encodedRunId/tools/gateway_enforcement/dry-run"
+                        Surface="api.dry_run"; ExpectedStatus=@(200)
+                        Body=@{inject_failure=$false}
+                    },
+                    [pscustomobject]@{
+                        Phase="after_execute"; Method="GET"
+                        Path="/api/v1/lab/runs/$encodedRunId/executions"
+                        Surface="api.list"; ExpectedStatus=@(200); Body=$null
+                    },
+                    [pscustomobject]@{
+                        Phase="after_artifact"; Method="POST"
+                        Path="/api/v1/lab/runs/$encodedRunId/tools/security_case/execute"
+                        Surface="api.validation_422"; ExpectedStatus=@(422)
+                        Body=@{
+                            confirmed=$false
+                            idempotency_key="not-a-uuid"
+                            hidden_reasoning=$apiSentinel
+                        }
+                    }
+                )
+                foreach ($spec in $runSurfaceSpecs) {
+                    if ($spec.Phase -ne "before_execute") {
+                        continue
+                    }
+                    $null = Invoke-AndScanApiJson `
+                        -Client $client -Method $spec.Method -Path $spec.Path `
+                        -Surface $spec.Surface -ExpectedStatus $spec.ExpectedStatus `
+                        -Body $spec.Body -ExactSentinel $apiSentinel
+                }
                 $executedResult = Invoke-AndScanApiJson `
                     -Client $client -Method "POST" `
                     -Path "/api/v1/lab/runs/$encodedRunId/tools/evidence_bundle/execute" `
@@ -434,9 +515,15 @@ if ($BaseUrl.Length -gt 0) {
                     -Body @{confirmed=$true; idempotency_key=[guid]::NewGuid().ToString()} `
                     -ExactSentinel $apiSentinel
                 $executed = if ($null -eq $executedResult) { $null } else { $executedResult.Payload }
-                $null = Invoke-AndScanApiJson `
-                    -Client $client -Method "GET" -Path "/api/v1/lab/runs/$encodedRunId/executions" `
-                    -Surface "api.list" -ExpectedStatus @(200) -ExactSentinel $apiSentinel
+                foreach ($spec in $runSurfaceSpecs) {
+                    if ($spec.Phase -ne "after_execute") {
+                        continue
+                    }
+                    $null = Invoke-AndScanApiJson `
+                        -Client $client -Method $spec.Method -Path $spec.Path `
+                        -Surface $spec.Surface -ExpectedStatus $spec.ExpectedStatus `
+                        -Body $spec.Body -ExactSentinel $apiSentinel
+                }
                 $artifactId = [string](Get-PrivacyProperty -Value $executed -Name "artifact_id")
                 if ($artifactId.Length -eq 0) {
                     Add-PrivacyViolation -Surface "api.artifact" -Category "contract_error"
@@ -459,20 +546,20 @@ if ($BaseUrl.Length -gt 0) {
                                 -Text $artifactText -Surface "api.artifact" -ExactSentinel $apiSentinel
                         }
                         catch {
-                            Add-PrivacyViolation -Surface "api.artifact" -Category "parse_error"
+                            Add-PrivacyViolation -Surface "api.artifact" -Category "opaque_blob"
+                            $jsonErrors += 1
                         }
                     }
                 }
-                $null = Invoke-AndScanApiJson `
-                    -Client $client -Method "POST" `
-                    -Path "/api/v1/lab/runs/$encodedRunId/tools/security_case/execute" `
-                    -Surface "api.validation_422" -ExpectedStatus @(422) `
-                    -Body @{
-                        confirmed=$false
-                        idempotency_key="not-a-uuid"
-                        hidden_reasoning=$apiSentinel
-                    } `
-                    -ExactSentinel $apiSentinel
+                foreach ($spec in $runSurfaceSpecs) {
+                    if ($spec.Phase -ne "after_artifact") {
+                        continue
+                    }
+                    $null = Invoke-AndScanApiJson `
+                        -Client $client -Method $spec.Method -Path $spec.Path `
+                        -Surface $spec.Surface -ExpectedStatus $spec.ExpectedStatus `
+                        -Body $spec.Body -ExactSentinel $apiSentinel
+                }
             }
         }
     }
