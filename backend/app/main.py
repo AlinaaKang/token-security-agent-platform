@@ -14,6 +14,7 @@ from app.api.events import router as events_router
 from app.api.evaluation import router as evaluation_router
 from app.api.demo import router as demo_router
 from app.api.lab import router as lab_router
+from app.api.superagent import router as superagent_router
 from app.audit.store import SQLiteEventStore
 from app.bootstrap import (
     ServiceConfig,
@@ -29,6 +30,7 @@ from app.evaluation.service import EvaluationReportService
 from app.demo.service import DemoSampleService
 from app.lab.execution_store import SQLiteLabExecutionStore
 from app.lab.service import LabService
+from app.superagent.service import SuperAgentService
 
 
 PRODUCT_NAME = "面向AI安全的Token流量异常检测智能体平台"
@@ -42,6 +44,7 @@ _LIFESPAN_STATE_NAMES = (
     "lab_enabled",
     "lab_service",
     "service_health",
+    "superagent_service",
 )
 
 
@@ -235,11 +238,35 @@ def _initialize_lifespan_services(
                 "reason": "unavailable",
                 "tool_storage": "sqlite",
             }
+    superagent_health = {
+        "ready": False,
+        "internal_only": True,
+        "reason": "lab_unavailable",
+    }
+    lab_service = getattr(application.state, "lab_service", None)
+    if lab_health.get("ready") is True and lab_service is not None:
+        try:
+            application.state.superagent_service = SuperAgentService(
+                lab_service=lab_service
+            )
+            superagent_health = {
+                "ready": True,
+                "internal_only": True,
+                "max_tool_calls": 3,
+                "max_trace_events": 12,
+                "replanning_limit": 1,
+            }
+        except Exception as exc:
+            logger.error(
+                "superagent initialization failed error_type=%s",
+                type(exc).__name__,
+            )
     application.state.service_health = {
         **base_health,
         "evaluation": evaluation_health,
         "demo": demo_health,
         "lab": lab_health,
+        "superagent": superagent_health,
     }
 
 
@@ -272,6 +299,7 @@ app.include_router(events_router)
 app.include_router(evaluation_router)
 app.include_router(demo_router)
 app.include_router(lab_router)
+app.include_router(superagent_router)
 
 
 @app.get("/health")
@@ -300,4 +328,9 @@ def health() -> dict[str, Any]:
         },
         "demo": {"ready": False, "sample_count": 0},
         "lab": {"enabled": False, "ready": False, "reason": "disabled"},
+        "superagent": {
+            "ready": False,
+            "internal_only": True,
+            "reason": "lab_unavailable",
+        },
     }

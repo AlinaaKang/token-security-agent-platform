@@ -73,6 +73,11 @@ def test_health_reports_api_model_and_detector_readiness_separately() -> None:
         },
         "demo": {"ready": False, "sample_count": 0},
         "lab": {"enabled": False, "ready": False, "reason": "disabled"},
+        "superagent": {
+            "ready": False,
+            "internal_only": True,
+            "reason": "lab_unavailable",
+        },
     }
 
 
@@ -149,12 +154,20 @@ def test_lifespan_reports_ready_sqlite_tool_storage_and_closes_it(
         "tool_storage": "sqlite",
     }
     assert lab_route.status_code == 200
+    assert health.json()["superagent"] == {
+        "ready": True,
+        "internal_only": True,
+        "max_tool_calls": 3,
+        "max_trace_events": 12,
+        "replanning_limit": 1,
+    }
     assert len(created_stores) == 1
     with pytest.raises(Exception):
         created_stores[0].list_executions("run-after-close")
     assert not hasattr(app.state, "analysis_workflow")
     assert not hasattr(app.state, "event_store")
     assert not hasattr(app.state, "lab_service")
+    assert not hasattr(app.state, "superagent_service")
 
 
 def test_tool_storage_failure_keeps_analysis_ready_and_execution_unavailable(
