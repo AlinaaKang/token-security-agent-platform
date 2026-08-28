@@ -246,8 +246,7 @@ def test_historical_correction_marks_action_invariance_unverified() -> None:
         for path in (config_path, development_path, test_path)
     }
 
-    correction = grounded_report.load_report_correction(
-        Path("data/report-generation-correction-v2.json"),
+    correction = grounded_report.load_effective_report_summary(
         selected_config_path=config_path,
         development_report_path=development_path,
         test_report_path=test_path,
@@ -272,8 +271,7 @@ def test_historical_correction_rejects_changed_source_artifact(
     )
 
     with pytest.raises(ValueError, match="artifact hash mismatch"):
-        grounded_report.load_report_correction(
-            Path("data/report-generation-correction-v2.json"),
+        grounded_report.load_effective_report_summary(
             selected_config_path=config_path,
             development_report_path=Path(
                 "data/report-generation-development-report-v2.json"

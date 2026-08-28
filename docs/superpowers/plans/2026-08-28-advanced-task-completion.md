@@ -445,21 +445,29 @@ Expected: PASS with no GPU.
 
 Run with the protected local source already present on AutoDL. The evaluator must select 5 GCG, 5 AutoDAN, and 5 AdvPrompter cases and monitor each configuration until completion or its per-sample timeout. Write only aggregate output and the selected config to the repository work directory on AutoDL, then copy those two JSON files back.
 
-Expected aggregate assertions:
+The raw development aggregate is historical-only and its recorded action
+invariance is superseded. Once the frozen report and correction artifact are
+present, consume the experiment only through the effective summary command:
 
 ```powershell
-python -c "import json; r=json.load(open('data/report-generation-development-report-v2.json')); assert r['metrics']['citation_validity']==1.0; assert r['metrics']['action_invariance']==1.0"
+python scripts/summarize_grounded_reports.py
 ```
+
+Expected: `raw_artifact_status` is `historical_only_superseded`,
+`action_invariance_evidence` is `legacy_unverified`, and effective
+`target_status.action_invariance` is `false`.
 
 - [ ] **Step 7: Run the disjoint 30-sample frozen test exactly once**
 
 Use 10 different protected cases per family. Do not change prompt format, selected token limit, timeout, knowledge cards, or retrieval settings afterward. Copy back only `data/report-generation-test-report-v2.json`.
 
 ```powershell
-python -c "import json; r=json.load(open('data/report-generation-test-report-v2.json')); print(r['metrics']); assert r['metrics']['citation_validity']==1.0; assert r['metrics']['action_invariance']==1.0"
+python scripts/summarize_grounded_reports.py
 ```
 
-Do not assert generated rate or P95 in the command: report them honestly if a target is missed.
+Do not read the raw report as an effective status or assert its invalidated
+action-invariance value. The effective command validates the correction and all
+three bound historical artifacts before emitting status.
 
 - [ ] **Step 8: Commit code and aggregate results**
 

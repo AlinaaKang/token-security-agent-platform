@@ -45,6 +45,7 @@ SELECTION_RULE: SelectionRule = (
     "p95_budget_generated_rate_citation_latency_size"
 )
 REPORT_MODEL_VERSION = "Qwen2.5-7B-Instruct"
+REPORT_CORRECTION_FILENAME = "report-generation-correction-v2.json"
 FAILURE_CODES: tuple[ReportFailureCode, ...] = (
     "runtime_timeout",
     "runtime_error",
@@ -181,6 +182,7 @@ class HistoricalReportArtifactHashes(_StrictModel):
 
 class ReportExperimentCorrection(_StrictModel):
     schema_version: Literal[1] = 1
+    raw_artifact_status: Literal["historical_only_superseded"]
     artifact_hashes: HistoricalReportArtifactHashes
     action_invariance_evidence: Literal["legacy_unverified"]
     checkpoint_identity_evidence: Literal["legacy_unverified"]
@@ -198,7 +200,7 @@ def _file_sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def load_report_correction(
+def _load_report_correction(
     path: Path,
     *,
     selected_config_path: Path,
@@ -253,6 +255,78 @@ class ReportExperimentReport(_StrictModel):
                 f"{self.phase} report requires {expected_count} candidate results"
             )
         return self
+
+
+class EffectiveReportSummary(_StrictModel):
+    schema_version: Literal[1] = 1
+    raw_artifact_status: Literal["historical_only_superseded"]
+    source_artifacts_verified: Literal[True] = True
+    snapshot_version: str = Field(min_length=1)
+    model_version: str = Field(min_length=1)
+    selected_config: ReportExperimentConfig
+    action_invariance_evidence: Literal["legacy_unverified"]
+    checkpoint_identity_evidence: Literal["legacy_unverified"]
+    deadline_capability: Literal["legacy_post_return_only"]
+    target_status: ReportTargetStatus
+
+
+def _require_historical_artifact(path: Path, label: str) -> None:
+    if not path.is_file():
+        raise FileNotFoundError(f"{label} is required")
+
+
+def load_effective_report_summary(
+    *,
+    selected_config_path: Path,
+    development_report_path: Path,
+    test_report_path: Path,
+) -> EffectiveReportSummary:
+    _require_historical_artifact(selected_config_path, "selected config")
+    _require_historical_artifact(development_report_path, "development report")
+    _require_historical_artifact(test_report_path, "test report")
+    correction_path = test_report_path.with_name(REPORT_CORRECTION_FILENAME)
+    if not correction_path.is_file():
+        raise FileNotFoundError("correction artifact is required")
+
+    selected = SelectedReportConfig.model_validate_json(
+        selected_config_path.read_text(encoding="ascii")
+    )
+    development = ReportExperimentReport.model_validate_json(
+        development_report_path.read_text(encoding="ascii")
+    )
+    test = ReportExperimentReport.model_validate_json(
+        test_report_path.read_text(encoding="ascii")
+    )
+    correction = _load_report_correction(
+        correction_path,
+        selected_config_path=selected_config_path,
+        development_report_path=development_report_path,
+        test_report_path=test_report_path,
+    )
+    if development.phase != "development" or test.phase != "test":
+        raise ValueError("historical report phase mismatch")
+    if (
+        development.snapshot_version != selected.snapshot_version
+        or test.snapshot_version != selected.snapshot_version
+        or development.snapshot_hash != test.snapshot_hash
+        or development.model_version != selected.model_version
+        or test.model_version != selected.model_version
+        or development.selected_config != selected.experiment_config
+        or test.selected_config != selected.experiment_config
+        or development.selection_rule != selected.selection_rule
+        or test.selection_rule != selected.selection_rule
+    ):
+        raise ValueError("historical report relationship mismatch")
+    return EffectiveReportSummary(
+        raw_artifact_status=correction.raw_artifact_status,
+        snapshot_version=test.snapshot_version,
+        model_version=test.model_version,
+        selected_config=test.selected_config,
+        action_invariance_evidence=correction.action_invariance_evidence,
+        checkpoint_identity_evidence=correction.checkpoint_identity_evidence,
+        deadline_capability=correction.deadline_capability,
+        target_status=correction.target_status,
+    )
 
 
 def _percentile(values: Sequence[float], percentile: float) -> float:
