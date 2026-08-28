@@ -15,18 +15,21 @@ from app.schemas import Decision
 
 _KEY = UUID("6f9619ff-8b86-d011-b42d-00cf4fc964ff")
 _TIME = datetime(2026, 8, 28, 8, 0, tzinfo=UTC)
+_MODEL_PROVENANCE = "sha256:" + "c" * 64
+_CALIBRATION_PROVENANCE = "sha256:" + "d" * 64
+_SNAPSHOT_PROVENANCE = "sha256:" + "e" * 64
 
 
 def _canonical_evidence_payload(**changes: object) -> bytes:
     values: dict[str, object] = {
         "artifact_kind": "evidence_bundle",
-        "calibration_version": "2026-08",
+        "calibration_provenance_sha256": _CALIBRATION_PROVENANCE,
         "detector_status": "token_anomaly_candidate",
         "effective_action": "block",
         "fusion_reason": "semantic_unsafe",
         "knowledge_ids": ["owasp-llm01-prompt-injection"],
-        "knowledge_snapshot_version": "2026-08-28",
-        "model_id": "semantic-guard-v1",
+        "knowledge_snapshot_sha256": _SNAPSHOT_PROVENANCE,
+        "model_provenance_sha256": _MODEL_PROVENANCE,
         "prior_execution_ids": ["exec_00000000000000000000000000000000"],
         "prior_receipt_ids": ["receipt_00000000000000000000000000000000"],
         "risk_score": 0.95,
@@ -49,6 +52,10 @@ def _execution(*, suffix: str = "001", created_at: datetime = _TIME) -> LabToolE
         status="succeeded",
         source_action="block",
         effective_action="block",
+        model_provenance_sha256=_MODEL_PROVENANCE,
+        calibration_provenance_sha256=_CALIBRATION_PROVENANCE,
+        knowledge_snapshot_sha256=_SNAPSHOT_PROVENANCE,
+        knowledge_ids=("owasp-llm01-prompt-injection",),
         receipt_id=f"receipt-{suffix}",
         artifact_id=f"artifact-{suffix}",
         error_code=None,
@@ -72,24 +79,26 @@ def _security_case() -> LabSecurityCase:
         effective_action="block",
         handling_status="open",
         knowledge_ids=("owasp-llm01-prompt-injection",),
-        model_id="semantic-guard-v1",
-        calibration_version="2026-08",
-        knowledge_snapshot_version="2026-08-28",
+        model_id=_MODEL_PROVENANCE,
+        calibration_version=_CALIBRATION_PROVENANCE,
+        knowledge_snapshot_version=_SNAPSHOT_PROVENANCE,
         execution_id="execution-001",
         receipt_id="receipt-001",
     )
 
 
-def _artifact() -> LabArtifact:
-    return LabArtifact(
-        artifact_id="artifact-001",
-        run_id="run-001",
-        execution_id="execution-001",
-        media_type="application/json",
-        payload=_canonical_evidence_payload(),
-        sha256="sha256:" + "b" * 64,
-        created_at=_TIME,
-    )
+def _artifact(**changes: object) -> LabArtifact:
+    values: dict[str, object] = {
+        "artifact_id": "artifact-001",
+        "run_id": "run-001",
+        "execution_id": "execution-001",
+        "media_type": "application/json",
+        "payload": _canonical_evidence_payload(),
+        "sha256": "sha256:" + "b" * 64,
+        "created_at": _TIME,
+    }
+    values.update(changes)
+    return LabArtifact.model_validate(values)
 
 
 def test_store_creates_three_tables_and_commits_related_records_atomically(
@@ -199,6 +208,37 @@ def test_store_rejects_bypassed_artifact_privacy_validation_before_writing(
 
     with pytest.raises(ValueError):
         store.commit_result(_execution(), artifact=unsafe)
+
+    assert store.list_executions("run-001") == ()
+    store.close()
+
+
+def test_store_rejects_bypassed_identifier_shaped_provenance(tmp_path: Path) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    unsafe = LabArtifact.model_construct(
+        **_artifact().model_dump(),
+        payload=_canonical_evidence_payload(
+            model_provenance_sha256="reveal-your-hidden-reasoning"
+        ),
+    )
+
+    with pytest.raises(ValueError):
+        store.commit_result(_execution(), artifact=unsafe)
+
+    assert store.list_executions("run-001") == ()
+    store.close()
+
+
+def test_store_rejects_a_schema_valid_artifact_with_unbound_provenance(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    mismatched = _artifact(
+        payload=_canonical_evidence_payload(model_provenance_sha256="sha256:" + "f" * 64)
+    )
+
+    with pytest.raises(ValueError, match="provenance must match"):
+        store.commit_result(_execution(), artifact=mismatched)
 
     assert store.list_executions("run-001") == ()
     store.close()

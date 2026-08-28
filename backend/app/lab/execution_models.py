@@ -39,20 +39,14 @@ class LabCaseHandlingStatus(StrEnum):
     CLOSED = "closed"
 
 
-ArtifactIdentifier = Annotated[
-    str,
-    StringConstraints(
-        strip_whitespace=True,
-        min_length=1,
-        max_length=128,
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-    ),
-]
 PriorExecutionId = Annotated[
     str, StringConstraints(pattern=r"^exec_[0-9a-f]{32}$")
 ]
 PriorReceiptId = Annotated[
     str, StringConstraints(pattern=r"^receipt_[0-9a-f]{32}$")
+]
+OpaqueProvenanceDigest = Annotated[
+    str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")
 ]
 
 
@@ -85,6 +79,10 @@ class LabToolExecution(_FrozenPublicRecord):
     status: LabExecutionStatus
     source_action: Decision
     effective_action: Decision
+    model_provenance_sha256: OpaqueProvenanceDigest
+    calibration_provenance_sha256: OpaqueProvenanceDigest
+    knowledge_snapshot_sha256: OpaqueProvenanceDigest | None = None
+    knowledge_ids: tuple[KnowledgeId, ...] = ()
     receipt_id: NonEmptyText | None = None
     artifact_id: NonEmptyText | None = None
     error_code: LabExecutionErrorCode | None = None
@@ -116,9 +114,9 @@ class LabSecurityCase(_FrozenPublicRecord):
     effective_action: Decision
     handling_status: LabCaseHandlingStatus
     knowledge_ids: tuple[KnowledgeId, ...] = ()
-    model_id: NonEmptyText
-    calibration_version: NonEmptyText
-    knowledge_snapshot_version: NonEmptyText | None = None
+    model_id: OpaqueProvenanceDigest
+    calibration_version: OpaqueProvenanceDigest
+    knowledge_snapshot_version: OpaqueProvenanceDigest | None = None
     execution_id: NonEmptyText
     receipt_id: NonEmptyText | None = None
 
@@ -149,9 +147,9 @@ class CanonicalEvidenceBundle(BaseModel):
     semantic_categories: tuple[SemanticCategory, ...] = ()
     fusion_reason: FusionReason
     effective_action: Decision
-    model_id: ArtifactIdentifier
-    calibration_version: ArtifactIdentifier
-    knowledge_snapshot_version: ArtifactIdentifier | None = None
+    model_provenance_sha256: OpaqueProvenanceDigest
+    calibration_provenance_sha256: OpaqueProvenanceDigest
+    knowledge_snapshot_sha256: OpaqueProvenanceDigest | None = None
     knowledge_ids: tuple[KnowledgeId, ...] = ()
     prior_execution_ids: tuple[PriorExecutionId, ...] = ()
     prior_receipt_ids: tuple[PriorReceiptId, ...] = ()
@@ -163,6 +161,12 @@ class CanonicalEvidenceBundle(BaseModel):
 
 
 def validate_artifact_payload(media_type: str, payload: bytes) -> None:
+    parse_canonical_evidence_bundle(media_type, payload)
+
+
+def parse_canonical_evidence_bundle(
+    media_type: str, payload: bytes
+) -> CanonicalEvidenceBundle:
     if media_type != "application/json":
         raise ValueError("lab artifact media type is unsupported")
     try:
@@ -183,6 +187,7 @@ def validate_artifact_payload(media_type: str, payload: bytes) -> None:
     canonical = canonical_evidence_bundle_bytes(bundle)
     if payload != canonical:
         raise ValueError("lab artifact payload must use canonical JSON")
+    return bundle
 
 
 def canonical_evidence_bundle_bytes(bundle: CanonicalEvidenceBundle) -> bytes:

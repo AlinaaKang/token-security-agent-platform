@@ -14,14 +14,15 @@ from app.lab.execution_models import (
     LabSecurityCase,
     LabToolExecution,
     normalize_persisted_created_at,
-    validate_artifact_payload,
+    parse_canonical_evidence_bundle,
 )
 from app.lab.models import LabToolId, assert_public_payload, safer_action
 
 
 _EXECUTION_COLUMNS = (
     "execution_id, run_id, tool_id, idempotency_key, status, source_action, "
-    "effective_action, "
+    "effective_action, model_provenance_sha256, calibration_provenance_sha256, "
+    "knowledge_snapshot_sha256, knowledge_ids, "
     "receipt_id, artifact_id, error_code, evidence_sha256, latency_ms, created_at"
 )
 _CASE_COLUMNS = (
@@ -112,6 +113,10 @@ class SQLiteLabExecutionStore:
                 status TEXT NOT NULL,
                 source_action TEXT NOT NULL,
                 effective_action TEXT NOT NULL,
+                model_provenance_sha256 TEXT NOT NULL,
+                calibration_provenance_sha256 TEXT NOT NULL,
+                knowledge_snapshot_sha256 TEXT,
+                knowledge_ids TEXT NOT NULL,
                 receipt_id TEXT,
                 artifact_id TEXT,
                 error_code TEXT,
@@ -170,6 +175,30 @@ class SQLiteLabExecutionStore:
                 "UPDATE lab_tool_executions SET source_action = effective_action "
                 "WHERE source_action IS NULL"
             )
+        for column in (
+            "model_provenance_sha256",
+            "calibration_provenance_sha256",
+            "knowledge_snapshot_sha256",
+            "knowledge_ids",
+        ):
+            if column not in execution_columns:
+                self._connection.execute(
+                    f"ALTER TABLE lab_tool_executions ADD COLUMN {column} TEXT"
+                )
+        self._connection.execute(
+            "UPDATE lab_tool_executions SET model_provenance_sha256 = ? "
+            "WHERE model_provenance_sha256 IS NULL",
+            (_LEGACY_PROVENANCE_DIGEST,),
+        )
+        self._connection.execute(
+            "UPDATE lab_tool_executions SET calibration_provenance_sha256 = ? "
+            "WHERE calibration_provenance_sha256 IS NULL",
+            (_LEGACY_PROVENANCE_DIGEST,),
+        )
+        self._connection.execute(
+            "UPDATE lab_tool_executions SET knowledge_ids = '[]' "
+            "WHERE knowledge_ids IS NULL"
+        )
         self._connection.commit()
 
     @contextmanager
@@ -197,6 +226,7 @@ class SQLiteLabExecutionStore:
     def _insert_execution(self, execution: LabToolExecution) -> None:
         values = execution.model_dump(mode="json")
         values["created_at"] = _serialized_created_at(execution.created_at)
+        values["knowledge_ids"] = _json_array(values["knowledge_ids"])
         self._connection.execute(
             f"INSERT INTO lab_tool_executions ({_EXECUTION_COLUMNS}) "
             f"VALUES ({', '.join('?' for _ in values)})",
@@ -249,7 +279,9 @@ def _validate_result(
             raise ValueError("security case must belong to the execution")
     if artifact is not None:
         assert_public_payload(artifact)
-        validate_artifact_payload(artifact.media_type, artifact.payload)
+        bundle = parse_canonical_evidence_bundle(
+            artifact.media_type, artifact.payload
+        )
         normalize_persisted_created_at(artifact.created_at)
         if (
             artifact.run_id != execution.run_id
@@ -257,10 +289,22 @@ def _validate_result(
             or artifact.artifact_id != execution.artifact_id
         ):
             raise ValueError("artifact must belong to the execution")
+        if (
+            bundle.model_provenance_sha256 != execution.model_provenance_sha256
+            or bundle.calibration_provenance_sha256
+            != execution.calibration_provenance_sha256
+            or bundle.knowledge_snapshot_sha256
+            != execution.knowledge_snapshot_sha256
+            or bundle.knowledge_ids != execution.knowledge_ids
+        ):
+            raise ValueError("artifact provenance must match the execution")
 
 
 def _json_array(value: object) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+
+
+_LEGACY_PROVENANCE_DIGEST = "sha256:" + "0" * 64
 
 
 def _serialized_created_at(value: object) -> str:
@@ -274,7 +318,9 @@ def _serialized_created_at(value: object) -> str:
 
 
 def _execution_from_row(row: sqlite3.Row) -> LabToolExecution:
-    return LabToolExecution.model_validate(dict(row))
+    values = dict(row)
+    values["knowledge_ids"] = json.loads(values["knowledge_ids"])
+    return LabToolExecution.model_validate(values)
 
 
 def _artifact_from_row(row: sqlite3.Row) -> LabArtifact:

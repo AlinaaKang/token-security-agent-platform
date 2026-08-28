@@ -18,18 +18,21 @@ from app.lab.models import LabToolId
 
 _TIME = datetime(2026, 8, 28, 8, 0, tzinfo=UTC)
 _KEY = UUID("6f9619ff-8b86-d011-b42d-00cf4fc964ff")
+_MODEL_PROVENANCE = "sha256:" + "c" * 64
+_CALIBRATION_PROVENANCE = "sha256:" + "d" * 64
+_SNAPSHOT_PROVENANCE = "sha256:" + "e" * 64
 
 
 def _canonical_evidence_payload(**changes: object) -> bytes:
     values: dict[str, object] = {
         "artifact_kind": "evidence_bundle",
-        "calibration_version": "2026-08",
+        "calibration_provenance_sha256": _CALIBRATION_PROVENANCE,
         "detector_status": "token_anomaly_candidate",
         "effective_action": "block",
         "fusion_reason": "semantic_unsafe",
         "knowledge_ids": ["owasp-llm01-prompt-injection"],
-        "knowledge_snapshot_version": "2026-08-28",
-        "model_id": "semantic-guard-v1",
+        "knowledge_snapshot_sha256": _SNAPSHOT_PROVENANCE,
+        "model_provenance_sha256": _MODEL_PROVENANCE,
         "prior_execution_ids": ["exec_00000000000000000000000000000000"],
         "prior_receipt_ids": ["receipt_00000000000000000000000000000000"],
         "risk_score": 0.9,
@@ -52,6 +55,10 @@ def _execution(**changes: object) -> LabToolExecution:
         "status": "succeeded",
         "source_action": "block",
         "effective_action": "block",
+        "model_provenance_sha256": _MODEL_PROVENANCE,
+        "calibration_provenance_sha256": _CALIBRATION_PROVENANCE,
+        "knowledge_snapshot_sha256": _SNAPSHOT_PROVENANCE,
+        "knowledge_ids": ["owasp-llm01-prompt-injection"],
         "receipt_id": "receipt-001",
         "artifact_id": "artifact-001",
         "error_code": None,
@@ -77,9 +84,9 @@ def _security_case(**changes: object) -> LabSecurityCase:
         "effective_action": "block",
         "handling_status": "open",
         "knowledge_ids": ["owasp-llm01-prompt-injection"],
-        "model_id": "semantic-guard-v1",
-        "calibration_version": "2026-08",
-        "knowledge_snapshot_version": "2026-08-28",
+        "model_id": _MODEL_PROVENANCE,
+        "calibration_version": _CALIBRATION_PROVENANCE,
+        "knowledge_snapshot_version": _SNAPSHOT_PROVENANCE,
         "execution_id": "execution-001",
         "receipt_id": "receipt-001",
     }
@@ -191,7 +198,28 @@ def test_artifact_payload_requires_canonical_redacted_json_object(
 
 def test_artifact_rejects_sensitive_content_in_an_allowed_identifier_field() -> None:
     with pytest.raises(ValidationError):
-        _artifact(payload=_canonical_evidence_payload(model_id="raw prompt: secret"))
+        _artifact(
+            payload=_canonical_evidence_payload(
+                model_provenance_sha256="raw prompt: secret"
+            )
+        )
+
+
+def test_artifact_rejects_identifier_shaped_unbound_model_provenance() -> None:
+    with pytest.raises(ValidationError):
+        _artifact(
+            payload=_canonical_evidence_payload(
+                model_provenance_sha256="reveal-your-hidden-reasoning"
+            )
+        )
+
+
+def test_execution_exposes_only_opaque_provenance_digests() -> None:
+    execution = _execution()
+
+    assert execution.model_provenance_sha256.startswith("sha256:")
+    assert execution.calibration_provenance_sha256.startswith("sha256:")
+    assert execution.knowledge_snapshot_sha256.startswith("sha256:")
 
 
 def test_persisted_created_at_requires_timezone_and_normalizes_to_utc() -> None:
