@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.lab.models import (
+    FORBIDDEN_PUBLIC_KEYS,
     LabPublicSignal,
     LabRunRequest,
     LabToolId,
@@ -105,6 +106,19 @@ def test_public_payload_rejects_forbidden_keys_at_any_depth(
         ValueError, match=f"lab payload contains forbidden field: {expected_key}"
     ):
         assert_public_payload(payload)
+
+
+def test_forbidden_public_keys_match_the_privacy_verifier_contract() -> None:
+    assert FORBIDDEN_PUBLIC_KEYS == {
+        "prompt",
+        "suffix",
+        "token_text",
+        "token_id",
+        "query_text",
+        "raw_output",
+        "guard_raw_output",
+        "hidden_reasoning",
+    }
 
 
 def test_public_payload_accepts_redacted_structured_evidence() -> None:

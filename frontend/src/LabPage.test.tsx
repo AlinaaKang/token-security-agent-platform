@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { LabSignalChart } from "./components/LabSignalChart";
 
+const PRIVATE_RENDER_SENTINEL = "TASK9_FRONTEND_PRIVATE_SENTINEL_1c888ea6";
 
 const health = {
   status: "ok",
@@ -151,6 +152,10 @@ const execution = {
   prompt: "PRIVATE_PROMPT",
   suffix: "PRIVATE_SUFFIX",
   token_text: "PRIVATE_TOKEN_TEXT",
+  token_id: "PRIVATE_TOKEN_ID",
+  query_text: "PRIVATE_QUERY_TEXT",
+  raw_output: "PRIVATE_RAW_OUTPUT",
+  guard_raw_output: PRIVATE_RENDER_SENTINEL,
 };
 
 const evidenceExecution = {
@@ -246,7 +251,7 @@ describe("security lab workspace", () => {
     render(<App />);
     await screen.findByText("实验舱已就绪");
     fireEvent.change(screen.getByLabelText("自定义 Prompt"), {
-      target: { value: "SAFE_CUSTOM_INPUT" },
+      target: { value: PRIVATE_RENDER_SENTINEL },
     });
     fireEvent.click(screen.getByRole("button", { name: "开始调查" }));
 
@@ -261,10 +266,10 @@ describe("security lab workspace", () => {
     const createRequest = requests.find((item) => item.url === "/api/v1/lab/runs");
     expect(JSON.parse(String(createRequest?.init?.body))).toEqual({
       scenario_kind: "custom",
-      custom_input: "SAFE_CUSTOM_INPUT",
+      custom_input: PRIVATE_RENDER_SENTINEL,
       mode: "analysis",
     });
-    expect(screen.queryByText("SAFE_CUSTOM_INPUT")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(PRIVATE_RENDER_SENTINEL);
   });
 
   it("shows counterfactual sensitivity without claiming strict causality", async () => {
@@ -340,6 +345,7 @@ describe("security lab workspace", () => {
     for (const forbidden of [
       "PRIVATE_IDEMPOTENCY_KEY", "PRIVATE_MODEL_DIGEST", "PRIVATE_CALIBRATION_DIGEST",
       "PRIVATE_REASONING", "PRIVATE_PROMPT", "PRIVATE_SUFFIX", "PRIVATE_TOKEN_TEXT", "allow",
+      "PRIVATE_TOKEN_ID", "PRIVATE_QUERY_TEXT", "PRIVATE_RAW_OUTPUT", PRIVATE_RENDER_SENTINEL,
     ]) {
       expect(toolCenterText).not.toContain(forbidden);
     }

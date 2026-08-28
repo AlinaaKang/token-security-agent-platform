@@ -13,22 +13,14 @@ from fastapi.testclient import TestClient
 
 from app.api.lab import router as lab_router
 from app.lab.execution_store import SQLiteLabExecutionStore
-from app.lab.models import LabRunRequest
+from app.lab.models import FORBIDDEN_PUBLIC_KEYS, LabRunRequest
 from app.lab.service import LabService
 from app.lab.store import LabRunStore
 from app.main import app
 from tests.unit.test_lab_service import RecordingWorkflow
 
 
-FORBIDDEN = {
-    "prompt",
-    "suffix",
-    "token_text",
-    "token_id",
-    "query_text",
-    "raw_output",
-    "guard_raw_output",
-}
+FORBIDDEN = FORBIDDEN_PUBLIC_KEYS
 
 
 def _forbidden_hits(value: object) -> list[str]:
@@ -253,6 +245,7 @@ def test_request_validation_errors_do_not_reflect_forbidden_fields_or_values() -
         "prompt": "PRIVATE_PROMPT",
         "suffix": "PRIVATE_SUFFIX",
         "token_text": "PRIVATE_TOKEN",
+        "hidden_reasoning": "PRIVATE_REASONING",
     }
 
     with installed_lab(enabled=True, service=service):
@@ -270,6 +263,67 @@ def test_request_validation_errors_do_not_reflect_forbidden_fields_or_values() -
     }
     for forbidden in (*payload, *payload.values()):
         assert str(forbidden) not in response.text
+
+
+def test_all_execution_api_surfaces_keep_the_request_sentinel_private(
+    tmp_path: Path,
+) -> None:
+    sentinel = "TASK9_API_PRIVATE_SENTINEL_70a02f5d"
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(workflow=RecordingWorkflow(), execution_store=store)
+
+    with installed_lab(enabled=True, service=service):
+        client = TestClient(app)
+        health = client.get("/health")
+        created = client.post(
+            "/api/v1/lab/runs",
+            json={
+                "scenario_kind": "custom",
+                "custom_input": sentinel,
+                "mode": "analysis",
+            },
+        )
+        run_id = created.json()["run_id"]
+        loaded = client.get(f"/api/v1/lab/runs/{run_id}")
+        dry_run = client.post(
+            f"/api/v1/lab/runs/{run_id}/tools/gateway_enforcement/dry-run",
+            json={"inject_failure": False},
+        )
+        executed = client.post(
+            f"/api/v1/lab/runs/{run_id}/tools/evidence_bundle/execute",
+            json={
+                "confirmed": True,
+                "idempotency_key": "00000000-0000-0000-0000-000000000091",
+            },
+        )
+        listed = client.get(f"/api/v1/lab/runs/{run_id}/executions")
+        artifact = client.get(
+            f"/api/v1/lab/artifacts/{executed.json()['artifact_id']}/download"
+        )
+        invalid = client.post(
+            f"/api/v1/lab/runs/{run_id}/tools/security_case/execute",
+            json={
+                "confirmed": False,
+                "idempotency_key": "not-a-uuid",
+                "hidden_reasoning": sentinel,
+            },
+        )
+
+    responses = (health, created, loaded, dry_run, executed, listed, artifact, invalid)
+    assert [response.status_code for response in responses] == [
+        200, 201, 200, 200, 201, 200, 200, 422
+    ]
+    assert invalid.json() == {
+        "error": {
+            "code": "request_validation_failed",
+            "message": "request validation failed",
+        }
+    }
+    for response in responses:
+        assert sentinel not in response.text
+        if response.headers.get("content-type", "").startswith("application/json"):
+            assert _forbidden_hits(response.json()) == []
+    store.close()
 
 
 def test_execute_returns_fixed_errors_for_unknown_expired_runs_and_tools(
