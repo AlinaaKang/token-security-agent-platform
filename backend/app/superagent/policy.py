@@ -48,6 +48,11 @@ def final_status_for(
         raise ValueError("each selected tool must execute exactly once")
     if any(tool not in selected for tool in executed_tools):
         raise ValueError("execution contains an unselected tool")
+    if any(
+        item.source_action is not action or item.effective_action is not action
+        for item in executions
+    ):
+        raise ValueError("execution action must match the mission decision")
     if len(executions) != len(selected):
         return SuperAgentFinalStatus.DEGRADED
     if executed_tools != selected:
@@ -59,4 +64,3 @@ def final_status_for(
     if action in {Decision.REVIEW, Decision.SANITIZE_RECHECK}:
         return SuperAgentFinalStatus.REVIEW_REQUIRED
     return SuperAgentFinalStatus.CONTAINED
-

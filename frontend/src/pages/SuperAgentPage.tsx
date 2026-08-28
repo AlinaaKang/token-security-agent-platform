@@ -72,6 +72,25 @@ const toolLabels: Record<LabToolId, string> = {
   evidence_bundle: "证据归档包",
 };
 
+const lastMissionStorageKey = "token-security-superagent-mission-id";
+
+function readLastMissionId(): string | null {
+  try {
+    return window.sessionStorage.getItem(lastMissionStorageKey);
+  } catch {
+    return null;
+  }
+}
+
+function rememberLastMissionId(missionId: string | null) {
+  try {
+    if (missionId) window.sessionStorage.setItem(lastMissionStorageKey, missionId);
+    else window.sessionStorage.removeItem(lastMissionStorageKey);
+  } catch {
+    // Session storage is optional; the live mission remains usable without it.
+  }
+}
+
 function evidenceLabel(code: string) {
   const knowledgePrefix = "knowledge_id:";
   if (code.startsWith(knowledgePrefix)) return code.slice(knowledgePrefix.length);
@@ -183,7 +202,15 @@ export function SuperAgentPage() {
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([api.labScenarios(), api.superAgentCapabilities()]).then(([scenarioResult, capabilityResult]) => {
+    const missionId = readLastMissionId();
+    const restoreMission = missionId
+      ? api.getSuperAgentMission(missionId)
+      : Promise.resolve(null);
+    Promise.allSettled([
+      api.labScenarios(),
+      api.superAgentCapabilities(),
+      restoreMission,
+    ]).then(([scenarioResult, capabilityResult, missionResult]) => {
       if (!active) return;
       if (scenarioResult.status === "fulfilled") {
         const readyScenarios = scenarioResult.value.filter((item) => item.ready);
@@ -192,6 +219,13 @@ export function SuperAgentPage() {
       } else setError("任务场景加载失败");
       if (capabilityResult.status === "fulfilled") setCapabilities(capabilityResult.value);
       else setError("SuperAgent 服务不可用");
+      if (missionResult.status === "fulfilled" && missionResult.value) {
+        setMission(missionResult.value);
+        setSelectedScenario(missionResult.value.scenario_id);
+        setMode(missionResult.value.mode);
+      } else if (missionResult.status === "rejected") {
+        rememberLastMissionId(null);
+      }
     });
     return () => { active = false; };
   }, []);
@@ -208,6 +242,7 @@ export function SuperAgentPage() {
     setLoading(true);
     setError(null);
     setMission(null);
+    rememberLastMissionId(null);
     try {
       const result = await api.createSuperAgentMission({
         objective: "investigate_and_respond",
@@ -216,6 +251,7 @@ export function SuperAgentPage() {
         mode,
       });
       setMission(result);
+      rememberLastMissionId(result.mission_id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "自主任务执行失败");
     } finally {

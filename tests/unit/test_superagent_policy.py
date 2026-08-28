@@ -95,3 +95,19 @@ def test_final_status_rejects_duplicate_or_unselected_tools() -> None:
     with pytest.raises(ValueError, match="exactly once"):
         final_status_for(Decision.BLOCK, selected, duplicate)
 
+
+def test_final_status_rejects_execution_actions_from_another_mission() -> None:
+    selected = response_tools_for(Decision.BLOCK)
+    mismatched = tuple(
+        SuperAgentExecutionReference(
+            execution_id=f"exec_{index:032x}",
+            tool_id=tool_id,
+            status="succeeded",
+            source_action=Decision.ALLOW,
+            effective_action=Decision.ALLOW,
+        )
+        for index, tool_id in enumerate(selected, start=1)
+    )
+
+    with pytest.raises(ValueError, match="mission decision"):
+        final_status_for(Decision.BLOCK, selected, mismatched)

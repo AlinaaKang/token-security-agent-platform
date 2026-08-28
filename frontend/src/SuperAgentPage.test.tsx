@@ -80,6 +80,7 @@ function installFetch(mission: unknown = blockMission) {
     if (url === "/api/v1/lab/scenarios") return response(scenarios);
     if (url === "/api/v1/superagent/capabilities") return response(capabilities);
     if (url === "/api/v1/superagent/missions") return response(mission, true, 201);
+    if (url === `/api/v1/superagent/missions/${blockMission.mission_id}`) return response(mission);
     throw new Error(`Unexpected request: ${url}`);
   }));
 }
@@ -92,6 +93,7 @@ describe("bounded SuperAgent workspace", () => {
 
   afterEach(() => {
     cleanup();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -134,5 +136,20 @@ describe("bounded SuperAgent workspace", () => {
     expect(await screen.findByText("任务闭环：证据支持安全放行。")).toBeInTheDocument();
     expect(screen.getByText("无需执行处置工具")).toBeInTheDocument();
     expect(screen.queryByText("内部网关状态")).not.toBeInTheDocument();
+  });
+
+  it("restores the sanitized mission after a page refresh", async () => {
+    window.sessionStorage.setItem(
+      "token-security-superagent-mission-id",
+      blockMission.mission_id,
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("任务闭环：平台内部响应全部完成。")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/v1/superagent/missions/${blockMission.mission_id}`,
+      undefined,
+    );
   });
 });
