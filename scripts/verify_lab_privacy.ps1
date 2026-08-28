@@ -259,6 +259,8 @@ for raw_path in config["paths"]:
                             text = cell.decode("utf-8")
                         except UnicodeDecodeError:
                             add(surface, "opaque_blob")
+                            if sentinel and sentinel.encode("utf-8") in cell:
+                                add(surface, "sentinel")
                             continue
                         try:
                             parsed = json.loads(text)

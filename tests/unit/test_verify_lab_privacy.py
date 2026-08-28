@@ -435,11 +435,11 @@ def test_privacy_verifier_fails_closed_for_unparseable_future_blobs(
     _assert_private_output_is_redacted(result, "future_binary")
 
 
-def test_privacy_verifier_still_finds_sentinel_in_malformed_utf8_blob(
+def test_privacy_verifier_still_finds_sentinel_in_opaque_blob(
     tmp_path: Path,
 ) -> None:
-    database = tmp_path / "malformed-sentinel-blob.sqlite3"
-    blob = (PRIVATE_SENTINEL + "-not-json").encode()
+    database = tmp_path / "opaque-sentinel-blob.sqlite3"
+    blob = b"\xff" + PRIVATE_SENTINEL.encode("utf-8") + b"\xfe"
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE future_binary (public_data BLOB)")
         connection.execute("INSERT INTO future_binary VALUES (?)", (blob,))
@@ -451,8 +451,9 @@ def test_privacy_verifier_still_finds_sentinel_in_malformed_utf8_blob(
     )
 
     assert result.returncode != 0
-    assert "surface=sqlite category=parse_error count=1" in result.stdout
+    assert "surface=sqlite category=opaque_blob count=1" in result.stdout
     assert "surface=sqlite category=sentinel count=1" in result.stdout
+    assert "json_errors=1" in result.stdout
     _assert_private_output_is_redacted(result, PRIVATE_SENTINEL)
 
 
