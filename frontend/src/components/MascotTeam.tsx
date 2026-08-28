@@ -1,4 +1,4 @@
-import { Activity, BadgeCheck, ScanSearch, ShieldCheck } from "lucide-react";
+import { Activity, BadgeCheck, ShieldCheck } from "lucide-react";
 
 import {
   canInspectRole,
@@ -106,9 +106,6 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction
     >
       <div className="challenge-mascot-status" aria-live="polite">
         {revealEvidenceConflict ? "证据分歧" : phase === "complete" ? "调查完成" : "调查小队"}
-      </div>
-      <div className="challenge-evidence-desk" data-evidence-desk aria-hidden="true">
-        <ScanSearch size={22} strokeWidth={2} />
       </div>
       <div className="challenge-mascot-lineup">
         {MASCOTS.map(({ role, name, shortName, image, Icon }) => {

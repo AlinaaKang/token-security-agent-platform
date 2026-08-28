@@ -40,22 +40,6 @@
   font-weight: 700;
 }
 
-.challenge-evidence-desk {
-  position: absolute;
-  z-index: 0;
-  left: 50%;
-  bottom: 48px;
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 34px;
-  color: #526273;
-  border: 1px solid #bdc8d2;
-  border-radius: 6px;
-  background: #e5eaee;
-  transform: translateX(-50%);
-}
-
 .challenge-mascot-lineup {
   position: relative;
   z-index: 1;
@@ -679,7 +663,6 @@
 @media (max-width: 760px) {
   .challenge-mascot-guard { --mascot-travel-x: 34%; }
   .challenge-mascot-agent { --mascot-travel-x: -34%; }
-  .challenge-evidence-desk { bottom: 44px; width: 46px; }
   .challenge-header { align-items: flex-start; flex-direction: column; }
   .challenge-mode-options { grid-template-columns: 1fr; }
   .challenge-mode-options button { height: 76px; }

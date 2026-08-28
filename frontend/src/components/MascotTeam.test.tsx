@@ -174,14 +174,13 @@ describe("MascotTeam", () => {
     },
   );
 
-  it("uses conflict only for the captain and renders a decorative evidence desk", () => {
+  it("uses conflict only for the captain without a misleading central decoration", () => {
     const { container } = render(
       <MascotTeam phase="revealed" replayStageId="fixed_fusion" evidenceConflict />,
     );
     expect(screen.getByRole("button", { name: "Agent 小队队长" }).closest("figure"))
       .toHaveAttribute("data-motion", "conflict");
-    expect(container.querySelector("[data-evidence-desk]"))
-      .toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector("[data-evidence-desk]")).not.toBeInTheDocument();
   });
 
   it("marks all three mascots for a one-shot completion celebration", () => {
