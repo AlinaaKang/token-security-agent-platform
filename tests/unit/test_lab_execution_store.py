@@ -140,6 +140,29 @@ def test_store_reopens_the_current_schema(tmp_path: Path) -> None:
     reopened.close()
 
 
+def test_store_allows_unrelated_tables_in_the_shared_event_database(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "shared.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "CREATE TABLE security_events (request_id TEXT PRIMARY KEY)"
+    )
+    connection.execute(
+        "INSERT INTO security_events (request_id) VALUES ('req-existing')"
+    )
+    connection.commit()
+    connection.close()
+
+    store = SQLiteLabExecutionStore(path)
+
+    assert store.list_executions("run-001") == ()
+    assert store._connection.execute(
+        "SELECT request_id FROM security_events"
+    ).fetchone()[0] == "req-existing"
+    store.close()
+
+
 def test_store_lists_newest_execution_first_by_created_at(tmp_path: Path) -> None:
     store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
     older = _execution(suffix="001", created_at=_TIME)

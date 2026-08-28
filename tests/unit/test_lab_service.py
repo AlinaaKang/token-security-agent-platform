@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
+from app.lab.execution_models import LabExecuteRequest
+from app.lab.execution_store import SQLiteLabExecutionStore
+from app.lab.executors import ExecutionBundle
 from app.lab.models import (
     CounterfactualResult,
     CounterfactualSnapshot,
     LabRunRequest,
+    LabToolId,
     assert_public_payload,
 )
 from app.lab.service import LabRunCreationFailed, LabService
+from app.lab.store import LabRunStore
 from app.schemas import AnalysisResult, Decision, Provenance, TokenSignal
 from app.semantic.models import SemanticSeverity
 
@@ -448,3 +455,134 @@ def test_metrics_count_payloads_rejected_at_the_public_boundary(
             )
 
     assert service.metrics().privacy_violation_count == 1
+
+
+def test_confirmed_execution_uses_the_stored_run_and_executor_idempotency(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(), execution_store=store
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    first_request = LabExecuteRequest(
+        confirmed=True,
+        idempotency_key=UUID("00000000-0000-0000-0000-000000000001"),
+    )
+    second_request = LabExecuteRequest(
+        confirmed=True,
+        idempotency_key=UUID("00000000-0000-0000-0000-000000000002"),
+    )
+
+    first, first_created = service.execute_tool(
+        run.run_id, LabToolId.GATEWAY_ENFORCEMENT, first_request
+    )
+    replay, replay_created = service.execute_tool(
+        run.run_id, LabToolId.GATEWAY_ENFORCEMENT, first_request
+    )
+    second, second_created = service.execute_tool(
+        run.run_id, LabToolId.GATEWAY_ENFORCEMENT, second_request
+    )
+
+    assert first_created is True
+    assert replay_created is False
+    assert replay == first
+    assert second_created is True
+    assert second.execution_id != first.execution_id
+    assert first.source_action == run.detection.decision
+    assert first.effective_action == run.detection.decision
+    assert service.list_executions(run.run_id) == (second, first)
+    store.close()
+
+
+def test_service_rejects_an_executor_result_below_the_stored_run_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(), execution_store=store
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    request = LabExecuteRequest(
+        confirmed=True,
+        idempotency_key=UUID("00000000-0000-0000-0000-000000000003"),
+    )
+    valid, _ = service.execute_tool(
+        run.run_id, LabToolId.GATEWAY_ENFORCEMENT, request
+    )
+    weakened = valid.model_copy(
+        update={"source_action": Decision.ALLOW, "effective_action": Decision.ALLOW}
+    )
+
+    monkeypatch.setattr(
+        service._tool_executor,
+        "execute",
+        lambda *_args: ExecutionBundle(
+            execution=weakened,
+            newly_created=False,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="stored run decision"):
+        service.execute_tool(
+            run.run_id, LabToolId.GATEWAY_ENFORCEMENT, request
+        )
+    store.close()
+
+
+def test_dry_runs_do_not_replace_persisted_execution_history(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(), execution_store=store
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    execution, _ = service.execute_tool(
+        run.run_id,
+        LabToolId.SECURITY_CASE,
+        LabExecuteRequest(
+            confirmed=True,
+            idempotency_key=UUID("00000000-0000-0000-0000-000000000004"),
+        ),
+    )
+
+    service.run_tool(run.run_id, LabToolId.SECURITY_CASE, inject_failure=True)
+
+    assert service.list_executions(run.run_id) == (execution,)
+    store.close()
+
+
+def test_execution_history_and_artifacts_outlive_the_in_memory_run(
+    tmp_path: Path,
+) -> None:
+    now = [0.0]
+    run_store = LabRunStore(ttl_seconds=1.0, clock=lambda: now[0])
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(),
+        run_store=run_store,
+        execution_store=store,
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    execution, _ = service.execute_tool(
+        run.run_id,
+        LabToolId.EVIDENCE_BUNDLE,
+        LabExecuteRequest(
+            confirmed=True,
+            idempotency_key=UUID("00000000-0000-0000-0000-000000000005"),
+        ),
+    )
+    now[0] = 2.0
+
+    assert service.list_executions(run.run_id) == (execution,)
+    assert service.get_artifact(execution.artifact_id or "missing").run_id == run.run_id
+    store.close()

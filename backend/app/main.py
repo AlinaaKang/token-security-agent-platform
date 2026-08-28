@@ -25,18 +25,31 @@ from app.bootstrap import (
 )
 from app.evaluation.service import EvaluationReportService
 from app.demo.service import DemoSampleService
+from app.lab.execution_store import SQLiteLabExecutionStore
 from app.lab.service import LabService
 
 
 PRODUCT_NAME = "面向AI安全的Token流量异常检测智能体平台"
 logger = logging.getLogger(__name__)
+_LIFESPAN_STATE_NAMES = (
+    "active_calibration_version",
+    "analysis_workflow",
+    "demo_service",
+    "evaluation_service",
+    "event_store",
+    "lab_enabled",
+    "lab_service",
+    "service_health",
+)
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    _clear_lifespan_state(application)
     lab_enabled = lab_enabled_from_environ(os.environ)
     application.state.lab_enabled = lab_enabled
     event_store = None
+    lab_execution_store = None
     audit_health: dict[str, Any] = {"ready": False, "storage": None}
     try:
         event_store = SQLiteEventStore(event_db_path_from_environ(os.environ))
@@ -44,6 +57,17 @@ async def lifespan(application: FastAPI):
         audit_health = {"ready": True, "storage": "sqlite"}
     except Exception as exc:
         logger.error("event audit initialization failed error_type=%s", type(exc).__name__)
+
+    if lab_enabled:
+        try:
+            lab_execution_store = SQLiteLabExecutionStore(
+                event_db_path_from_environ(os.environ)
+            )
+        except Exception as exc:
+            logger.error(
+                "lab tool storage initialization failed error_type=%s",
+                type(exc).__name__,
+            )
 
     config = ServiceConfig.from_environ(os.environ)
     active_calibration_version = None
@@ -143,17 +167,43 @@ async def lifespan(application: FastAPI):
         "ready": False,
         "reason": "disabled" if not lab_enabled else "unavailable",
     }
-    if lab_enabled and workflow is not None:
+    if lab_enabled and lab_execution_store is None:
+        lab_health = {
+            "enabled": True,
+            "ready": False,
+            "reason": "tool_storage_unavailable",
+            "tool_storage": None,
+        }
+    elif lab_enabled and workflow is None:
+        lab_health = {
+            "enabled": True,
+            "ready": False,
+            "reason": "unavailable",
+            "tool_storage": "sqlite",
+        }
+    elif lab_enabled and workflow is not None:
         try:
             application.state.lab_service = LabService(
                 workflow=workflow,
                 demo_service=demo_service,
+                execution_store=lab_execution_store,
             )
-            lab_health = {"enabled": True, "ready": True, "reason": "ready"}
+            lab_health = {
+                "enabled": True,
+                "ready": True,
+                "reason": "ready",
+                "tool_storage": "sqlite",
+            }
         except Exception as exc:
             logger.error(
                 "lab initialization failed error_type=%s", type(exc).__name__
             )
+            lab_health = {
+                "enabled": True,
+                "ready": False,
+                "reason": "unavailable",
+                "tool_storage": "sqlite",
+            }
     application.state.service_health = {
         **base_health,
         "evaluation": evaluation_health,
@@ -163,8 +213,21 @@ async def lifespan(application: FastAPI):
     try:
         yield
     finally:
-        if event_store is not None:
-            event_store.close()
+        try:
+            if lab_execution_store is not None:
+                lab_execution_store.close()
+        finally:
+            try:
+                if event_store is not None:
+                    event_store.close()
+            finally:
+                _clear_lifespan_state(application)
+
+
+def _clear_lifespan_state(application: FastAPI) -> None:
+    for name in _LIFESPAN_STATE_NAMES:
+        if hasattr(application.state, name):
+            delattr(application.state, name)
 
 
 app = FastAPI(title=PRODUCT_NAME, version="0.1.0", lifespan=lifespan)

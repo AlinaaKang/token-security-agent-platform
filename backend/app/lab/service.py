@@ -9,6 +9,13 @@ from typing import Any
 
 from app.demo.service import DemoSampleNotFound
 from app.lab.counterfactual import CounterfactualRunner
+from app.lab.execution_models import (
+    LabArtifact,
+    LabExecuteRequest,
+    LabToolExecution,
+)
+from app.lab.execution_store import SQLiteLabExecutionStore
+from app.lab.executors import LabToolExecutor
 from app.lab.models import (
     LabDetectionSnapshot,
     LabLatencySummary,
@@ -19,6 +26,7 @@ from app.lab.models import (
     LabStage,
     LabToolId,
     assert_public_payload,
+    safer_action,
 )
 from app.lab.reporting import build_case_report
 from app.lab.store import LabRunStore
@@ -52,6 +60,14 @@ class LabRunCreationFailed(RuntimeError):
     pass
 
 
+class LabToolStorageUnavailable(RuntimeError):
+    pass
+
+
+class LabExecutionInvariantViolation(ValueError):
+    pass
+
+
 class LabService:
     def __init__(
         self,
@@ -59,10 +75,17 @@ class LabService:
         workflow: Any,
         demo_service: Any | None = None,
         run_store: LabRunStore[LabRunResult] | None = None,
+        execution_store: SQLiteLabExecutionStore | None = None,
     ) -> None:
         self.workflow = workflow
         self.demo_service = demo_service
         self.run_store = run_store or LabRunStore()
+        self._execution_store = execution_store
+        self._tool_executor = (
+            LabToolExecutor(execution_store)
+            if execution_store is not None
+            else None
+        )
         self.counterfactual_runner = CounterfactualRunner(workflow)
         self._privacy_lock = Lock()
         self._privacy_violation_count = 0
@@ -218,6 +241,54 @@ class LabService:
         self.run_store.put(updated)
         return updated
 
+    def execute_tool(
+        self,
+        run_id: str,
+        tool_id: LabToolId,
+        request: LabExecuteRequest,
+    ) -> tuple[LabToolExecution, bool]:
+        run = self.run_store.get(run_id)
+        executor = self._tool_executor
+        if executor is None:
+            raise LabToolStorageUnavailable("lab_tool_storage_unavailable")
+        bundle = executor.execute(run, tool_id, request.idempotency_key)
+        execution = bundle.execution
+        if (
+            execution.run_id != run.run_id
+            or execution.tool_id is not tool_id
+            or execution.idempotency_key != request.idempotency_key
+            or execution.source_action != run.detection.decision
+            or execution.effective_action
+            != safer_action(run.detection.decision, execution.effective_action)
+        ):
+            raise LabExecutionInvariantViolation(
+                "execution must preserve the stored run decision"
+            )
+        self._validate_public(execution)
+        return execution, bundle.newly_created
+
+    def list_executions(self, run_id: str) -> tuple[LabToolExecution, ...]:
+        store = self._require_execution_store()
+        try:
+            executions = store.list_executions(run_id)
+        except Exception:
+            raise LabToolStorageUnavailable(
+                "lab_tool_storage_unavailable"
+            ) from None
+        self._validate_public(executions)
+        return executions
+
+    def get_artifact(self, artifact_id: str) -> LabArtifact:
+        store = self._require_execution_store()
+        try:
+            return store.get_artifact(artifact_id)
+        except LookupError:
+            raise
+        except Exception:
+            raise LabToolStorageUnavailable(
+                "lab_tool_storage_unavailable"
+            ) from None
+
     def metrics(self) -> LabMetrics:
         runs = self.run_store.snapshot()
         run_count = len(runs)
@@ -273,6 +344,11 @@ class LabService:
     def _privacy_violations(self) -> int:
         with self._privacy_lock:
             return self._privacy_violation_count
+
+    def _require_execution_store(self) -> SQLiteLabExecutionStore:
+        if self._execution_store is None:
+            raise LabToolStorageUnavailable("lab_tool_storage_unavailable")
+        return self._execution_store
 
     def _assemble_run(
         self,

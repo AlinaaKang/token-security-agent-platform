@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
+from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.lab.execution_store import SQLiteLabExecutionStore
+from app.lab.models import LabRunRequest
 from app.lab.service import LabService
+from app.lab.store import LabRunStore
 from app.main import app
 from tests.unit.test_lab_service import RecordingWorkflow
 
@@ -155,3 +161,149 @@ def test_lab_creation_failure_returns_a_fixed_error_without_private_details() ->
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "lab_run_failed"
     assert "PRIVATE" not in response.text
+
+
+def test_confirmed_execution_is_created_then_idempotently_replayed(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(), execution_store=store
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    first_key = "00000000-0000-0000-0000-000000000011"
+    second_key = "00000000-0000-0000-0000-000000000012"
+
+    with installed_lab(enabled=True, service=service):
+        client = TestClient(app)
+        first = client.post(
+            f"/api/v1/lab/runs/{run.run_id}/tools/gateway_enforcement/execute",
+            json={"confirmed": True, "idempotency_key": first_key},
+        )
+        replay = client.post(
+            f"/api/v1/lab/runs/{run.run_id}/tools/gateway_enforcement/execute",
+            json={"confirmed": True, "idempotency_key": first_key},
+        )
+        second = client.post(
+            f"/api/v1/lab/runs/{run.run_id}/tools/gateway_enforcement/execute",
+            json={"confirmed": True, "idempotency_key": second_key},
+        )
+        listed = client.get(f"/api/v1/lab/runs/{run.run_id}/executions")
+
+    assert first.status_code == 201
+    assert replay.status_code == 200
+    assert second.status_code == 201
+    assert replay.json() == first.json()
+    assert second.json()["execution_id"] != first.json()["execution_id"]
+    assert [item["execution_id"] for item in listed.json()] == [
+        second.json()["execution_id"],
+        first.json()["execution_id"],
+    ]
+    assert "payload" not in first.json()
+    store.close()
+
+
+def test_execute_rejects_confirmation_false_and_client_tool_parameters(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(), execution_store=store
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    route = f"/api/v1/lab/runs/{run.run_id}/tools/security_case/execute"
+    key = "00000000-0000-0000-0000-000000000013"
+
+    with installed_lab(enabled=True, service=service):
+        client = TestClient(app)
+        unconfirmed = client.post(
+            route, json={"confirmed": False, "idempotency_key": key}
+        )
+        injected = [
+            client.post(
+                route,
+                json={"confirmed": True, "idempotency_key": key, field: "x"},
+            )
+            for field in ("action", "url", "command", "credential")
+        ]
+
+    assert unconfirmed.status_code == 422
+    assert [response.status_code for response in injected] == [422, 422, 422, 422]
+    assert service.list_executions(run.run_id) == ()
+    store.close()
+
+
+def test_execute_returns_fixed_errors_for_unknown_expired_runs_and_tools(
+    tmp_path: Path,
+) -> None:
+    now = [0.0]
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(),
+        run_store=LabRunStore(ttl_seconds=1.0, clock=lambda: now[0]),
+        execution_store=store,
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+    payload = {
+        "confirmed": True,
+        "idempotency_key": "00000000-0000-0000-0000-000000000014",
+    }
+    now[0] = 2.0
+
+    with installed_lab(enabled=True, service=service):
+        client = TestClient(app)
+        unknown = client.post(
+            "/api/v1/lab/runs/unknown/tools/security_case/execute", json=payload
+        )
+        expired = client.post(
+            f"/api/v1/lab/runs/{run.run_id}/tools/security_case/execute",
+            json=payload,
+        )
+        invalid_tool = client.post(
+            f"/api/v1/lab/runs/{run.run_id}/tools/arbitrary_command/execute",
+            json=payload,
+        )
+
+    assert unknown.status_code == 404
+    assert unknown.json()["error"]["code"] == "lab_run_not_found"
+    assert expired.status_code == 410
+    assert expired.json()["error"]["code"] == "lab_run_expired"
+    assert invalid_tool.status_code == 404
+    assert invalid_tool.json()["error"]["code"] == "lab_tool_not_found"
+    store.close()
+
+
+def test_persistence_failure_is_not_reported_as_a_successful_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(
+        workflow=RecordingWorkflow(), execution_store=store
+    )
+    run = service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("PRIVATE_DATABASE_PATH")
+
+    monkeypatch.setattr(store, "commit_result", fail)
+    with installed_lab(enabled=True, service=service):
+        response = TestClient(app).post(
+            f"/api/v1/lab/runs/{run.run_id}/tools/gateway_enforcement/execute",
+            json={
+                "confirmed": True,
+                "idempotency_key": str(UUID(int=15)),
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "lab_tool_storage_unavailable"
+    assert "PRIVATE" not in response.text
+    store.close()
