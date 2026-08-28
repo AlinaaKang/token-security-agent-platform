@@ -58,6 +58,7 @@ class DeterministicGenerator:
         return ReportGeneration(
             report=DeterministicReportComposer().compose(facts, evidence),
             status="fallback",
+            failure_code="runtime_error",
         )
 
 
@@ -112,9 +113,10 @@ def test_evidence_mode_retrieves_without_generation() -> None:
 
 
 def test_report_mode_returns_explicit_fallback_status() -> None:
+    result = _result()
     enhancement = _service(generator=DeterministicGenerator()).enhance(
         prompt="请分析提示词注入风险。PRIVATE_SUFFIX",
-        result=_result(),
+        result=result,
         mode="report",
         attack_family="AutoDAN",
     )
@@ -125,6 +127,8 @@ def test_report_mode_returns_explicit_fallback_status() -> None:
     assert enhancement.grounded_report.evidence_ids == tuple(
         item.knowledge_id for item in enhancement.knowledge_evidence
     )
+    assert result.decision == "block"
+    assert result.actions == ["block"]
 
 
 def test_retrieval_failure_returns_unavailable_without_private_details() -> None:

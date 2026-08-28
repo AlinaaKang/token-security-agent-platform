@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app.agent.fusion import FusionReason
 from app.knowledge.loader import load_knowledge_snapshot
@@ -11,8 +12,11 @@ from app.knowledge.models import KnowledgeEvidence, NormalizedSecurityFacts
 from app.knowledge.query import RetrievalQuery
 from app.knowledge.reporting import (
     DeterministicReportComposer,
+    GroundedReport,
     GroundedReportError,
     QwenGroundedReportGenerator,
+    ReportGeneration,
+    build_report_messages,
     parse_grounded_report,
 )
 from app.knowledge.retriever import LocalKnowledgeRetriever
@@ -139,6 +143,7 @@ def test_qwen_generator_returns_generated_report_for_valid_citations() -> None:
     generation = QwenGroundedReportGenerator(runtime).generate(_facts(), evidence)
 
     assert generation.status == "generated"
+    assert generation.failure_code is None
     assert generation.report.evidence_ids == (evidence[0].knowledge_id,)
     assert runtime.options == (256, 3.0)
     serialized_messages = json.dumps(runtime.messages, ensure_ascii=False)
@@ -147,13 +152,65 @@ def test_qwen_generator_returns_generated_report_for_valid_citations() -> None:
 
 
 @pytest.mark.parametrize(
-    "raw",
+    ("status", "failure_code"),
     [
-        json.dumps({**VALID_REPORT, "evidence_ids": ["unknown-id"]}),
-        RuntimeError("SAFE_PRIVATE_RAW_OUTPUT"),
+        ("generated", "runtime_error"),
+        ("fallback", None),
     ],
 )
-def test_qwen_generator_falls_back_without_exposing_failure(raw: str | Exception) -> None:
+def test_report_generation_rejects_inconsistent_status_and_failure_code(
+    status: str,
+    failure_code: str | None,
+) -> None:
+    with pytest.raises(ValidationError):
+        ReportGeneration(
+            report=GroundedReport.model_validate(VALID_REPORT),
+            status=status,
+            failure_code=failure_code,
+        )
+
+
+def test_report_messages_include_only_compact_evidence_fields() -> None:
+    evidence = _evidence()
+
+    messages = build_report_messages(_facts(), evidence)
+
+    payload = json.loads(messages[1]["content"])
+    assert set(payload["evidence"][0]) == {
+        "knowledge_id",
+        "title_zh",
+        "risk_domain",
+        "summary",
+        "recommendations",
+    }
+    serialized_messages = json.dumps(messages, ensure_ascii=False)
+    assert evidence[0].source.url not in serialized_messages
+    assert "source" not in payload["evidence"][0]
+    assert "publisher" not in payload["evidence"][0]
+    assert "retrieval_score" not in payload["evidence"][0]
+    assert "matched_tags" not in payload["evidence"][0]
+
+
+@pytest.mark.parametrize(
+    ("raw", "failure_code"),
+    [
+        (TimeoutError("SAFE_PRIVATE_TIMEOUT"), "runtime_timeout"),
+        (RuntimeError("SAFE_PRIVATE_RUNTIME_ERROR"), "runtime_error"),
+        ("{not valid json", "invalid_report_json"),
+        (
+            json.dumps({**VALID_REPORT, "decision": "allow"}),
+            "invalid_report_schema",
+        ),
+        (
+            json.dumps({**VALID_REPORT, "evidence_ids": ["unknown-id"]}),
+            "invalid_report_citation",
+        ),
+    ],
+)
+def test_qwen_generator_returns_fixed_failure_codes_without_private_details(
+    raw: str | Exception,
+    failure_code: str,
+) -> None:
     evidence = _evidence()
     generation = QwenGroundedReportGenerator(FakeStructuredRuntime(raw)).generate(
         _facts(),
@@ -161,5 +218,22 @@ def test_qwen_generator_falls_back_without_exposing_failure(raw: str | Exception
     )
 
     assert generation.status == "fallback"
+    assert generation.failure_code == failure_code
     assert generation.report.evidence_ids == (evidence[0].knowledge_id,)
-    assert "SAFE_PRIVATE_RAW_OUTPUT" not in generation.model_dump_json()
+    serialized = generation.model_dump_json()
+    assert "SAFE_PRIVATE_TIMEOUT" not in serialized
+    assert "SAFE_PRIVATE_RUNTIME_ERROR" not in serialized
+    assert "not valid json" not in serialized
+
+
+def test_qwen_generator_timeout_with_empty_recommendations_still_falls_back() -> None:
+    evidence = [item.model_copy(update={"recommendations": ()}) for item in _evidence()]
+
+    generation = QwenGroundedReportGenerator(
+        FakeStructuredRuntime(TimeoutError("SAFE_PRIVATE_TIMEOUT"))
+    ).generate(_facts(), evidence)
+
+    assert generation.status == "fallback"
+    assert generation.failure_code == "runtime_timeout"
+    assert generation.report.evidence_ids == (evidence[0].knowledge_id,)
+    assert generation.report.handling_steps
