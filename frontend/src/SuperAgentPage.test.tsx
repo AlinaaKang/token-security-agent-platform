@@ -161,7 +161,7 @@ describe("bounded SuperAgent workspace", () => {
       "token-security-superagent-mission-id",
       blockMission.mission_id,
     );
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/v1/lab/scenarios") return response(scenarios);
       if (url === "/api/v1/superagent/capabilities") return response(capabilities);
@@ -169,7 +169,7 @@ describe("bounded SuperAgent workspace", () => {
         return response({ error: { message: "任务已过期" } }, false, 410);
       }
       throw new Error(`Unexpected request: ${url}`);
-    });
+    }));
 
     render(<App />);
 
