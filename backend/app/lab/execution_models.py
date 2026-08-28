@@ -31,6 +31,7 @@ class LabExecutionErrorCode(StrEnum):
     EXECUTION_FAILED = "execution_failed"
     ARTIFACT_WRITE_FAILED = "artifact_write_failed"
     SIMULATED_TOOL_FAILURE = "simulated_tool_failure"
+    PERSISTENCE_FAILED = "persistence_failed"
 
 
 class LabCaseHandlingStatus(StrEnum):

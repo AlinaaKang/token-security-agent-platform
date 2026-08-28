@@ -52,9 +52,9 @@ def test_response_plan_has_only_the_three_fixed_tools(
     )
 
     assert [plan.tool_id for plan in plans] == [
-        LabToolId.GATEWAY_PREVIEW,
-        LabToolId.SOC_CASE_PREVIEW,
-        LabToolId.EVIDENCE_EXPORT_PREVIEW,
+        LabToolId.GATEWAY_ENFORCEMENT,
+        LabToolId.SECURITY_CASE,
+        LabToolId.EVIDENCE_BUNDLE,
     ]
     assert plans[0].effective_action == expected_gateway_action
     assert all(plan.status == "planned" for plan in plans)
@@ -129,3 +129,19 @@ def test_dry_run_result_contains_no_execution_parameters() -> None:
         "evidence_sha256",
     }
     assert not {"url", "path", "command", "credential"}.intersection(payload)
+
+
+def test_dry_run_is_explicitly_a_preview_of_the_internal_tools() -> None:
+    plan = build_response_plan(
+        decision="review",
+        fusion_reason="semantic_controversial",
+        mode="analysis",
+        evidence=(),
+    )[0]
+
+    result = execute_dry_run(plan, inject_failure=False)
+
+    assert plan.tool_id is LabToolId.GATEWAY_ENFORCEMENT
+    assert "预览" in plan.artifact_summary
+    assert "平台内部执行" not in plan.artifact_summary
+    assert "预览" in result.artifact_summary
