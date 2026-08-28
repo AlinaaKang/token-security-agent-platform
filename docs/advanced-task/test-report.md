@@ -6,8 +6,8 @@
 
 | 范围 | 本轮结果 |
 | --- | --- |
-| 后端单元/集成/回归 | 514 passed，1 skipped，0 failed |
-| 前端交互 | 136 passed，0 failed |
+| 后端单元/集成/回归 | 515 passed，1 skipped，0 failed |
+| 前端交互 | 138 passed，0 failed |
 | TypeScript + Vite 构建 | 通过，1609 modules transformed |
 | `/lab` 聚焦前端 | 20 passed |
 | Windows PowerShell 5.1 API 隐私回归 | 1 passed |
@@ -107,4 +107,4 @@ api_requests=13
 api_violations=0
 ```
 
-Playwright 在 1440x900 和 390x844 验证 `/super-agent`，文档宽度分别等于视口宽度；安全回执为 0、拦截回执为 3，减少动效下事件动画为 `none`。同时回归 `/analyze`、`/lab` 和 `/challenge`，四个路由控制台均为 0 error。验收截图只保留在未跟踪临时目录，未写入报告或 Git。
+Playwright 在 1440x900 和 390x844 验证 `/super-agent`，文档宽度分别等于视口宽度；安全回执为 0，整页刷新后通过脱敏 mission ID 恢复且回执仍为 0；拦截回执为 3，减少动效下事件动画为 `none`。同时回归 `/analyze`、`/lab` 和 `/challenge`，四个路由控制台均为 0 error。验收截图只保留在未跟踪临时目录，未写入报告或 Git。

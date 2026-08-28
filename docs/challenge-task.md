@@ -75,12 +75,12 @@ Web 入口为 `/super-agent`，页面明确标注“平台内部仿真闭环”�
 
 ## 9. 2026-08-29 验收结果
 
-- 本地后端：514 passed、1 skipped；唯一跳过项为本机未配置真实 GPU 模型。
-- 本地前端：136 passed；TypeScript 与 Vite 生产构建通过，1609 modules transformed。
+- 本地后端：515 passed、1 skipped；唯一跳过项为本机未配置真实 GPU 模型。
+- 本地前端：138 passed；TypeScript 与 Vite 生产构建通过，1609 modules transformed。
 - AutoDL 健康：model、detector、semantic guard、knowledge、audit、evaluation、demo、lab、superagent 全部 ready；`official-v2`、18 cards、`deployment_match=true`。
 - 在线安全任务：`closed_safe`，9 条公开事件，0 次工具调用。
 - 在线拦截任务：`contained`，12 条公开事件，内部网关状态、安全案件、证据包各执行一次且顺序固定。
 - API 隐私：13 个响应表面，禁用字段、受保护跟踪路径、JSON 错误和 API 违规均为 0。
-- 浏览器：1440x900 与 390x844 均无横向溢出；减少动效生效；`/super-agent`、`/analyze`、`/lab`、`/challenge` 控制台 0 error。
+- 浏览器：安全任务整页刷新后可通过脱敏 mission ID 恢复；1440x900 与 390x844 均无横向溢出；减少动效生效；`/super-agent`、`/analyze`、`/lab`、`/challenge` 控制台 0 error。
 
 以上是功能与工程验收，不替代冻结分类性能实验，也不扩大攻击族覆盖声明。
