@@ -3,10 +3,17 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.agent.fusion import FusionReason
 from app.knowledge.models import KnowledgeId
@@ -30,6 +37,23 @@ class LabCaseHandlingStatus(StrEnum):
     OPEN = "open"
     CONTAINED = "contained"
     CLOSED = "closed"
+
+
+ArtifactIdentifier = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    ),
+]
+PriorExecutionId = Annotated[
+    str, StringConstraints(pattern=r"^exec_[0-9a-f]{32}$")
+]
+PriorReceiptId = Annotated[
+    str, StringConstraints(pattern=r"^receipt_[0-9a-f]{32}$")
+]
 
 
 class _FrozenPublicRecord(BaseModel):
@@ -114,6 +138,30 @@ class LabArtifact(_FrozenPublicRecord):
         return self
 
 
+class CanonicalEvidenceBundle(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1]
+    artifact_kind: Literal["evidence_bundle"]
+    detector_status: DetectorStatus
+    risk_score: float = Field(ge=0, le=1)
+    semantic_severity: SemanticSeverity
+    semantic_categories: tuple[SemanticCategory, ...] = ()
+    fusion_reason: FusionReason
+    effective_action: Decision
+    model_id: ArtifactIdentifier
+    calibration_version: ArtifactIdentifier
+    knowledge_snapshot_version: ArtifactIdentifier | None = None
+    knowledge_ids: tuple[KnowledgeId, ...] = ()
+    prior_execution_ids: tuple[PriorExecutionId, ...] = ()
+    prior_receipt_ids: tuple[PriorReceiptId, ...] = ()
+
+    @model_validator(mode="after")
+    def reject_non_public_fields(self) -> CanonicalEvidenceBundle:
+        assert_public_payload(self.model_dump(mode="json"))
+        return self
+
+
 def validate_artifact_payload(media_type: str, payload: bytes) -> None:
     if media_type != "application/json":
         raise ValueError("lab artifact media type is unsupported")
@@ -128,11 +176,25 @@ def validate_artifact_payload(media_type: str, payload: bytes) -> None:
     if not isinstance(parsed, dict):
         raise ValueError("lab artifact payload root must be an object")
     assert_public_payload(parsed)
-    canonical = json.dumps(
-        parsed, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    try:
+        bundle = CanonicalEvidenceBundle.model_validate(parsed)
+    except ValueError as error:
+        raise ValueError("lab artifact payload does not match evidence schema") from error
+    canonical = canonical_evidence_bundle_bytes(bundle)
     if payload != canonical:
         raise ValueError("lab artifact payload must use canonical JSON")
+
+
+def canonical_evidence_bundle_bytes(bundle: CanonicalEvidenceBundle) -> bytes:
+    return (
+        json.dumps(
+            bundle.model_dump(mode="json"),
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
 
 
 def normalize_persisted_created_at(value: datetime) -> datetime:

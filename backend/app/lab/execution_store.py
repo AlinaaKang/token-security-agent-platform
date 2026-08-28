@@ -266,7 +266,11 @@ def _json_array(value: object) -> str:
 def _serialized_created_at(value: object) -> str:
     if not isinstance(value, datetime):
         raise ValueError("persisted created_at must be a datetime")
-    return normalize_persisted_created_at(value).isoformat().replace("+00:00", "Z")
+    return (
+        normalize_persisted_created_at(value)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def _execution_from_row(row: sqlite3.Row) -> LabToolExecution:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
@@ -14,6 +15,29 @@ from app.schemas import Decision
 
 _KEY = UUID("6f9619ff-8b86-d011-b42d-00cf4fc964ff")
 _TIME = datetime(2026, 8, 28, 8, 0, tzinfo=UTC)
+
+
+def _canonical_evidence_payload(**changes: object) -> bytes:
+    values: dict[str, object] = {
+        "artifact_kind": "evidence_bundle",
+        "calibration_version": "2026-08",
+        "detector_status": "token_anomaly_candidate",
+        "effective_action": "block",
+        "fusion_reason": "semantic_unsafe",
+        "knowledge_ids": ["owasp-llm01-prompt-injection"],
+        "knowledge_snapshot_version": "2026-08-28",
+        "model_id": "semantic-guard-v1",
+        "prior_execution_ids": ["exec_00000000000000000000000000000000"],
+        "prior_receipt_ids": ["receipt_00000000000000000000000000000000"],
+        "risk_score": 0.95,
+        "schema_version": 1,
+        "semantic_categories": ["jailbreak"],
+        "semantic_severity": "unsafe",
+    }
+    values.update(changes)
+    return json.dumps(
+        values, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8") + b"\n"
 
 
 def _execution(*, suffix: str = "001", created_at: datetime = _TIME) -> LabToolExecution:
@@ -62,7 +86,7 @@ def _artifact() -> LabArtifact:
         run_id="run-001",
         execution_id="execution-001",
         media_type="application/json",
-        payload=b'{"receipt":"receipt-001"}',
+        payload=_canonical_evidence_payload(),
         sha256="sha256:" + "b" * 64,
         created_at=_TIME,
     )
@@ -121,6 +145,20 @@ def test_store_orders_instants_correctly_across_input_timezones(tmp_path: Path) 
     store.close()
 
 
+def test_store_orders_fractional_seconds_after_the_zero_fraction(tmp_path: Path) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    zero_fraction = _execution(suffix="001", created_at=_TIME)
+    fractional = _execution(
+        suffix="002", created_at=_TIME + timedelta(microseconds=500_000)
+    )
+
+    store.commit_result(zero_fraction)
+    store.commit_result(fractional)
+
+    assert store.list_executions("run-001") == (fractional, zero_fraction)
+    store.close()
+
+
 def test_store_idempotency_key_keeps_only_one_execution(tmp_path: Path) -> None:
     store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
     execution = _execution()
@@ -156,10 +194,10 @@ def test_store_rejects_bypassed_artifact_privacy_validation_before_writing(
     store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
     unsafe = LabArtifact.model_construct(
         **_artifact().model_dump(),
-        payload=b'{"prompt":"secret"}',
+        payload=b'{"receipt":"raw prompt: secret"}',
     )
 
-    with pytest.raises(ValueError, match="forbidden field: prompt"):
+    with pytest.raises(ValueError):
         store.commit_result(_execution(), artifact=unsafe)
 
     assert store.list_executions("run-001") == ()

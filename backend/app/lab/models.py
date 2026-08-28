@@ -32,6 +32,7 @@ FORBIDDEN_PUBLIC_KEYS = frozenset(
         "query_text",
         "raw_output",
         "guard_raw_output",
+        "hidden_reasoning",
     }
 )
 

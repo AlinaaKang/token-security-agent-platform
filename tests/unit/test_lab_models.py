@@ -95,6 +95,7 @@ def test_public_signal_removes_token_identity_and_text() -> None:
         ({"query_text": "secret"}, "query_text"),
         ({"raw_output": "secret"}, "raw_output"),
         ({"guard_raw_output": "secret"}, "guard_raw_output"),
+        ({"hidden_reasoning": "secret"}, "hidden_reasoning"),
     ],
 )
 def test_public_payload_rejects_forbidden_keys_at_any_depth(

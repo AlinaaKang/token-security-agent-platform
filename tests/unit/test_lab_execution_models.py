@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta, timezone
 from uuid import UUID
 
@@ -17,6 +18,29 @@ from app.lab.models import LabToolId
 
 _TIME = datetime(2026, 8, 28, 8, 0, tzinfo=UTC)
 _KEY = UUID("6f9619ff-8b86-d011-b42d-00cf4fc964ff")
+
+
+def _canonical_evidence_payload(**changes: object) -> bytes:
+    values: dict[str, object] = {
+        "artifact_kind": "evidence_bundle",
+        "calibration_version": "2026-08",
+        "detector_status": "token_anomaly_candidate",
+        "effective_action": "block",
+        "fusion_reason": "semantic_unsafe",
+        "knowledge_ids": ["owasp-llm01-prompt-injection"],
+        "knowledge_snapshot_version": "2026-08-28",
+        "model_id": "semantic-guard-v1",
+        "prior_execution_ids": ["exec_00000000000000000000000000000000"],
+        "prior_receipt_ids": ["receipt_00000000000000000000000000000000"],
+        "risk_score": 0.9,
+        "schema_version": 1,
+        "semantic_categories": ["jailbreak"],
+        "semantic_severity": "unsafe",
+    }
+    values.update(changes)
+    return json.dumps(
+        values, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8") + b"\n"
 
 
 def _execution(**changes: object) -> LabToolExecution:
@@ -69,7 +93,7 @@ def _artifact(**changes: object) -> LabArtifact:
         "run_id": "run-001",
         "execution_id": "execution-001",
         "media_type": "application/json",
-        "payload": b'{"decision":"block"}',
+        "payload": _canonical_evidence_payload(),
         "sha256": "sha256:" + "b" * 64,
         "created_at": _TIME,
     }
@@ -154,6 +178,8 @@ def test_artifact_json_never_serializes_its_internal_payload() -> None:
         b'["evidence"]',
         b'{"prompt":"secret"}',
         b'{"receipt":"receipt-001", "decision":"block"}',
+        b'{"receipt":"raw prompt: secret"}',
+        b'{"hidden_reasoning":"secret"}',
     ],
 )
 def test_artifact_payload_requires_canonical_redacted_json_object(
@@ -161,6 +187,11 @@ def test_artifact_payload_requires_canonical_redacted_json_object(
 ) -> None:
     with pytest.raises(ValidationError):
         _artifact(payload=payload)
+
+
+def test_artifact_rejects_sensitive_content_in_an_allowed_identifier_field() -> None:
+    with pytest.raises(ValidationError):
+        _artifact(payload=_canonical_evidence_payload(model_id="raw prompt: secret"))
 
 
 def test_persisted_created_at_requires_timezone_and_normalizes_to_utc() -> None:
