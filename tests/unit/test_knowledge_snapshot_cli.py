@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -59,6 +60,26 @@ def test_snapshot_builder_produces_reproducible_valid_output(
         workspace_tmp_path / "two" / "cards.json"
     ).read_bytes()
     assert load_knowledge_snapshot(workspace_tmp_path / "one").manifest.card_count == 1
+
+
+def test_snapshot_builder_writes_lf_bytes_with_a_valid_manifest_hash(
+    workspace_tmp_path: Path,
+) -> None:
+    source = workspace_tmp_path / "source.json"
+    source.write_text(json.dumps([_source_card()], ensure_ascii=False), encoding="utf-8")
+
+    build_snapshot(source, workspace_tmp_path / "snapshot", "official-v1")
+
+    snapshot_dir = workspace_tmp_path / "snapshot"
+    cards_bytes = (snapshot_dir / "cards.json").read_bytes()
+    manifest_bytes = (snapshot_dir / "manifest.json").read_bytes()
+    assert cards_bytes.endswith(b"\n")
+    assert manifest_bytes.endswith(b"\n")
+    assert b"\r\n" not in cards_bytes
+    assert b"\r\n" not in manifest_bytes
+    assert load_knowledge_snapshot(snapshot_dir).manifest.cards_sha256 == (
+        "sha256:" + hashlib.sha256(cards_bytes).hexdigest()
+    )
 
 
 @pytest.mark.parametrize(

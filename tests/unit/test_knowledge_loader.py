@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from app.knowledge.loader import KnowledgeSnapshotError, load_knowledge_snapshot
+from app.knowledge.models import KnowledgePublisher, RiskDomain
 
 
 @pytest.fixture
@@ -92,6 +93,117 @@ def test_loader_accepts_allowlisted_hashed_card(workspace_tmp_path: Path) -> Non
 
     assert snapshot.manifest.snapshot_version == "official-v1"
     assert snapshot.cards[0].knowledge_id == "owasp-llm01-prompt-injection"
+
+
+def test_knowledge_schema_exposes_official_v2_publishers_and_domains() -> None:
+    assert KnowledgePublisher.CAC.value == "cac"
+    assert {
+        RiskDomain.SUPPLY_CHAIN.value,
+        RiskDomain.DATA_MODEL_POISONING.value,
+        RiskDomain.UNBOUNDED_RESOURCE_CONSUMPTION.value,
+    } == {
+        "supply_chain",
+        "data_model_poisoning",
+        "unbounded_resource_consumption",
+    }
+
+
+@pytest.mark.parametrize(
+    ("knowledge_id", "publisher", "url"),
+    [
+        (
+            "cac-generative-ai-interim-measures",
+            "cac",
+            "https://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm",
+        ),
+        (
+            "nist-ai-600-1-genai-profile",
+            "nist",
+            "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+        ),
+    ],
+)
+def test_loader_accepts_publisher_specific_official_hosts(
+    workspace_tmp_path: Path,
+    knowledge_id: str,
+    publisher: str,
+    url: str,
+) -> None:
+    card = _card(
+        knowledge_id=knowledge_id,
+        source={
+            "publisher": publisher,
+            "title": "Official source",
+            "url": url,
+            "version": "2025",
+            "verified_at": "2026-08-28T00:00:00Z",
+            "usage_note": "中文转述，原始定义请参阅官方来源。",
+        },
+    )
+    _write_snapshot(workspace_tmp_path, [card])
+
+    assert load_knowledge_snapshot(workspace_tmp_path).cards[0].source.url == url
+
+
+@pytest.mark.parametrize(
+    ("publisher", "url"),
+    [
+        ("nist", "https://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm"),
+        ("cac", "https://example.test/2023-07/13/c_1690898327029107.htm"),
+    ],
+)
+def test_loader_rejects_cac_url_without_matching_publisher_or_host(
+    workspace_tmp_path: Path,
+    publisher: str,
+    url: str,
+) -> None:
+    card = _card(
+        source={
+            "publisher": publisher,
+            "title": "Official source",
+            "url": url,
+            "version": "2025",
+            "verified_at": "2026-08-28T00:00:00Z",
+            "usage_note": "中文转述，原始定义请参阅官方来源。",
+        }
+    )
+    _write_snapshot(workspace_tmp_path, [card])
+
+    with pytest.raises(KnowledgeSnapshotError):
+        load_knowledge_snapshot(workspace_tmp_path)
+
+
+def test_loader_accepts_official_v2_snapshot() -> None:
+    snapshot = load_knowledge_snapshot(Path("knowledge/snapshots/official-v2"))
+
+    assert snapshot.manifest.snapshot_version == "official-v2"
+    assert snapshot.manifest.card_count == 18
+    assert {card.risk_domain.value for card in snapshot.cards} >= {
+        "supply_chain",
+        "data_model_poisoning",
+        "unbounded_resource_consumption",
+    }
+    assert {card.source.publisher.value for card in snapshot.cards} == {
+        "owasp",
+        "mitre",
+        "nist",
+        "cac",
+    }
+
+
+def test_official_v2_uses_current_owasp_canonical_urls() -> None:
+    snapshot = load_knowledge_snapshot(Path("knowledge/snapshots/official-v2"))
+    urls = {card.knowledge_id: card.source.url for card in snapshot.cards}
+
+    assert urls["owasp-llm03-supply-chain"] == (
+        "https://genai.owasp.org/llmrisk/llm032025-supply-chain/"
+    )
+    assert urls["owasp-llm04-data-model-poisoning"] == (
+        "https://genai.owasp.org/llmrisk/llm042025-data-and-model-poisoning/"
+    )
+    assert urls["owasp-llm10-unbounded-consumption"] == (
+        "https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/"
+    )
 
 
 @pytest.mark.parametrize(

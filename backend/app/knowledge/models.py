@@ -32,6 +32,7 @@ class KnowledgePublisher(StrEnum):
     OWASP = "owasp"
     MITRE = "mitre"
     NIST = "nist"
+    CAC = "cac"
 
 
 class RiskDomain(StrEnum):
@@ -39,6 +40,9 @@ class RiskDomain(StrEnum):
     JAILBREAK = "jailbreak"
     SENSITIVE_INFORMATION = "sensitive_information"
     EXCESSIVE_AGENCY = "excessive_agency"
+    SUPPLY_CHAIN = "supply_chain"
+    DATA_MODEL_POISONING = "data_model_poisoning"
+    UNBOUNDED_RESOURCE_CONSUMPTION = "unbounded_resource_consumption"
     GOVERNANCE = "governance"
     INCIDENT_RESPONSE = "incident_response"
 
@@ -92,7 +96,8 @@ class KnowledgeSource(BaseModel):
         allowed = {
             KnowledgePublisher.OWASP: {"genai.owasp.org"},
             KnowledgePublisher.MITRE: {"atlas.mitre.org"},
-            KnowledgePublisher.NIST: {"nist.gov", "www.nist.gov"},
+            KnowledgePublisher.NIST: {"nist.gov", "www.nist.gov", "nvlpubs.nist.gov"},
+            KnowledgePublisher.CAC: {"www.cac.gov.cn"},
         }
         if urlsplit(value).hostname not in allowed.get(publisher, set()):
             raise ValueError("knowledge source host is not approved")

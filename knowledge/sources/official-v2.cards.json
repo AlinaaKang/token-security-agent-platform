@@ -1,0 +1,380 @@
+[
+  {
+    "knowledge_id": "owasp-llm01-prompt-injection",
+    "title_zh": "提示词注入风险",
+    "risk_domain": "prompt_injection",
+    "semantic_categories": ["jailbreak"],
+    "detector_tags": ["cpd_candidate", "no_token_anomaly"],
+    "fusion_tags": ["cpd_candidate", "semantic_unsafe"],
+    "attack_families": ["GCG", "AutoDAN", "AdvPrompter"],
+    "summary": "不可信输入可能改变模型原有指令边界，直接或间接诱导系统执行非预期行为。",
+    "indicators": ["输入试图覆盖既定指令层级", "外部内容被当作可执行指令处理"],
+    "recommendations": ["隔离系统指令与不可信数据", "结合语义安全与异常信号实施分层处置"],
+    "retrieval_tags": ["提示词注入", "prompt injection", "指令覆盖", "间接注入"],
+    "source": {
+      "publisher": "owasp",
+      "title": "LLM01: Prompt Injection",
+      "url": "https://genai.owasp.org/llmrisk/llm01-prompt-injection/",
+      "version": "2025",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，完整定义与缓解建议以 OWASP 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "owasp-llm02-sensitive-information",
+    "title_zh": "敏感信息泄露风险",
+    "risk_domain": "sensitive_information",
+    "semantic_categories": ["pii"],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["semantic_unsafe", "semantic_controversial"],
+    "attack_families": [],
+    "summary": "模型输出或应用链路可能暴露个人信息、凭据、内部数据或其他受保护内容。",
+    "indicators": ["请求索取受保护数据", "输出包含凭据或个人身份信息"],
+    "recommendations": ["执行最小化数据访问与输出脱敏", "对敏感字段实施访问控制和审计"],
+    "retrieval_tags": ["敏感信息", "information disclosure", "PII", "凭据泄露"],
+    "source": {
+      "publisher": "owasp",
+      "title": "LLM02: Sensitive Information Disclosure",
+      "url": "https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/",
+      "version": "2025",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，完整定义与缓解建议以 OWASP 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "owasp-llm06-excessive-agency",
+    "title_zh": "过度代理权限风险",
+    "risk_domain": "excessive_agency",
+    "semantic_categories": ["non_violent_illegal_acts", "unethical_acts"],
+    "detector_tags": ["no_token_anomaly", "cpd_candidate"],
+    "fusion_tags": ["semantic_unsafe", "cpd_candidate"],
+    "attack_families": [],
+    "summary": "模型获得过多功能、权限或自主性时，非预期指令可能被放大为真实外部动作。",
+    "indicators": ["请求触发高权限工具", "动作缺少人工确认或范围限制"],
+    "recommendations": ["按任务授予最小工具权限", "高影响动作必须经过确定性校验和人工确认"],
+    "retrieval_tags": ["过度代理", "excessive agency", "工具调用", "最小权限"],
+    "source": {
+      "publisher": "owasp",
+      "title": "LLM06: Excessive Agency",
+      "url": "https://genai.owasp.org/llmrisk/llm06-excessive-agency/",
+      "version": "2025",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，完整定义与缓解建议以 OWASP 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "owasp-llm09-misinformation",
+    "title_zh": "错误信息与过度依赖风险",
+    "risk_domain": "governance",
+    "semantic_categories": ["politically_sensitive", "unethical_acts"],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["semantic_controversial", "all_clear"],
+    "attack_families": [],
+    "summary": "模型可能生成不准确或误导性内容，应用不应把流畅表达等同于事实可靠。",
+    "indicators": ["结论缺少可核验依据", "高影响场景直接依赖模型结论"],
+    "recommendations": ["为关键结论提供来源和局限说明", "高影响判断保留人工复核"],
+    "retrieval_tags": ["错误信息", "misinformation", "事实核验", "人工复核"],
+    "source": {
+      "publisher": "owasp",
+      "title": "LLM09: Misinformation",
+      "url": "https://genai.owasp.org/llmrisk/llm09-misinformation/",
+      "version": "2025",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，完整定义与缓解建议以 OWASP 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "mitre-atlas-prompt-injection",
+    "title_zh": "ATLAS 大模型提示词注入",
+    "risk_domain": "prompt_injection",
+    "semantic_categories": ["jailbreak"],
+    "detector_tags": ["cpd_candidate", "no_token_anomaly"],
+    "fusion_tags": ["cpd_candidate", "semantic_unsafe"],
+    "attack_families": ["GCG", "AutoDAN", "AdvPrompter"],
+    "summary": "ATLAS 将恶意输入诱导大模型偏离预期行为归纳为 LLM Prompt Injection 技术。",
+    "indicators": ["模型行为与应用预期出现偏离", "输入包含改变原指令意图的模式"],
+    "recommendations": ["将提示词注入纳入威胁建模和回归测试", "保留规范化检测证据用于事件关联"],
+    "retrieval_tags": ["AML.T0051", "LLM Prompt Injection", "提示词注入", "威胁技术"],
+    "source": {
+      "publisher": "mitre",
+      "title": "AML.T0051 LLM Prompt Injection",
+      "url": "https://atlas.mitre.org/techniques/AML.T0051",
+      "version": "ATLAS 2026.07",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，技术定义以 MITRE ATLAS 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "mitre-atlas-jailbreak",
+    "title_zh": "ATLAS 大模型越狱",
+    "risk_domain": "jailbreak",
+    "semantic_categories": ["jailbreak"],
+    "detector_tags": ["cpd_candidate", "no_token_anomaly"],
+    "fusion_tags": ["cpd_candidate", "semantic_unsafe"],
+    "attack_families": ["GCG", "AutoDAN", "AdvPrompter"],
+    "summary": "ATLAS 将诱导模型规避或覆盖安全与对齐控制的行为归纳为 LLM Jailbreak 技术。",
+    "indicators": ["输入试图绕过安全约束", "异常后缀与高风险语义共同出现"],
+    "recommendations": ["组合语义安全、Token 异常与固定策略证据", "对确认样本形成冻结回归用例"],
+    "retrieval_tags": ["AML.T0054", "LLM Jailbreak", "越狱", "安全绕过"],
+    "source": {
+      "publisher": "mitre",
+      "title": "AML.T0054 LLM Jailbreak",
+      "url": "https://atlas.mitre.org/techniques/AML.T0054",
+      "version": "ATLAS 2026.07",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，技术定义以 MITRE ATLAS 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "mitre-atlas-defense-evasion",
+    "title_zh": "ATLAS 防御规避战术",
+    "risk_domain": "jailbreak",
+    "semantic_categories": ["jailbreak", "unethical_acts"],
+    "detector_tags": ["cpd_candidate"],
+    "fusion_tags": ["cpd_candidate", "semantic_unavailable_cpd_candidate"],
+    "attack_families": ["GCG", "AutoDAN", "AdvPrompter"],
+    "summary": "ATLAS 的 Defense Evasion 战术描述攻击者试图绕过或降低安全检测有效性的目标。",
+    "indicators": ["输入结构呈现规避检测特征", "语义验证不可用但异常证据持续累积"],
+    "recommendations": ["保持多路检测证据相互独立", "监测检测不可用和降级事件"],
+    "retrieval_tags": ["AML.TA0007", "Defense Evasion", "防御规避", "检测绕过"],
+    "source": {
+      "publisher": "mitre",
+      "title": "AML.TA0007 Defense Evasion",
+      "url": "https://atlas.mitre.org/tactics/AML.TA0007",
+      "version": "ATLAS 2026.07",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，战术定义以 MITRE ATLAS 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "mitre-atlas-incident-response",
+    "title_zh": "ATLAS 威胁驱动事件响应",
+    "risk_domain": "incident_response",
+    "semantic_categories": [],
+    "detector_tags": ["cpd_candidate", "no_token_anomaly"],
+    "fusion_tags": ["semantic_unsafe", "semantic_controversial", "cpd_candidate"],
+    "attack_families": [],
+    "summary": "ATLAS 提供面向人工智能系统的共同战术技术语言，可用于关联检测证据、响应动作和复测。",
+    "indicators": ["事件缺少统一技术分类", "修复后未形成可重复验证"],
+    "recommendations": ["使用稳定技术 ID 标注事件", "将确认失效转化为检测规则和回归用例"],
+    "retrieval_tags": ["ATLAS", "incident response", "事件响应", "威胁分类"],
+    "source": {
+      "publisher": "mitre",
+      "title": "Adversarial Threat Landscape for AI Systems",
+      "url": "https://atlas.mitre.org/",
+      "version": "ATLAS 2026.07",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，完整框架以 MITRE ATLAS 官方站点为准。"
+    }
+  },
+  {
+    "knowledge_id": "nist-ai-rmf-govern",
+    "title_zh": "NIST AI RMF 治理",
+    "risk_domain": "governance",
+    "semantic_categories": [],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["all_clear", "semantic_unavailable_analysis_degraded"],
+    "attack_families": [],
+    "summary": "GOVERN 强调在组织范围建立风险文化、职责、政策和问责机制。",
+    "indicators": ["缺少明确风险所有者", "模型安全控制缺少审批和监督"],
+    "recommendations": ["明确风险责任和升级路径", "记录安全控制版本与审批状态"],
+    "retrieval_tags": ["NIST AI RMF", "GOVERN", "治理", "问责"],
+    "source": {
+      "publisher": "nist",
+      "title": "AI Risk Management Framework 1.0 - GOVERN",
+      "url": "https://www.nist.gov/itl/ai-risk-management-framework",
+      "version": "AI RMF 1.0",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，框架定义以 NIST 官方资料为准。"
+    }
+  },
+  {
+    "knowledge_id": "nist-ai-rmf-map",
+    "title_zh": "NIST AI RMF 风险映射",
+    "risk_domain": "governance",
+    "semantic_categories": ["pii", "politically_sensitive"],
+    "detector_tags": ["no_token_anomaly", "cpd_candidate"],
+    "fusion_tags": ["semantic_controversial", "cpd_candidate"],
+    "attack_families": [],
+    "summary": "MAP 要求结合使用场景、相关方、影响和依赖关系形成风险上下文。",
+    "indicators": ["检测结果缺少业务场景", "风险类别与受影响对象未关联"],
+    "recommendations": ["记录工作模式和风险类别", "把检测证据映射到业务影响与处置责任"],
+    "retrieval_tags": ["NIST AI RMF", "MAP", "风险映射", "使用场景"],
+    "source": {
+      "publisher": "nist",
+      "title": "AI Risk Management Framework 1.0 - MAP",
+      "url": "https://www.nist.gov/itl/ai-risk-management-framework",
+      "version": "AI RMF 1.0",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，框架定义以 NIST 官方资料为准。"
+    }
+  },
+  {
+    "knowledge_id": "nist-ai-rmf-measure",
+    "title_zh": "NIST AI RMF 风险测量",
+    "risk_domain": "governance",
+    "semantic_categories": ["jailbreak"],
+    "detector_tags": ["cpd_candidate", "no_token_anomaly"],
+    "fusion_tags": ["cpd_candidate", "all_clear"],
+    "attack_families": ["GCG", "AutoDAN", "AdvPrompter"],
+    "summary": "MEASURE 强调以可重复指标评估、跟踪和记录人工智能风险及控制有效性。",
+    "indicators": ["检测结论缺少冻结指标", "控制效果无法重复验证"],
+    "recommendations": ["使用冻结样本和版本化指标", "分别报告命中率、误报、延迟和局限"],
+    "retrieval_tags": ["NIST AI RMF", "MEASURE", "评测", "冻结指标"],
+    "source": {
+      "publisher": "nist",
+      "title": "AI Risk Management Framework 1.0 - MEASURE",
+      "url": "https://www.nist.gov/itl/ai-risk-management-framework",
+      "version": "AI RMF 1.0",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，框架定义以 NIST 官方资料为准。"
+    }
+  },
+  {
+    "knowledge_id": "nist-ai-rmf-manage",
+    "title_zh": "NIST AI RMF 风险处置",
+    "risk_domain": "incident_response",
+    "semantic_categories": ["violent", "non_violent_illegal_acts", "sexual_content", "pii", "suicide_self_harm", "unethical_acts", "politically_sensitive", "copyright_violation", "jailbreak"],
+    "detector_tags": ["cpd_candidate", "no_token_anomaly"],
+    "fusion_tags": ["semantic_unsafe", "semantic_controversial", "cpd_candidate", "all_clear"],
+    "attack_families": [],
+    "summary": "MANAGE 要求按优先级处置已识别风险，持续监测控制效果并为残余风险建立响应机制。",
+    "indicators": ["高风险事件未触发一致处置", "控制失效后缺少复核和改进闭环"],
+    "recommendations": ["按既定动作执行放行、复核或拦截", "记录残余风险、降级状态和后续复测"],
+    "retrieval_tags": ["NIST AI RMF", "MANAGE", "风险处置", "持续监测"],
+    "source": {
+      "publisher": "nist",
+      "title": "AI Risk Management Framework 1.0 - MANAGE",
+      "url": "https://www.nist.gov/itl/ai-risk-management-framework",
+      "version": "AI RMF 1.0",
+      "verified_at": "2026-08-26T00:00:00Z",
+      "usage_note": "中文简短转述，框架定义以 NIST 官方资料为准。"
+    }
+  },
+  {
+    "knowledge_id": "owasp-llm03-supply-chain",
+    "title_zh": "LLM 供应链风险",
+    "risk_domain": "supply_chain",
+    "semantic_categories": [],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["all_clear", "semantic_unavailable_analysis_degraded"],
+    "attack_families": [],
+    "summary": "预训练模型、数据集、插件和部署依赖的来源、完整性或维护状态出现问题时，供应链风险会传递到生成式人工智能应用。",
+    "indicators": ["模型或依赖缺少可追溯来源与版本记录", "第三方组件更新未经过完整性和安全评估"],
+    "recommendations": ["建立模型、数据和软件依赖的软件物料清单与审批记录", "对外部组件实施来源验证、完整性校验和持续漏洞监测"],
+    "retrieval_tags": ["供应链", "supply chain", "依赖完整性", "来源追溯"],
+    "source": {
+      "publisher": "owasp",
+      "title": "LLM03: Supply Chain",
+      "url": "https://genai.owasp.org/llmrisk/llm032025-supply-chain/",
+      "version": "2025",
+      "verified_at": "2026-08-28T00:00:00Z",
+      "usage_note": "中文简短转述，完整定义与缓解建议以 OWASP 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "owasp-llm04-data-model-poisoning",
+    "title_zh": "数据与模型投毒风险",
+    "risk_domain": "data_model_poisoning",
+    "semantic_categories": [],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["semantic_unsafe", "semantic_controversial"],
+    "attack_families": [],
+    "summary": "训练、微调或检索数据以及模型工件被不当篡改时，系统的行为、准确性和安全控制可能受到持续影响。",
+    "indicators": ["数据来源、标注质量或变更历史不可核验", "模型更新后出现无法由预期变更解释的行为偏移"],
+    "recommendations": ["对数据与模型变更实施版本控制、审查和可追溯记录", "在发布前使用代表性评测集检查质量、安全与完整性"],
+    "retrieval_tags": ["数据投毒", "模型投毒", "data poisoning", "model integrity"],
+    "source": {
+      "publisher": "owasp",
+      "title": "LLM04: Data and Model Poisoning",
+      "url": "https://genai.owasp.org/llmrisk/llm042025-data-and-model-poisoning/",
+      "version": "2025",
+      "verified_at": "2026-08-28T00:00:00Z",
+      "usage_note": "中文简短转述，完整定义与缓解建议以 OWASP 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "owasp-llm10-unbounded-consumption",
+    "title_zh": "无界资源消耗风险",
+    "risk_domain": "unbounded_resource_consumption",
+    "semantic_categories": [],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["all_clear", "semantic_unavailable_analysis_degraded"],
+    "attack_families": [],
+    "summary": "缺少适当资源、调用和费用边界时，生成式人工智能服务可能因异常或过量使用而影响可用性、成本和相邻业务。",
+    "indicators": ["单个主体的请求量、上下文长度或工具调用持续异常增长", "配额、速率限制或成本告警未覆盖高消耗路径"],
+    "recommendations": ["为身份、会话和工作负载设置速率、并发和预算限制", "监测资源消耗并对异常峰值执行限流、告警和复核"],
+    "retrieval_tags": ["资源消耗", "unbounded consumption", "限流", "成本控制"],
+    "source": {
+      "publisher": "owasp",
+      "title": "LLM10: Unbounded Consumption",
+      "url": "https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/",
+      "version": "2025",
+      "verified_at": "2026-08-28T00:00:00Z",
+      "usage_note": "中文简短转述，完整定义与缓解建议以 OWASP 官方页面为准。"
+    }
+  },
+  {
+    "knowledge_id": "nist-ai-600-1-genai-profile",
+    "title_zh": "NIST 生成式人工智能风险管理画像",
+    "risk_domain": "governance",
+    "semantic_categories": [],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["all_clear", "semantic_unavailable_analysis_degraded"],
+    "attack_families": [],
+    "summary": "NIST AI 600-1 为生成式人工智能的设计、开发、使用和评估补充了面向风险管理的考虑事项与行动建议。",
+    "indicators": ["生成式人工智能风险未映射到组织的治理、测量和处置流程", "已识别风险缺少责任人、记录或持续评估证据"],
+    "recommendations": ["将生成式人工智能特有风险纳入既有 AI RMF 治理流程", "记录风险评估、控制局限、责任归属和复核结果"],
+    "retrieval_tags": ["NIST AI 600-1", "生成式人工智能", "风险管理画像", "GenAI profile"],
+    "source": {
+      "publisher": "nist",
+      "title": "Artificial Intelligence Risk Management Framework: Generative Artificial Intelligence Profile",
+      "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+      "version": "NIST AI 600-1",
+      "verified_at": "2026-08-28T00:00:00Z",
+      "usage_note": "中文简短转述，完整风险考虑和行动建议以 NIST 官方出版物为准。"
+    }
+  },
+  {
+    "knowledge_id": "cac-generative-ai-interim-measures",
+    "title_zh": "生成式人工智能服务管理要求",
+    "risk_domain": "governance",
+    "semantic_categories": [],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["all_clear", "semantic_unavailable_analysis_degraded"],
+    "attack_families": [],
+    "summary": "《生成式人工智能服务管理暂行办法》对面向公众提供生成式人工智能服务提出促进发展与安全治理并重的管理要求。",
+    "indicators": ["服务治理职责、内容安全机制或投诉处置渠道不清晰", "训练数据和服务运行的合规记录难以追溯"],
+    "recommendations": ["明确服务提供者的安全治理、用户权益保护和事件处置责任", "建立数据、模型和服务运行的合规审查、记录与持续改进机制"],
+    "retrieval_tags": ["生成式人工智能服务管理暂行办法", "CAC", "服务治理", "合规管理"],
+    "source": {
+      "publisher": "cac",
+      "title": "生成式人工智能服务管理暂行办法",
+      "url": "https://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm",
+      "version": "2023",
+      "verified_at": "2026-08-28T00:00:00Z",
+      "usage_note": "中文摘要依据国家网信办官方发布，具体适用以正式文本为准。"
+    }
+  },
+  {
+    "knowledge_id": "cac-ai-generated-content-labeling",
+    "title_zh": "人工智能生成合成内容标识要求",
+    "risk_domain": "governance",
+    "semantic_categories": [],
+    "detector_tags": ["no_token_anomaly"],
+    "fusion_tags": ["all_clear", "semantic_unavailable_analysis_degraded"],
+    "attack_families": [],
+    "summary": "《人工智能生成合成内容标识办法》规定了生成合成内容标识相关的管理要求，支持提升内容来源透明度和公众辨识能力。",
+    "indicators": ["生成合成内容缺少适当的显式或隐式标识", "内容传播链路无法保留或核验标识信息"],
+    "recommendations": ["在适用场景落实生成合成内容标识并保留相关记录", "在发布、分发和审核流程中校验标识信息与可追溯性"],
+    "retrieval_tags": ["人工智能生成合成内容标识办法", "内容标识", "CAC", "可追溯性"],
+    "source": {
+      "publisher": "cac",
+      "title": "人工智能生成合成内容标识办法",
+      "url": "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm",
+      "version": "2025",
+      "verified_at": "2026-08-28T00:00:00Z",
+      "usage_note": "中文摘要依据国家网信办官方发布，具体适用以正式文本为准。"
+    }
+  }
+]
