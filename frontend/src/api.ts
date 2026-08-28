@@ -10,6 +10,7 @@ import type {
   LabRunResult,
   LabMetrics,
   LabScenario,
+  LabToolExecution,
   LabToolId,
   Mode,
 } from "./types";
@@ -70,4 +71,20 @@ export const api = {
         body: JSON.stringify({ inject_failure: injectFailure }),
       },
     ),
+  executeLabTool: (runId: string, toolId: LabToolId, idempotencyKey: string) =>
+    requestJson<LabToolExecution>(
+      "/api/v1/lab/runs/" + encodeURIComponent(runId) +
+        "/tools/" + encodeURIComponent(toolId) + "/execute",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed: true, idempotency_key: idempotencyKey }),
+      },
+    ),
+  listLabExecutions: (runId: string) =>
+    requestJson<LabToolExecution[]>(
+      "/api/v1/lab/runs/" + encodeURIComponent(runId) + "/executions",
+    ),
+  labArtifactDownloadUrl: (artifactId: string) =>
+    "/api/v1/lab/artifacts/" + encodeURIComponent(artifactId) + "/download",
 };

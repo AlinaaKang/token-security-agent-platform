@@ -53,10 +53,22 @@ export interface HealthResponse {
   };
 }
 
-export type LabToolId =
-  | "gateway_preview"
-  | "soc_case_preview"
-  | "evidence_export_preview";
+export type LabToolId = "gateway_enforcement" | "security_case" | "evidence_bundle";
+export type LabExecutionStatus = "succeeded" | "failed";
+
+export interface LabToolExecution {
+  execution_id: string;
+  run_id: string;
+  tool_id: LabToolId;
+  status: LabExecutionStatus;
+  effective_action: Decision;
+  receipt_id: string | null;
+  artifact_id: string | null;
+  error_code: string | null;
+  latency_ms: number;
+  created_at: string;
+  evidence_sha256: string | null;
+}
 export type LabCounterfactualInterpretation =
   | "risk_reduced"
   | "unchanged"

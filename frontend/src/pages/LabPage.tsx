@@ -6,11 +6,9 @@ import {
   CircleAlert,
   FileLock2,
   FlaskConical,
-  Play,
   ScanSearch,
   ShieldAlert,
   ShieldCheck,
-  Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -18,6 +16,7 @@ import type { FormEvent } from "react";
 import { api } from "../api";
 import { LabModeSwitch } from "../components/LabModeSwitch";
 import { LabSignalChart } from "../components/LabSignalChart";
+import { LabToolCenter } from "../components/LabToolCenter";
 import type {
   Decision,
   HealthResponse,
@@ -25,7 +24,6 @@ import type {
   LabMetrics,
   LabRunResult,
   LabScenario,
-  LabToolId,
   Mode,
 } from "../types";
 
@@ -134,52 +132,6 @@ function CounterfactualPanel({ run }: { run: LabRunResult }) {
   );
 }
 
-function ToolSandbox({
-  run,
-  busyTool,
-  injectFailure,
-  onInjectFailure,
-  onRun,
-}: {
-  run: LabRunResult;
-  busyTool: LabToolId | null;
-  injectFailure: boolean;
-  onInjectFailure: (value: boolean) => void;
-  onRun: (toolId: LabToolId) => void;
-}) {
-  return (
-    <section className="lab-tool-panel">
-      <div className="lab-tool-toolbar">
-        <div><Wrench size={17} /><strong>确定性处置工具</strong></div>
-        <label><input type="checkbox" checked={injectFailure} onChange={(event) => onInjectFailure(event.target.checked)} /> 模拟一次工具失败</label>
-      </div>
-      <div className="lab-tool-list">
-        {run.tool_plans.map((plan) => {
-          const result = run.tool_results.find((item) => item.tool_id === plan.tool_id);
-          return (
-            <article key={plan.tool_id}>
-              <div>
-                <strong>{plan.title}</strong>
-                <p>{result?.artifact_summary ?? plan.artifact_summary}</p>
-                {result ? (
-                  <span className={`lab-tool-result ${result.status}`}>
-                    <strong>{result.status === "failed" ? "模拟执行失败" : "模拟执行成功"}</strong>
-                    <span>保留动作：{decisionLabels[result.effective_action]}</span>
-                  </span>
-                ) : <span className="lab-tool-result planned">等待模拟执行</span>}
-              </div>
-              <button type="button" onClick={() => onRun(plan.tool_id)} disabled={busyTool !== null}>
-                <Play size={15} /> {busyTool === plan.tool_id ? "模拟执行中" : `模拟执行${plan.title}`}
-              </button>
-            </article>
-          );
-        })}
-      </div>
-      <p className="lab-method-note">模拟执行不会连接网关、工单系统、文件系统或其他外部服务。</p>
-    </section>
-  );
-}
-
 function KnowledgeAndReport({ run }: { run: LabRunResult }) {
   return (
     <>
@@ -213,7 +165,7 @@ function KnowledgeAndReport({ run }: { run: LabRunResult }) {
           <div><dt>处置步骤</dt><dd>{run.case_report.handling_steps.join("；")}</dd></div>
           <div><dt>限制</dt><dd>{run.case_report.limitations.join("；")}</dd></div>
         </dl>
-        <div className="lab-simulation-notice"><ShieldAlert size={15} /> 模拟处置，不代表真实外部系统已执行</div>
+        <div className="lab-simulation-notice"><ShieldAlert size={15} /> 案件报告为脱敏记录，不代表平台外部状态</div>
       </section>
     </>
   );
@@ -230,7 +182,7 @@ function MetricsPanel({ metrics }: { metrics: LabMetrics }) {
       <div className="lab-metrics-grid">
         <div><span>反事实执行覆盖</span><strong>{percent(metrics.counterfactual_execution_rate)}</strong></div>
         <div><span>证据冲突率</span><strong>{percent(metrics.evidence_conflict_rate)}</strong></div>
-        <div><span>工具模拟成功率</span><strong>{percent(metrics.tool_success_rate)}</strong></div>
+        <div><span>工具预览成功率</span><strong>{percent(metrics.tool_success_rate)}</strong></div>
         <div><span>基础动作不变率</span><strong>{percent(metrics.action_invariance_rate)}</strong></div>
         <div><span>运行延迟 P50</span><strong>{metrics.latency_ms.p50.toFixed(1)} ms</strong></div>
         <div><span>运行延迟 P95</span><strong>{metrics.latency_ms.p95.toFixed(1)} ms</strong></div>
@@ -253,8 +205,6 @@ export function LabPage() {
   const [metrics, setMetrics] = useState<LabMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<LabTab>("evidence");
   const [loading, setLoading] = useState(false);
-  const [busyTool, setBusyTool] = useState<LabToolId | null>(null);
-  const [injectFailure, setInjectFailure] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -304,27 +254,13 @@ export function LabPage() {
     }
   }
 
-  async function runTool(toolId: LabToolId) {
-    if (!run || busyTool) return;
-    setBusyTool(toolId);
-    setError(null);
-    try {
-      setRun(await api.dryRunLabTool(run.run_id, toolId, injectFailure));
-      api.labMetrics().then(setMetrics).catch(() => undefined);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "模拟工具执行失败");
-    } finally {
-      setBusyTool(null);
-    }
-  }
-
   return (
     <main className="page lab-page" aria-label="AI 安全攻防实验舱">
       <header className="page-header">
         <div>
           <LabModeSwitch />
           <h1>AI 安全攻防实验舱</h1>
-          <p>按证据顺序调查异常，验证反事实敏感性，并在无外部副作用的沙箱中预演处置。</p>
+          <p>按证据顺序调查异常，验证反事实敏感性，并对固定处置工具进行预览与平台内部执行。</p>
         </div>
         <span className={`readiness ${labReady ? "ready" : ""}`}>
           <Activity size={15} /> {health === null ? "正在连接" : labReady ? "实验舱已就绪" : "实验舱未启用"}
@@ -380,7 +316,7 @@ export function LabPage() {
               {([
                 ["evidence", "证据剖面"],
                 ["counterfactual", "反事实验证"],
-                ["tools", "处置沙箱"],
+                ["tools", "工具执行中心"],
               ] as Array<[LabTab, string]>).map(([id, label]) => (
                 <button type="button" role="tab" aria-selected={activeTab === id} className={activeTab === id ? "active" : ""} onClick={() => setActiveTab(id)} key={id}>{label}</button>
               ))}
@@ -388,15 +324,7 @@ export function LabPage() {
             <div className="lab-tab-panel" role="tabpanel">
               {activeTab === "evidence" ? <EvidenceProfile run={run} /> : null}
               {activeTab === "counterfactual" ? <CounterfactualPanel run={run} /> : null}
-              {activeTab === "tools" ? (
-                <ToolSandbox
-                  run={run}
-                  busyTool={busyTool}
-                  injectFailure={injectFailure}
-                  onInjectFailure={setInjectFailure}
-                  onRun={runTool}
-                />
-              ) : null}
+              <LabToolCenter key={run.run_id} run={run} hidden={activeTab !== "tools"} />
             </div>
           </section>
           <KnowledgeAndReport run={run} />

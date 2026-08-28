@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -115,9 +116,9 @@ const run = {
     action_changed: true,
   },
   tool_plans: [
-    { tool_id: "gateway_preview", title: "网关策略预览", status: "planned", effective_action: "block", artifact_summary: "预览网关执行 block。", knowledge_ids: ["owasp-llm01-prompt-injection"] },
-    { tool_id: "soc_case_preview", title: "安全工单预览", status: "planned", effective_action: "block", artifact_summary: "预览脱敏安全工单。", knowledge_ids: ["owasp-llm01-prompt-injection"] },
-    { tool_id: "evidence_export_preview", title: "证据清单预览", status: "planned", effective_action: "block", artifact_summary: "预览结构化证据清单。", knowledge_ids: ["owasp-llm01-prompt-injection"] },
+    { tool_id: "gateway_enforcement", title: "网关策略预览", status: "planned", effective_action: "block", artifact_summary: "预览网关执行 block。", knowledge_ids: ["owasp-llm01-prompt-injection"] },
+    { tool_id: "security_case", title: "安全工单预览", status: "planned", effective_action: "block", artifact_summary: "预览脱敏安全工单。", knowledge_ids: ["owasp-llm01-prompt-injection"] },
+    { tool_id: "evidence_bundle", title: "证据清单预览", status: "planned", effective_action: "block", artifact_summary: "预览结构化证据清单。", knowledge_ids: ["owasp-llm01-prompt-injection"] },
   ],
   tool_results: [],
   case_report: {
@@ -130,12 +131,50 @@ const run = {
   },
 };
 
+const execution = {
+  execution_id: "exec_00000000000000000000000000000001",
+  run_id: "lab_123",
+  tool_id: "gateway_enforcement",
+  status: "succeeded",
+  effective_action: "block",
+  receipt_id: "receipt_00000000000000000000000000000001",
+  artifact_id: null,
+  error_code: null,
+  latency_ms: 4.2,
+  created_at: "2026-08-28T10:20:30Z",
+  evidence_sha256: null,
+  source_action: "allow",
+  idempotency_key: "PRIVATE_IDEMPOTENCY_KEY",
+  model_provenance_sha256: "PRIVATE_MODEL_DIGEST",
+  calibration_provenance_sha256: "PRIVATE_CALIBRATION_DIGEST",
+  hidden_reasoning: "PRIVATE_REASONING",
+  prompt: "PRIVATE_PROMPT",
+  suffix: "PRIVATE_SUFFIX",
+  token_text: "PRIVATE_TOKEN_TEXT",
+};
+
+const evidenceExecution = {
+  ...execution,
+  execution_id: "exec_00000000000000000000000000000002",
+  tool_id: "evidence_bundle",
+  receipt_id: "receipt_00000000000000000000000000000002",
+  artifact_id: "artifact_00000000000000000000000000000001",
+  evidence_sha256: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+};
+
 function response(payload: unknown, ok = true, status = 200) {
   return Promise.resolve({ ok, status, json: async () => payload });
 }
 
-function installFetch(options: { legacyHealth?: boolean } = {}) {
+function installFetch(options: {
+  legacyHealth?: boolean;
+  history?: unknown[];
+  executeResponses?: Array<{ payload: unknown; ok?: boolean; status?: number }>;
+  runs?: unknown[];
+} = {}) {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const executeResponses = [...(options.executeResponses ?? [])];
+  const runs = [...(options.runs ?? [run])];
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     requests.push({ url, init });
@@ -148,12 +187,17 @@ function installFetch(options: { legacyHealth?: boolean } = {}) {
     }
     if (url === "/api/v1/lab/scenarios") return response(scenarios);
     if (url === "/api/v1/lab/metrics") return response(metrics);
-    if (url === "/api/v1/lab/runs") return response(run, true, 201);
-    if (url.includes("/tools/gateway_preview/dry-run")) {
+    if (url === "/api/v1/lab/runs") return response(runs.shift() ?? run, true, 201);
+    if (url.endsWith("/executions")) return response(options.history ?? []);
+    if (url.includes("/execute")) {
+      const next = executeResponses.shift();
+      return response(next?.payload ?? execution, next?.ok ?? true, next?.status ?? 201);
+    }
+    if (url.includes("/tools/gateway_enforcement/dry-run")) {
       return response({
         ...run,
         tool_results: [{
-          tool_id: "gateway_preview",
+          tool_id: "gateway_enforcement",
           status: "failed",
           error_code: "simulated_tool_failure",
           latency_ms: 0.1,
@@ -166,6 +210,13 @@ function installFetch(options: { legacyHealth?: boolean } = {}) {
     throw new Error(`Unexpected request: ${url}`);
   }));
   return requests;
+}
+
+async function startRun() {
+  await screen.findByText("实验舱已就绪");
+  fireEvent.change(screen.getByLabelText("自定义 Prompt"), { target: { value: "SAFE_CUSTOM_INPUT" } });
+  fireEvent.click(screen.getByRole("button", { name: "开始调查" }));
+  await screen.findByText("证据到达顺序");
 }
 
 describe("security lab workspace", () => {
@@ -231,20 +282,177 @@ describe("security lab workspace", () => {
     expect(screen.getByText(/不构成严格因果证明/)).toBeInTheDocument();
   });
 
-  it("dry-runs a fixed tool and keeps a failed block action blocked", async () => {
-    installFetch();
+  it("separates tool preview from confirmed platform-internal execution", async () => {
+    const requests = installFetch();
     render(<App />);
-    await screen.findByText("实验舱已就绪");
-    fireEvent.change(screen.getByLabelText("自定义 Prompt"), { target: { value: "SAFE_CUSTOM_INPUT" } });
-    fireEvent.click(screen.getByRole("button", { name: "开始调查" }));
-    await screen.findByText("证据到达顺序");
-    fireEvent.click(screen.getByRole("tab", { name: "处置沙箱" }));
-    fireEvent.click(screen.getByLabelText("模拟一次工具失败"));
-    fireEvent.click(screen.getByRole("button", { name: "模拟执行网关策略预览" }));
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
 
-    expect(await screen.findByText("模拟执行失败")).toBeInTheDocument();
-    expect(screen.getByText("保留动作：拦截")).toBeInTheDocument();
-    expect(screen.queryByText("保留动作：放行")).not.toBeInTheDocument();
+    const toolCenter = screen.getByRole("region", { name: "工具执行中心" });
+    expect(within(toolCenter).getAllByRole("button", { name: /^预览/ })).toHaveLength(3);
+    expect(within(toolCenter).getAllByRole("button", { name: /^确认执行/ })).toHaveLength(3);
+    const preview = within(toolCenter).getByRole("button", { name: "预览网关策略预览" });
+    expect(preview).toHaveAttribute("title", "预览网关策略预览");
+    fireEvent.click(preview);
+    expect(await within(toolCenter).findByText("预览失败")).toBeInTheDocument();
+    expect(requests.some((item) => item.url.endsWith("/tools/gateway_enforcement/dry-run"))).toBe(true);
+    expect(requests.some((item) => item.url.includes("/execute"))).toBe(false);
+  });
+
+  it("requires explicit confirmation, focuses cancel, and cancels without a request", async () => {
+    const requests = installFetch();
+    render(<App />);
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+    const executeButton = screen.getByRole("button", { name: "确认执行网关策略预览" });
+    fireEvent.click(executeButton);
+
+    const dialog = screen.getByRole("dialog", { name: "确认平台内部执行" });
+    expect(dialog.tagName).toBe("DIALOG");
+    expect(within(dialog).getByText(/仅在本平台内部执行/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(executeButton).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "确认执行网关策略预览" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(requests.some((item) => item.url.includes("/execute"))).toBe(false);
+  });
+
+  it("posts only confirmation and a UUID, then renders one verifiable receipt", async () => {
+    const uuid = "00000000-0000-0000-0000-000000000099";
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(uuid);
+    const requests = installFetch({ history: [execution] });
+    render(<App />);
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认执行网关策略预览" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅在平台内部执行" }));
+
+    expect(await screen.findByText(execution.receipt_id)).toBeInTheDocument();
+    const executeRequest = requests.find((item) => item.url.endsWith("/tools/gateway_enforcement/execute"));
+    expect(JSON.parse(String(executeRequest?.init?.body))).toEqual({ confirmed: true, idempotency_key: uuid });
+    expect(screen.getAllByText(execution.receipt_id)).toHaveLength(1);
+    expect(screen.getByText("拦截")).toBeInTheDocument();
+    expect(screen.getByText("2026/08/28 18:20:30")).toBeInTheDocument();
+    const toolCenterText = screen.getByRole("region", { name: "工具执行中心" }).textContent ?? "";
+    for (const forbidden of [
+      "PRIVATE_IDEMPOTENCY_KEY", "PRIVATE_MODEL_DIGEST", "PRIVATE_CALIBRATION_DIGEST",
+      "PRIVATE_REASONING", "PRIVATE_PROMPT", "PRIVATE_SUFFIX", "PRIVATE_TOKEN_TEXT", "allow",
+    ]) {
+      expect(toolCenterText).not.toContain(forbidden);
+    }
+  });
+
+  it("restores evidence receipts with SHA-256 and a download command", async () => {
+    installFetch({ history: [evidenceExecution] });
+    render(<App />);
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+
+    expect(await screen.findByText(evidenceExecution.receipt_id)).toBeInTheDocument();
+    expect(screen.getByText(evidenceExecution.evidence_sha256)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "下载证据包" })).toHaveAttribute(
+      "href",
+      `/api/v1/lab/artifacts/${evidenceExecution.artifact_id}/download`,
+    );
+  });
+
+  it("keeps both row actions disabled while execution is pending", async () => {
+    let resolveExecution!: (value: Awaited<ReturnType<typeof response>>) => void;
+    const pendingExecution = new Promise<Awaited<ReturnType<typeof response>>>((resolve) => {
+      resolveExecution = resolve;
+    });
+    const requests = installFetch();
+    const fetchMock = vi.mocked(fetch);
+    const baseFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/execute")) {
+        requests.push({ url: String(input), init });
+        return pendingExecution as ReturnType<typeof fetch>;
+      }
+      if (baseFetch) return baseFetch(input, init) as ReturnType<typeof fetch>;
+      throw new Error(`Unexpected replacement request: ${String(input)}`);
+    });
+    render(<App />);
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认执行网关策略预览" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅在平台内部执行" }));
+
+    const row = screen.getByRole("article", { name: "网关策略预览" });
+    expect(within(row).getByRole("button", { name: "预览网关策略预览" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "正在执行网关策略预览" })).toBeDisabled();
+    resolveExecution(await response(execution));
+    expect(await screen.findByText(execution.receipt_id)).toBeInTheDocument();
+  });
+
+  it("retries network or 503 failures with the same per-tool UUID", async () => {
+    const uuid = "00000000-0000-0000-0000-000000000077";
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(uuid);
+    const requests = installFetch({ executeResponses: [
+      { payload: { error: { code: "lab_tool_storage_unavailable", message: "PRIVATE_RAW_ERROR" } }, ok: false, status: 503 },
+      { payload: execution, status: 200 },
+    ] });
+    render(<App />);
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "确认执行网关策略预览" }));
+      fireEvent.click(screen.getByRole("button", { name: "仅在平台内部执行" }));
+      if (attempt === 0) await screen.findByText("平台内部执行暂不可用，请重试。");
+    }
+
+    expect(await screen.findByText(execution.receipt_id)).toBeInTheDocument();
+    const bodies = requests
+      .filter((item) => item.url.endsWith("/tools/gateway_enforcement/execute"))
+      .map((item) => JSON.parse(String(item.init?.body)));
+    expect(bodies).toEqual([
+      { confirmed: true, idempotency_key: uuid },
+      { confirmed: true, idempotency_key: uuid },
+    ]);
+    expect(document.body).not.toHaveTextContent("PRIVATE_RAW_ERROR");
+  });
+
+  it("ignores stale execution history after switching runs", async () => {
+    const secondRun = { ...run, run_id: "lab_456", scenario_label: "第二次调查" };
+    let resolveFirstHistory!: (value: Awaited<ReturnType<typeof response>>) => void;
+    const firstHistory = new Promise<Awaited<ReturnType<typeof response>>>((resolve) => {
+      resolveFirstHistory = resolve;
+    });
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    let createCount = 0;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, init });
+      if (url === "/health") return response(health);
+      if (url === "/api/v1/lab/scenarios") return response(scenarios);
+      if (url === "/api/v1/lab/metrics") return response(metrics);
+      if (url === "/api/v1/lab/runs") return response(createCount++ === 0 ? run : secondRun, true, 201);
+      if (url === "/api/v1/lab/runs/lab_123/executions") return firstHistory;
+      if (url === "/api/v1/lab/runs/lab_456/executions") return response([]);
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    render(<App />);
+    await startRun();
+    fireEvent.change(screen.getByLabelText("自定义 Prompt"), { target: { value: "SECOND_SAFE_INPUT" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始调查" }));
+    await waitFor(() => expect(requests.some((item) => item.url === "/api/v1/lab/runs/lab_456/executions")).toBe(true));
+    resolveFirstHistory(await response([execution]));
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+
+    expect(screen.queryByText(execution.receipt_id)).not.toBeInTheDocument();
+    expect(requests.filter((item) => item.url.endsWith("/executions"))).toHaveLength(2);
+  });
+
+  it("loads execution history once per run under StrictMode effect replay", async () => {
+    const requests = installFetch();
+    render(<StrictMode><App /></StrictMode>);
+    await startRun();
+
+    expect(requests.filter((item) => item.url === "/api/v1/lab/runs/lab_123/executions")).toHaveLength(1);
   });
 
   it("renders legal knowledge citations and a redacted case report", async () => {
