@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
@@ -26,6 +26,7 @@ def _execution(**changes: object) -> LabToolExecution:
         "tool_id": LabToolId.GATEWAY_ENFORCEMENT,
         "idempotency_key": _KEY,
         "status": "succeeded",
+        "source_action": "block",
         "effective_action": "block",
         "receipt_id": "receipt-001",
         "artifact_id": "artifact-001",
@@ -105,6 +106,21 @@ def test_execution_records_are_frozen_and_use_the_internal_tool_ids() -> None:
         execution.status = "failed"  # type: ignore[misc]
 
 
+def test_execution_exposes_an_immutable_source_action_anchor() -> None:
+    execution = _execution()
+
+    assert execution.source_action == "block"
+    with pytest.raises(ValidationError, match="cannot be weaker"):
+        _execution(source_action="block", effective_action="allow")
+
+
+def test_legacy_tool_input_serializes_only_the_new_tool_id() -> None:
+    execution = _execution(tool_id="gateway_preview")
+
+    assert execution.tool_id is LabToolId.GATEWAY_ENFORCEMENT
+    assert execution.model_dump(mode="json")["tool_id"] == "gateway_enforcement"
+
+
 @pytest.mark.parametrize(
     "factory, forbidden_key",
     [
@@ -129,3 +145,30 @@ def test_artifact_json_never_serializes_its_internal_payload() -> None:
 
     assert "payload" not in public_json
     assert public_json["sha256"] == "sha256:" + "b" * 64
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"raw prompt: secret",
+        b'["evidence"]',
+        b'{"prompt":"secret"}',
+        b'{"receipt":"receipt-001", "decision":"block"}',
+    ],
+)
+def test_artifact_payload_requires_canonical_redacted_json_object(
+    payload: bytes,
+) -> None:
+    with pytest.raises(ValidationError):
+        _artifact(payload=payload)
+
+
+def test_persisted_created_at_requires_timezone_and_normalizes_to_utc() -> None:
+    with pytest.raises(ValidationError):
+        _artifact(created_at=datetime(2026, 8, 28, 8, 0))
+
+    artifact = _artifact(
+        created_at=datetime(2026, 8, 28, 10, 0, tzinfo=timezone(timedelta(hours=2)))
+    )
+
+    assert artifact.created_at == datetime(2026, 8, 28, 8, 0, tzinfo=UTC)

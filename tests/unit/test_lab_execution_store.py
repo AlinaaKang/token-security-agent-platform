@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -9,6 +9,7 @@ import pytest
 from app.lab.execution_models import LabArtifact, LabSecurityCase, LabToolExecution
 from app.lab.execution_store import SQLiteLabExecutionStore
 from app.lab.models import LabToolId
+from app.schemas import Decision
 
 
 _KEY = UUID("6f9619ff-8b86-d011-b42d-00cf4fc964ff")
@@ -22,6 +23,7 @@ def _execution(*, suffix: str = "001", created_at: datetime = _TIME) -> LabToolE
         tool_id=LabToolId.GATEWAY_ENFORCEMENT,
         idempotency_key=_KEY if suffix == "001" else UUID(int=int(suffix)),
         status="succeeded",
+        source_action="block",
         effective_action="block",
         receipt_id=f"receipt-{suffix}",
         artifact_id=f"artifact-{suffix}",
@@ -101,6 +103,24 @@ def test_store_lists_newest_execution_first_by_created_at(tmp_path: Path) -> Non
     store.close()
 
 
+def test_store_orders_instants_correctly_across_input_timezones(tmp_path: Path) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    older = _execution(
+        suffix="001",
+        created_at=datetime(2026, 8, 28, 9, 0, tzinfo=timezone(timedelta(hours=2))),
+    )
+    newer = _execution(
+        suffix="002",
+        created_at=datetime(2026, 8, 28, 8, 0, tzinfo=UTC),
+    )
+
+    store.commit_result(older)
+    store.commit_result(newer)
+
+    assert store.list_executions("run-001") == (newer, older)
+    store.close()
+
+
 def test_store_idempotency_key_keeps_only_one_execution(tmp_path: Path) -> None:
     store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
     execution = _execution()
@@ -127,6 +147,35 @@ def test_artifact_write_failure_rolls_back_the_execution(tmp_path: Path, monkeyp
     assert store.list_executions("run-001") == ()
     with pytest.raises(LookupError, match="artifact-001"):
         store.get_artifact("artifact-001")
+    store.close()
+
+
+def test_store_rejects_bypassed_artifact_privacy_validation_before_writing(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    unsafe = LabArtifact.model_construct(
+        **_artifact().model_dump(),
+        payload=b'{"prompt":"secret"}',
+    )
+
+    with pytest.raises(ValueError, match="forbidden field: prompt"):
+        store.commit_result(_execution(), artifact=unsafe)
+
+    assert store.list_executions("run-001") == ()
+    store.close()
+
+
+def test_store_rejects_a_bypassed_weaker_effective_action(tmp_path: Path) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    values = _execution().model_dump()
+    values.update(source_action=Decision.BLOCK, effective_action=Decision.ALLOW)
+    weaker = LabToolExecution.model_construct(**values)
+
+    with pytest.raises(ValueError, match="cannot be weaker"):
+        store.commit_result(weaker)
+
+    assert store.list_executions("run-001") == ()
     store.close()
 
 

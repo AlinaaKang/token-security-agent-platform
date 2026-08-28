@@ -4,6 +4,7 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 from uuid import UUID
@@ -12,12 +13,15 @@ from app.lab.execution_models import (
     LabArtifact,
     LabSecurityCase,
     LabToolExecution,
+    normalize_persisted_created_at,
+    validate_artifact_payload,
 )
-from app.lab.models import LabToolId, assert_public_payload
+from app.lab.models import LabToolId, assert_public_payload, safer_action
 
 
 _EXECUTION_COLUMNS = (
-    "execution_id, run_id, tool_id, idempotency_key, status, effective_action, "
+    "execution_id, run_id, tool_id, idempotency_key, status, source_action, "
+    "effective_action, "
     "receipt_id, artifact_id, error_code, evidence_sha256, latency_ms, created_at"
 )
 _CASE_COLUMNS = (
@@ -106,6 +110,7 @@ class SQLiteLabExecutionStore:
                 tool_id TEXT NOT NULL,
                 idempotency_key TEXT NOT NULL,
                 status TEXT NOT NULL,
+                source_action TEXT NOT NULL,
                 effective_action TEXT NOT NULL,
                 receipt_id TEXT,
                 artifact_id TEXT,
@@ -151,6 +156,20 @@ class SQLiteLabExecutionStore:
                 ON lab_tool_executions(run_id, created_at DESC, execution_id DESC);
             """
         )
+        execution_columns = {
+            row[1]
+            for row in self._connection.execute(
+                "PRAGMA table_info(lab_tool_executions)"
+            )
+        }
+        if "source_action" not in execution_columns:
+            self._connection.execute(
+                "ALTER TABLE lab_tool_executions ADD COLUMN source_action TEXT"
+            )
+            self._connection.execute(
+                "UPDATE lab_tool_executions SET source_action = effective_action "
+                "WHERE source_action IS NULL"
+            )
         self._connection.commit()
 
     @contextmanager
@@ -177,6 +196,7 @@ class SQLiteLabExecutionStore:
 
     def _insert_execution(self, execution: LabToolExecution) -> None:
         values = execution.model_dump(mode="json")
+        values["created_at"] = _serialized_created_at(execution.created_at)
         self._connection.execute(
             f"INSERT INTO lab_tool_executions ({_EXECUTION_COLUMNS}) "
             f"VALUES ({', '.join('?' for _ in values)})",
@@ -185,6 +205,7 @@ class SQLiteLabExecutionStore:
 
     def _insert_security_case(self, security_case: LabSecurityCase) -> None:
         values = security_case.model_dump(mode="json")
+        values["created_at"] = _serialized_created_at(security_case.created_at)
         values["semantic_categories"] = _json_array(values["semantic_categories"])
         values["knowledge_ids"] = _json_array(values["knowledge_ids"])
         self._connection.execute(
@@ -195,6 +216,7 @@ class SQLiteLabExecutionStore:
 
     def _insert_artifact(self, artifact: LabArtifact) -> None:
         values = artifact.model_dump(mode="json")
+        values["created_at"] = _serialized_created_at(artifact.created_at)
         values["payload"] = sqlite3.Binary(artifact.payload)
         ordered_values = tuple(values[column] for column in _ARTIFACT_COLUMNS.split(", "))
         self._connection.execute(
@@ -210,16 +232,25 @@ def _validate_result(
     artifact: LabArtifact | None,
 ) -> None:
     assert_public_payload(execution)
+    if execution.effective_action != safer_action(
+        execution.source_action, execution.effective_action
+    ):
+        raise ValueError("effective_action cannot be weaker than source_action")
+    normalize_persisted_created_at(execution.created_at)
     if security_case is not None:
         assert_public_payload(security_case)
+        normalize_persisted_created_at(security_case.created_at)
         if (
             security_case.run_id != execution.run_id
             or security_case.execution_id != execution.execution_id
             or security_case.receipt_id != execution.receipt_id
+            or security_case.effective_action != execution.effective_action
         ):
             raise ValueError("security case must belong to the execution")
     if artifact is not None:
         assert_public_payload(artifact)
+        validate_artifact_payload(artifact.media_type, artifact.payload)
+        normalize_persisted_created_at(artifact.created_at)
         if (
             artifact.run_id != execution.run_id
             or artifact.execution_id != execution.execution_id
@@ -230,6 +261,12 @@ def _validate_result(
 
 def _json_array(value: object) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+
+
+def _serialized_created_at(value: object) -> str:
+    if not isinstance(value, datetime):
+        raise ValueError("persisted created_at must be a datetime")
+    return normalize_persisted_created_at(value).isoformat().replace("+00:00", "Z")
 
 
 def _execution_from_row(row: sqlite3.Row) -> LabToolExecution:
