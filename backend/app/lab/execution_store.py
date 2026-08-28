@@ -34,6 +34,20 @@ _CASE_COLUMNS = (
 _ARTIFACT_COLUMNS = (
     "artifact_id, run_id, execution_id, media_type, payload, sha256, created_at"
 )
+_SCHEMA_VERSION = 1
+_SCHEMA_TABLE = "lab_execution_schema"
+_TABLE_COLUMNS = {
+    "lab_tool_executions": tuple(_EXECUTION_COLUMNS.split(", ")),
+    "lab_security_cases": tuple(_CASE_COLUMNS.split(", ")),
+    "lab_artifacts": tuple(_ARTIFACT_COLUMNS.split(", ")),
+    _SCHEMA_TABLE: ("schema_version",),
+}
+_UNSUPPORTED_SCHEMA_MESSAGE = "lab execution store schema is unsupported"
+
+
+class UnsupportedLabExecutionSchemaError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__(_UNSUPPORTED_SCHEMA_MESSAGE)
 
 
 class SQLiteLabExecutionStore:
@@ -43,9 +57,13 @@ class SQLiteLabExecutionStore:
         self._lock = threading.RLock()
         self._connection = sqlite3.connect(path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
-        with self._lock:
-            self._connection.execute("PRAGMA foreign_keys = ON")
-            self._create_schema()
+        try:
+            with self._lock:
+                self._connection.execute("PRAGMA foreign_keys = ON")
+                self._initialize_schema()
+        except BaseException:
+            self._connection.close()
+            raise
 
     def get_by_idempotency(
         self, run_id: str, tool_id: LabToolId, idempotency_key: UUID
@@ -102,9 +120,42 @@ class SQLiteLabExecutionStore:
         with self._lock:
             self._connection.close()
 
+    def _initialize_schema(self) -> None:
+        existing_tables = {
+            row[0]
+            for row in self._connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+            if row[0] in _TABLE_COLUMNS
+        }
+        if not existing_tables:
+            self._create_schema()
+            return
+        if existing_tables != set(_TABLE_COLUMNS):
+            raise UnsupportedLabExecutionSchemaError
+        for table, expected_columns in _TABLE_COLUMNS.items():
+            actual_columns = tuple(
+                row[1]
+                for row in self._connection.execute(f"PRAGMA table_info({table})")
+            )
+            if actual_columns != expected_columns:
+                raise UnsupportedLabExecutionSchemaError
+        versions = tuple(
+            row[0]
+            for row in self._connection.execute(
+                f"SELECT schema_version FROM {_SCHEMA_TABLE}"
+            )
+        )
+        if versions != (_SCHEMA_VERSION,):
+            raise UnsupportedLabExecutionSchemaError
+
     def _create_schema(self) -> None:
         self._connection.executescript(
             """
+            CREATE TABLE lab_execution_schema (
+                schema_version INTEGER PRIMARY KEY
+            );
+            INSERT INTO lab_execution_schema (schema_version) VALUES (1);
             CREATE TABLE IF NOT EXISTS lab_tool_executions (
                 execution_id TEXT PRIMARY KEY,
                 run_id TEXT NOT NULL,
@@ -160,44 +211,6 @@ class SQLiteLabExecutionStore:
             CREATE INDEX IF NOT EXISTS idx_lab_tool_executions_run_created
                 ON lab_tool_executions(run_id, created_at DESC, execution_id DESC);
             """
-        )
-        execution_columns = {
-            row[1]
-            for row in self._connection.execute(
-                "PRAGMA table_info(lab_tool_executions)"
-            )
-        }
-        if "source_action" not in execution_columns:
-            self._connection.execute(
-                "ALTER TABLE lab_tool_executions ADD COLUMN source_action TEXT"
-            )
-            self._connection.execute(
-                "UPDATE lab_tool_executions SET source_action = effective_action "
-                "WHERE source_action IS NULL"
-            )
-        for column in (
-            "model_provenance_sha256",
-            "calibration_provenance_sha256",
-            "knowledge_snapshot_sha256",
-            "knowledge_ids",
-        ):
-            if column not in execution_columns:
-                self._connection.execute(
-                    f"ALTER TABLE lab_tool_executions ADD COLUMN {column} TEXT"
-                )
-        self._connection.execute(
-            "UPDATE lab_tool_executions SET model_provenance_sha256 = ? "
-            "WHERE model_provenance_sha256 IS NULL",
-            (_LEGACY_PROVENANCE_DIGEST,),
-        )
-        self._connection.execute(
-            "UPDATE lab_tool_executions SET calibration_provenance_sha256 = ? "
-            "WHERE calibration_provenance_sha256 IS NULL",
-            (_LEGACY_PROVENANCE_DIGEST,),
-        )
-        self._connection.execute(
-            "UPDATE lab_tool_executions SET knowledge_ids = '[]' "
-            "WHERE knowledge_ids IS NULL"
         )
         self._connection.commit()
 
@@ -277,6 +290,15 @@ def _validate_result(
             or security_case.effective_action != execution.effective_action
         ):
             raise ValueError("security case must belong to the execution")
+        if (
+            security_case.model_id != execution.model_provenance_sha256
+            or security_case.calibration_version
+            != execution.calibration_provenance_sha256
+            or security_case.knowledge_snapshot_version
+            != execution.knowledge_snapshot_sha256
+            or security_case.knowledge_ids != execution.knowledge_ids
+        ):
+            raise ValueError("security case provenance must match the execution")
     if artifact is not None:
         assert_public_payload(artifact)
         bundle = parse_canonical_evidence_bundle(
@@ -298,13 +320,12 @@ def _validate_result(
             or bundle.knowledge_ids != execution.knowledge_ids
         ):
             raise ValueError("artifact provenance must match the execution")
+        if bundle.effective_action != execution.effective_action:
+            raise ValueError("artifact action must match the execution")
 
 
 def _json_array(value: object) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
-
-
-_LEGACY_PROVENANCE_DIGEST = "sha256:" + "0" * 64
 
 
 def _serialized_created_at(value: object) -> str:

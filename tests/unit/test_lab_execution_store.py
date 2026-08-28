@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
@@ -8,7 +9,10 @@ from uuid import UUID
 import pytest
 
 from app.lab.execution_models import LabArtifact, LabSecurityCase, LabToolExecution
-from app.lab.execution_store import SQLiteLabExecutionStore
+from app.lab.execution_store import (
+    SQLiteLabExecutionStore,
+    UnsupportedLabExecutionSchemaError,
+)
 from app.lab.models import LabToolId
 from app.schemas import Decision
 
@@ -65,26 +69,28 @@ def _execution(*, suffix: str = "001", created_at: datetime = _TIME) -> LabToolE
     )
 
 
-def _security_case() -> LabSecurityCase:
-    return LabSecurityCase(
-        case_id="case-001",
-        run_id="run-001",
-        created_at=_TIME,
-        risk_score=0.95,
-        semantic_severity="unsafe",
-        semantic_categories=("jailbreak",),
-        detector_status="token_anomaly_candidate",
-        anomaly_char_start=9,
-        fusion_reason="semantic_unsafe",
-        effective_action="block",
-        handling_status="open",
-        knowledge_ids=("owasp-llm01-prompt-injection",),
-        model_id=_MODEL_PROVENANCE,
-        calibration_version=_CALIBRATION_PROVENANCE,
-        knowledge_snapshot_version=_SNAPSHOT_PROVENANCE,
-        execution_id="execution-001",
-        receipt_id="receipt-001",
-    )
+def _security_case(**changes: object) -> LabSecurityCase:
+    values: dict[str, object] = {
+        "case_id": "case-001",
+        "run_id": "run-001",
+        "created_at": _TIME,
+        "risk_score": 0.95,
+        "semantic_severity": "unsafe",
+        "semantic_categories": ("jailbreak",),
+        "detector_status": "token_anomaly_candidate",
+        "anomaly_char_start": 9,
+        "fusion_reason": "semantic_unsafe",
+        "effective_action": "block",
+        "handling_status": "open",
+        "knowledge_ids": ("owasp-llm01-prompt-injection",),
+        "model_id": _MODEL_PROVENANCE,
+        "calibration_version": _CALIBRATION_PROVENANCE,
+        "knowledge_snapshot_version": _SNAPSHOT_PROVENANCE,
+        "execution_id": "execution-001",
+        "receipt_id": "receipt-001",
+    }
+    values.update(changes)
+    return LabSecurityCase.model_validate(values)
 
 
 def _artifact(**changes: object) -> LabArtifact:
@@ -122,6 +128,16 @@ def test_store_creates_three_tables_and_commits_related_records_atomically(
     }
     assert {"lab_tool_executions", "lab_security_cases", "lab_artifacts"} <= tables
     store.close()
+
+
+def test_store_reopens_the_current_schema(tmp_path: Path) -> None:
+    path = tmp_path / "lab.sqlite3"
+    SQLiteLabExecutionStore(path).close()
+
+    reopened = SQLiteLabExecutionStore(path)
+
+    assert reopened.list_executions("run-001") == ()
+    reopened.close()
 
 
 def test_store_lists_newest_execution_first_by_created_at(tmp_path: Path) -> None:
@@ -242,6 +258,189 @@ def test_store_rejects_a_schema_valid_artifact_with_unbound_provenance(
 
     assert store.list_executions("run-001") == ()
     store.close()
+
+
+def test_store_rejects_an_artifact_action_that_differs_from_its_execution(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    mismatched = _artifact(
+        payload=_canonical_evidence_payload(effective_action="allow")
+    )
+
+    with pytest.raises(ValueError, match="artifact action must match"):
+        store.commit_result(_execution(), artifact=mismatched)
+
+    assert store.list_executions("run-001") == ()
+    assert store._connection.execute("SELECT COUNT(*) FROM lab_artifacts").fetchone()[
+        0
+    ] == 0
+    store.close()
+
+
+@pytest.mark.parametrize(
+    ("field", "mismatched_value"),
+    [
+        ("model_id", "sha256:" + "f" * 64),
+        ("calibration_version", "sha256:" + "f" * 64),
+        ("knowledge_snapshot_version", None),
+        ("knowledge_ids", ()),
+    ],
+)
+def test_store_rejects_security_case_provenance_that_differs_from_its_execution(
+    tmp_path: Path, field: str, mismatched_value: object
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+
+    with pytest.raises(ValueError, match="case provenance must match"):
+        store.commit_result(
+            _execution(), security_case=_security_case(**{field: mismatched_value})
+        )
+
+    assert store.list_executions("run-001") == ()
+    assert store._connection.execute(
+        "SELECT COUNT(*) FROM lab_security_cases"
+    ).fetchone()[0] == 0
+    store.close()
+
+
+def test_store_rejects_sentinel_migrated_round_2_artifacts_without_reading_them(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lab.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE lab_tool_executions (
+            execution_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            tool_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            status TEXT NOT NULL,
+            source_action TEXT NOT NULL,
+            effective_action TEXT NOT NULL,
+            model_provenance_sha256 TEXT,
+            calibration_provenance_sha256 TEXT,
+            knowledge_snapshot_sha256 TEXT,
+            knowledge_ids TEXT,
+            receipt_id TEXT,
+            artifact_id TEXT,
+            error_code TEXT,
+            evidence_sha256 TEXT,
+            latency_ms REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, tool_id, idempotency_key)
+        );
+        CREATE TABLE lab_security_cases (
+            case_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            risk_score REAL NOT NULL,
+            semantic_severity TEXT NOT NULL,
+            semantic_categories TEXT NOT NULL,
+            detector_status TEXT NOT NULL,
+            anomaly_char_start INTEGER,
+            fusion_reason TEXT NOT NULL,
+            effective_action TEXT NOT NULL,
+            handling_status TEXT NOT NULL,
+            knowledge_ids TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            calibration_version TEXT NOT NULL,
+            knowledge_snapshot_version TEXT,
+            execution_id TEXT NOT NULL UNIQUE,
+            receipt_id TEXT
+        );
+        CREATE TABLE lab_artifacts (
+            artifact_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            execution_id TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            payload BLOB NOT NULL,
+            sha256 TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    connection.execute(
+        "INSERT INTO lab_tool_executions VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "execution-legacy",
+            "run-legacy",
+            "evidence_bundle",
+            str(_KEY),
+            "succeeded",
+            "block",
+            "block",
+            "sha256:" + "0" * 64,
+            "sha256:" + "0" * 64,
+            None,
+            "[]",
+            "receipt-legacy",
+            "artifact-legacy",
+            None,
+            "sha256:" + "a" * 64,
+            1.0,
+            "2026-08-28T08:00:00Z",
+        ),
+    )
+    legacy_payload = json.dumps(
+        {
+            "artifact_kind": "evidence_bundle",
+            "calibration_version": "legacy-free-form-version",
+            "detector_status": "token_anomaly_candidate",
+            "effective_action": "block",
+            "fusion_reason": "semantic_unsafe",
+            "knowledge_ids": [],
+            "knowledge_snapshot_version": "legacy-free-form-snapshot",
+            "model_id": "legacy-free-form-model",
+            "prior_execution_ids": [],
+            "prior_receipt_ids": [],
+            "risk_score": 0.95,
+            "schema_version": 1,
+            "semantic_categories": ["jailbreak"],
+            "semantic_severity": "unsafe",
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8") + b"\n"
+    connection.execute(
+        "INSERT INTO lab_artifacts VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "artifact-legacy",
+            "run-legacy",
+            "execution-legacy",
+            "application/json",
+            legacy_payload,
+            "sha256:" + "b" * 64,
+            "2026-08-28T08:00:00Z",
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(UnsupportedLabExecutionSchemaError) as raised:
+        SQLiteLabExecutionStore(path)
+
+    assert str(raised.value) == "lab execution store schema is unsupported"
+    connection = sqlite3.connect(path)
+    execution_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(lab_tool_executions)")
+    }
+    tables = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    assert "model_provenance_sha256" in execution_columns
+    assert "lab_execution_schema" not in tables
+    assert connection.execute("SELECT COUNT(*) FROM lab_tool_executions").fetchone()[
+        0
+    ] == 1
+    assert connection.execute("SELECT COUNT(*) FROM lab_artifacts").fetchone()[0] == 1
+    connection.close()
 
 
 def test_store_rejects_a_bypassed_weaker_effective_action(tmp_path: Path) -> None:
