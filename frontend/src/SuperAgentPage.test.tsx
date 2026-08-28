@@ -122,6 +122,9 @@ describe("bounded SuperAgent workspace", () => {
     expect(screen.getByText("内部网关状态")).toBeInTheDocument();
     expect(screen.getByText("receipt_gateway")).toBeInTheDocument();
     expect(screen.getByText("owasp-llm01-prompt-injection")).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("token-security-superagent-mission-id")).toBe(
+      blockMission.mission_id,
+    );
     expect(document.body.textContent).not.toContain(PRIVATE_SENTINEL);
   });
 
@@ -151,5 +154,27 @@ describe("bounded SuperAgent workspace", () => {
       `/api/v1/superagent/missions/${blockMission.mission_id}`,
       undefined,
     );
+  });
+
+  it("clears an expired mission id without blocking the workspace", async () => {
+    window.sessionStorage.setItem(
+      "token-security-superagent-mission-id",
+      blockMission.mission_id,
+    );
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/lab/scenarios") return response(scenarios);
+      if (url === "/api/v1/superagent/capabilities") return response(capabilities);
+      if (url.endsWith(blockMission.mission_id)) {
+        return response({ error: { message: "任务已过期" } }, false, 410);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "启动自主任务" })).toBeEnabled();
+    expect(window.sessionStorage.getItem("token-security-superagent-mission-id")).toBeNull();
+    expect(screen.queryByText("任务闭环：平台内部响应全部完成。")).not.toBeInTheDocument();
   });
 });
