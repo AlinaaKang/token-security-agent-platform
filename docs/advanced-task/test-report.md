@@ -86,3 +86,25 @@ api_violations=0
 基础动作不可变：安全放行不执行处置工具，复核类动作只创建脱敏案件和证据包，拦截动作依次执行内部网关状态、脱敏案件和证据包。任一工具失败时进入 `degraded`，不降低动作、不无限重试。
 
 隐私扫描新增能力、任务创建、任务恢复和固定 422 四个响应面。页面和 API 均不返回原始 Prompt、攻击 suffix、Token 文本或 ID、检索词、模型原始输出或隐藏推理。完整边界与使用方式见 [挑战任务说明](../challenge-task.md)。
+
+## 9. SuperAgent AutoDL 验收
+
+最新后端已通过 Git 跟踪文件归档同步；未上传模型、受保护数据、SQLite、密钥、冻结报告或截图。归档在本地与远端解包后的三项关键源码 SHA-256 完全一致。
+
+健康检查满足 model、detector、semantic guard、knowledge、audit、evaluation、demo、lab 和 superagent 全部 ready；知识快照为 `official-v2`、18 cards，`deployment_match=true`，SuperAgent 声明 `internal_only=true`、最多三个工具和十二条事件。
+
+在线验收结果：安全任务以 `closed_safe` 收口，9 条事件、0 次工具；受保护拦截任务以 `contained` 收口，12 条事件，内部网关状态、安全案件和证据包按固定顺序各执行一次。两个任务响应的禁用字段递归扫描命中为 0。
+
+独立隐私扫描器覆盖 13 个 API 表面：
+
+```text
+privacy_verification=passed
+forbidden_key_hits=0
+tracked_path_hits=0
+json_errors=0
+sqlite_violations=0
+api_requests=13
+api_violations=0
+```
+
+Playwright 在 1440x900 和 390x844 验证 `/super-agent`，文档宽度分别等于视口宽度；安全回执为 0、拦截回执为 3，减少动效下事件动画为 `none`。同时回归 `/analyze`、`/lab` 和 `/challenge`，四个路由控制台均为 0 error。验收截图只保留在未跟踪临时目录，未写入报告或 Git。
