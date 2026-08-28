@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 import time
 from datetime import UTC, datetime
 from typing import Literal
@@ -45,6 +46,8 @@ class ExecutionBundle(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     execution: LabToolExecution
+    newly_created: bool
+    summary: Literal["平台内部执行"] = "平台内部执行"
     receipt_kind: GatewayReceiptKind | None = None
     security_case: LabSecurityCase | None = None
     artifact: LabArtifact | None = None
@@ -74,11 +77,13 @@ class LabToolExecutor:
                     provenance,
                     created_at,
                     latency_ms=(time.perf_counter() - started) * 1000,
-                )
+                ),
+                newly_created=False,
             )
         if existing is not None:
             return ExecutionBundle(
                 execution=existing,
+                newly_created=False,
                 receipt_kind=(
                     _GATEWAY_RECEIPTS[existing.effective_action]
                     if tool_id is LabToolId.GATEWAY_ENFORCEMENT
@@ -115,9 +120,16 @@ class LabToolExecutor:
         elif tool_id is LabToolId.SECURITY_CASE:
             security_case = _build_security_case(run, execution)
         elif tool_id is LabToolId.EVIDENCE_BUNDLE:
-            payload = self.canonical_evidence_bytes(
-                run, self._store.list_executions(run.run_id)
-            )
+            try:
+                prior_executions = self._store.list_executions(run.run_id)
+            except Exception:
+                return ExecutionBundle(
+                    execution=_persistence_failed_execution(
+                        execution, latency_ms=(time.perf_counter() - started) * 1000
+                    ),
+                    newly_created=False,
+                )
+            payload = self.canonical_evidence_bytes(run, prior_executions)
             artifact = LabArtifact(
                 artifact_id=_new_id("artifact_"),
                 run_id=run.run_id,
@@ -147,15 +159,41 @@ class LabToolExecutor:
             committed = self._store.commit_result(
                 execution, security_case=security_case, artifact=artifact
             )
+        except sqlite3.IntegrityError:
+            try:
+                existing = self._store.get_by_idempotency(
+                    run.run_id, tool_id, idempotency_key
+                )
+            except Exception:
+                existing = None
+            if existing is not None:
+                return ExecutionBundle(
+                    execution=existing,
+                    newly_created=False,
+                    receipt_kind=(
+                        _GATEWAY_RECEIPTS[existing.effective_action]
+                        if tool_id is LabToolId.GATEWAY_ENFORCEMENT
+                        and existing.receipt_id is not None
+                        else None
+                    ),
+                )
+            return ExecutionBundle(
+                execution=_persistence_failed_execution(
+                    execution, latency_ms=(time.perf_counter() - started) * 1000
+                ),
+                newly_created=False,
+            )
         except Exception:
             return ExecutionBundle(
                 execution=_persistence_failed_execution(
                     execution, latency_ms=(time.perf_counter() - started) * 1000
-                )
+                ),
+                newly_created=False,
             )
         if committed.execution_id != execution.execution_id:
             return ExecutionBundle(
                 execution=committed,
+                newly_created=False,
                 receipt_kind=(
                     _GATEWAY_RECEIPTS[committed.effective_action]
                     if tool_id is LabToolId.GATEWAY_ENFORCEMENT
@@ -165,6 +203,7 @@ class LabToolExecutor:
             )
         return ExecutionBundle(
             execution=committed,
+            newly_created=True,
             receipt_kind=receipt_kind,
             security_case=security_case,
             artifact=artifact,
@@ -256,6 +295,7 @@ def _persistence_failed_execution(
 ) -> LabToolExecution:
     return execution.model_copy(
         update={
+            "execution_id": _failed_execution_id(execution.idempotency_key),
             "status": LabExecutionStatus.FAILED,
             "receipt_id": None,
             "artifact_id": None,
@@ -276,7 +316,7 @@ def _new_persistence_failed_execution(
     latency_ms: float,
 ) -> LabToolExecution:
     return LabToolExecution(
-        execution_id=_new_id("exec_"),
+        execution_id=_failed_execution_id(idempotency_key),
         run_id=run.run_id,
         tool_id=tool_id,
         idempotency_key=idempotency_key,
@@ -302,6 +342,10 @@ def _knowledge_ids(run: LabRunResult) -> tuple[str, ...]:
 
 def _new_id(prefix: str) -> str:
     return prefix + uuid4().hex
+
+
+def _failed_execution_id(idempotency_key: UUID) -> str:
+    return "failed_" + idempotency_key.hex
 
 
 def _opaque_digest(namespace: str, value: object) -> str:

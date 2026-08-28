@@ -107,6 +107,7 @@ def test_injected_failure_uses_a_fixed_error_and_never_downgrades_block() -> Non
     assert result.error_code == "simulated_tool_failure"
     assert result.effective_action == "block"
     assert result.evidence_sha256 is None
+    assert "预览" in result.artifact_summary
 
 
 def test_dry_run_result_contains_no_execution_parameters() -> None:

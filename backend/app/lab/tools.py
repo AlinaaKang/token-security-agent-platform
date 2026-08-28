@@ -60,7 +60,7 @@ def execute_dry_run(
             error_code="simulated_tool_failure",
             latency_ms=(time.perf_counter() - started) * 1000,
             effective_action=safer_action(plan.effective_action, Decision.REVIEW),
-            artifact_summary="模拟工具失败；保留基础动作或升级人工复核。",
+            artifact_summary="预览模拟工具失败；保留基础动作或升级人工复核。",
         )
 
     evidence_sha256 = None
