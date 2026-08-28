@@ -48,9 +48,9 @@ def test_tool_request_has_no_free_form_execution_parameters() -> None:
         "inject_failure": True
     }
     assert {tool.value for tool in LabToolId} == {
-        "gateway_preview",
-        "soc_case_preview",
-        "evidence_export_preview",
+        "gateway_enforcement",
+        "security_case",
+        "evidence_bundle",
     }
 
     with pytest.raises(ValidationError):

@@ -37,9 +37,24 @@ FORBIDDEN_PUBLIC_KEYS = frozenset(
 
 
 class LabToolId(StrEnum):
-    GATEWAY_PREVIEW = "gateway_preview"
-    SOC_CASE_PREVIEW = "soc_case_preview"
-    EVIDENCE_EXPORT_PREVIEW = "evidence_export_preview"
+    GATEWAY_ENFORCEMENT = "gateway_enforcement"
+    SECURITY_CASE = "security_case"
+    EVIDENCE_BUNDLE = "evidence_bundle"
+
+    # Compatibility aliases keep the current preview-only dry run importable
+    # until its API migration explicitly adopts the persistent tools.
+    GATEWAY_PREVIEW = GATEWAY_ENFORCEMENT
+    SOC_CASE_PREVIEW = SECURITY_CASE
+    EVIDENCE_EXPORT_PREVIEW = EVIDENCE_BUNDLE
+
+    @classmethod
+    def _missing_(cls, value: object) -> LabToolId | None:
+        legacy_values = {
+            "gateway_preview": cls.GATEWAY_ENFORCEMENT,
+            "soc_case_preview": cls.SECURITY_CASE,
+            "evidence_export_preview": cls.EVIDENCE_BUNDLE,
+        }
+        return legacy_values.get(value) if isinstance(value, str) else None
 
 
 class LabToolPlan(BaseModel):
