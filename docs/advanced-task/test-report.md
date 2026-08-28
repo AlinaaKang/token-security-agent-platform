@@ -1,73 +1,76 @@
 # 进阶任务测试报告
 
-报告日期：2026-08-26
+报告日期：2026-08-29
 
 ## 1. 自动验证
 
-| 范围 | 结果 |
+| 范围 | 本轮结果 |
 | --- | --- |
-| 后端单元/集成/回归 | 194 passed，1 skipped |
-| 前端交互 | 12 passed |
-| TypeScript + Vite 构建 | 通过，1595 modules transformed |
-| AutoDL FTS 跨线程回归 | 8 passed |
-| 报告/失败路径定向测试 | 39 passed |
+| 后端单元/集成/回归 | 483 passed，1 skipped，0 failed |
+| 前端交互 | 131 passed，0 failed |
+| TypeScript + Vite 构建 | 通过，1608 modules transformed |
+| `/lab` 聚焦前端 | 18 passed |
+| Windows PowerShell 5.1 API 隐私回归 | 1 passed |
 
-唯一 skipped 是本机未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的真实 GPU runtime 测试；AutoDL 已完成真实双模型验收。
+后端全量测试使用项目 Python 环境并显式设置 `PYTHONPATH=backend`。唯一 skipped 是本机未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的真实 GPU runtime 集成测试；真实模型链路由 AutoDL 浏览器验收覆盖。
 
 ## 2. AutoDL 部署状态
 
-环境：RTX 4090 D 24GB，Qwen2.5-7B-Instruct，Qwen3Guard-Gen-0.6B。
+环境为 RTX 4090 D 24GB、Qwen2.5-7B-Instruct 和 Qwen3Guard-Gen-0.6B。通过本机 SSH 隧道访问远端 `127.0.0.1:8000`，未开放公网 API。
 
-健康检查中 model、detector、semantic_guard、knowledge、audit、evaluation、demo 全部 ready；知识快照为 `official-v1`、12 cards，CPD 校准为 `qwen25-7b-cpd-paper-v2`，evaluation `deployment_match=true`。API 日志错误数为 0。
+健康检查实测：model、detector、semantic_guard、knowledge、audit、evaluation、demo、lab 全部 ready；知识快照 `official-v2`、18 cards，`deployment_match=true`，实验舱 `tool_storage=sqlite`。当前 API 由 Git 跟踪文件归档部署，未上传密钥、截图、SQLite 或受保护数据。
 
-部署中发现并修复了一个真实并发问题：SQLite 内存 FTS 连接在启动线程创建、FastAPI 工作线程使用时触发 `sqlite3.ProgrammingError`。新增跨线程红测试后，连接改为允许跨线程并用锁串行化只读 FTS 查询；未改变权重、排序或 Top-3。
+## 3. 工具端到端验收
 
-随后端到端代理验收又发现知识增强合并使用 `model_copy(update=model_dump())` 跳过嵌套类型重验证，API 展示正常但审计读取 `.knowledge_id` 时触发 `AttributeError`。新增工作流强类型红测试后，最终 `AnalysisResult` 在合并边界重新验证。真实请求复验 `audit_persisted=true`，事件记录的 request ID、`official-v1` 和 `fallback` 状态均匹配。
+Chromium 在 1440x900 下创建了一个无害场景和一个受保护 GCG 场景，并完成：
 
-## 3. 冻结检索评测
+- 三种工具逐一预览，均显示“预览完成”；
+- 打开确认对话框后取消一次，回执数保持 0；
+- 分别执行网关、工单、证据包，形成 3 条平台内部回执；
+- 用同一 UUID 重放一次网关执行，首次 201、重放 200，`execution_id` 相同且无重复；
+- 下载 evidence JSON，在浏览器重新计算 SHA-256，与回执 `evidence_sha256` 一致；
+- 整页刷新后重新进入工具页，服务端执行历史和证据回执可恢复。
 
-冻结 fixture 36 条，覆盖 6 个风险域、9 个语义类别、CPD 有/无告警、Guard 不可用和 GCG/AutoDAN/AdvPrompter 标签。fixture 不含攻击指令或 Prompt。
+上述工具只改变平台内部 SQLite 状态，没有网络、子进程或外部安全设备副作用。
 
-| 指标 | 结果 |
-| --- | ---: |
-| Hit@1 | 94.44% |
-| Hit@3 | 97.22% |
-| MRR | 0.9583 |
-| 引用有效率 | 100.00% |
-| 动作一致率 | 100.00% |
+## 4. 隐私验证
 
-测试后未调整检索权重或 fixture。Jailbreak 风险域有 1 条未命中 Top-3，该限制保留并公开。
+浏览器流程完成后，使用 Windows PowerShell 5.1 对真实 AutoDL 隧道运行隐私验证：
 
-## 4. 真实受保护验收
+```text
+privacy_verification=passed
+forbidden_key_hits=0
+tracked_path_hits=0
+json_errors=0
+sqlite_violations=0
+api_requests=9
+api_violations=0
+```
 
-既有 6 条融合样本分别以 `off` 与 `report` 请求：完成 6/6 对，基础动作一致 6/6，错误 0，引用 17/17 有效。报告状态为 1 条模型生成、5 条模板回退。
+九个 HTTP 表面包括健康、场景、创建/读取 run、工具预览、确认执行、执行列表、证据下载和固定 422。扫描器只输出表面、类别与计数，不打印匹配值、响应正文或私人路径。PowerShell 7 与 Windows PowerShell 5.1 均有自动回归测试。
 
-冻结攻击 ID 验收为 GCG、AutoDAN、AdvPrompter 各 3 条：完成 9/9 对，基础动作一致 9/9，错误 0，引用 27/27 有效。9 条报告均在 3 秒边界后使用模板回退。
+## 5. 桌面与移动浏览器 QA
 
-这两组结果验证链路和引用，不代表知识问答准确率、Guard 准确率或总体 jailbreak 检出率。
+| 项目 | 结果 |
+| --- | --- |
+| 1440x900 `/lab` | 无重叠，确认、回执和下载可操作 |
+| 390x844 `/lab` | 文档宽度 390、视口宽度 390，无横向溢出 |
+| 移动端知识证据 | 每行 `scrollWidth <= clientWidth`，链接、建议和 ID 可换行 |
+| 命令标签 | 无裁切，预览与确认按钮保持稳定尺寸 |
+| 减少动效 | 持续旋转被关闭，文字忙碌状态仍可理解 |
+| 浏览器控制台 | 0 errors |
 
-## 5. 性能与资源
+`/analyze` 仍显示“检测服务已连接”和“开始检测”主流程；`/challenge` 仍可进入三关互动挑战，并依次点击语义侦探、曲线侦探和小队队长后显示本关线索。基础页面未被工具执行中心替换。
 
-| 项目 | P50 | P95 |
-| --- | ---: | ---: |
-| 6 条样本 FTS 检索 | 0.219 ms | 0.249 ms |
-| 9 个攻击 ID FTS 检索 | 0.240 ms | 0.372 ms |
-| 6 条报告生成 | 3015.675 ms | 3023.997 ms |
-| 9 个攻击 ID 报告生成 | 3021.123 ms | 3024.372 ms |
-| 6 条 report 端到端 | 3210.467 ms | 3316.867 ms |
-| 9 个攻击 ID report 端到端 | 3256.764 ms | 3308.770 ms |
+## 6. 现场发现与修复
 
-独立 100 次公开合成检索 P50/P95 为 0.041/0.045 ms。快照与索引的 Python 跟踪当前/峰值内存约 82,317/129,417 bytes。双模型空闲显存 16,336 MiB，验收后 16,508 MiB；OOM 计数 0。
+1. Windows PowerShell 5.1 不会自动加载 `System.Net.Http`，真实隐私命令曾返回固定 `unhandled_error`。新增 5.1 HTTP 红测试后显式加载程序集。
+2. `/lab` 的 run 只存在 React 内存，刷新后 UI 无法恢复回执。现在会话中只保存脱敏 run ID，再通过服务端 run 和 SQLite 恢复；不保存 Prompt 或 Token。
+3. 移动端知识链使用九列 `max-content`，页面本身不超宽但内容被内部裁剪。现在改为可换行证据链，并用浏览器宽度断言复核。
 
-## 6. 失败与隐私检查
+## 7. 未实现与不声明
 
-- 快照副本缺失 manifest 时加载被拒绝，活动快照未移动或删除。
-- 非法 JSON、未知引用和生成超时均由测试验证为模板回退。
-- 15 条受保护 Prompt 在 SQLite、API 日志、两份聚合报告中的命中均为 0。
-- 聚合报告禁止字段命中 0，Guard/report 原始输出未落盘。
-- 3 个 demo API 响应的非空 Token 文本或非零 Token ID 泄漏数为 0。
-- 原 schema v2 CPD 报告 SHA-256 仍为 `8dffdd87a734740cbf71ddf8a85701a3a85f324373ad9f7855f7cd613ebd3c87`。
-
-## 7. Web 验收
-
-使用安全合成 UI 数据检查 analysis、evaluation、events 三页的 1440x900 和 390x844，共 6 个页面状态。页面宽度均等于视口宽度；三段控制和知识长标题无溢出；宽表只在自身区域滚动；知识区域保护检索词命中 0。
+- 未接入深信服平台、外部防火墙、EDR、SIEM 或工单系统。
+- 不声明 BEAST、AutoDAN-HGA 检测覆盖。
+- 报告动作不变性有效状态为 `legacy_unverified`，目标未达标。
+- 自研平台参赛仍以赛事方书面允许替代为合规前提。
