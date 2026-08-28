@@ -13,6 +13,9 @@ import type {
   LabToolExecution,
   LabToolId,
   Mode,
+  SuperAgentCapabilities,
+  SuperAgentMissionRequest,
+  SuperAgentMissionResult,
 } from "./types";
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -87,4 +90,16 @@ export const api = {
     ),
   labArtifactDownloadUrl: (artifactId: string) =>
     "/api/v1/lab/artifacts/" + encodeURIComponent(artifactId) + "/download",
+  superAgentCapabilities: () =>
+    requestJson<SuperAgentCapabilities>("/api/v1/superagent/capabilities"),
+  createSuperAgentMission: (payload: SuperAgentMissionRequest) =>
+    requestJson<SuperAgentMissionResult>("/api/v1/superagent/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  getSuperAgentMission: (missionId: string) =>
+    requestJson<SuperAgentMissionResult>(
+      "/api/v1/superagent/missions/" + encodeURIComponent(missionId),
+    ),
 };

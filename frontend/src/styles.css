@@ -1862,7 +1862,7 @@ td:first-child { min-width: 128px; }
 }
 
 @media (max-width: 760px) {
-  .sidebar nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .sidebar nav { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .lab-control-band { grid-template-columns: 1fr; padding: 14px; }
   .lab-input-field textarea { min-height: 92px; height: 92px; }
   .lab-section-heading { align-items: flex-start; flex-direction: column; justify-content: center; padding-top: 9px; padding-bottom: 9px; }
@@ -1898,4 +1898,253 @@ td:first-child { min-width: 128px; }
 
 @media (prefers-reduced-motion: reduce) {
   .lab-tool-spinner { animation: none; }
+}
+
+/* SuperAgent: a bounded command track, not a conversational interface. */
+.superagent-page { max-width: 1540px; }
+.superagent-kicker {
+  margin-bottom: 7px;
+  color: var(--trusted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.superagent-control-band {
+  min-width: 0;
+  margin-bottom: 16px;
+  padding: 15px 17px;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--ink);
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: minmax(180px, .9fr) minmax(150px, .55fr) minmax(300px, 1.3fr) auto;
+  align-items: end;
+  gap: 13px;
+}
+.superagent-control-band label { min-width: 0; display: grid; gap: 7px; }
+.superagent-control-band label > span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.superagent-control-band select {
+  min-width: 0;
+  width: 100%;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--surface);
+}
+.superagent-bounds {
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.superagent-bounds span {
+  padding: 3px 6px;
+  color: var(--muted);
+  background: #e9eeec;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.superagent-start-button {
+  min-height: 44px;
+  padding: 0 15px;
+  border: 1px solid #0e6757;
+  border-radius: 3px;
+  color: #fff;
+  background: var(--trusted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.superagent-start-button:disabled { border-color: var(--line-strong); color: #87918e; background: #e8ecea; cursor: not-allowed; }
+.superagent-spinner { animation: superagent-spin .8s linear infinite; }
+@keyframes superagent-spin { to { transform: rotate(360deg); } }
+.superagent-error {
+  margin: 0 0 16px;
+  padding: 10px 13px;
+  border: 1px solid #e5b9ba;
+  color: var(--blocked);
+  background: var(--blocked-soft);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.superagent-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(245px, .62fr) minmax(0, 1.38fr);
+  gap: 16px;
+  align-items: start;
+}
+.superagent-role-board,
+.superagent-trace,
+.superagent-empty,
+.superagent-closure {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.superagent-section-heading {
+  min-height: 47px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.superagent-section-heading > div { display: flex; align-items: center; gap: 8px; }
+.superagent-section-heading strong { font-size: 13px; }
+.superagent-section-heading > span { color: var(--muted); font-size: 10px; text-align: right; }
+.superagent-role-list { display: grid; }
+.superagent-role-list article {
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.superagent-role-list article:last-child { border-bottom: 0; }
+.superagent-role-icon {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface-soft);
+  display: grid;
+  place-items: center;
+}
+.superagent-role-list article[class*="is-succeeded"] .superagent-role-icon { border-color: #9ccfc2; color: var(--trusted); background: var(--trusted-soft); }
+.superagent-role-list article[class*="is-failed"] .superagent-role-icon { color: var(--blocked); background: var(--blocked-soft); }
+.superagent-role-list article > div { min-width: 0; display: grid; gap: 4px; }
+.superagent-role-list strong { font-size: 11px; }
+.superagent-role-list small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.superagent-role-state { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.superagent-trace { border-top: 2px solid var(--ink); }
+.superagent-trace ol { margin: 0; padding: 8px 17px 12px; list-style: none; }
+.superagent-trace li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  animation: superagent-event-enter 240ms ease-out both;
+}
+.superagent-trace li:nth-child(2) { animation-delay: 30ms; }
+.superagent-trace li:nth-child(3) { animation-delay: 60ms; }
+.superagent-trace li:nth-child(4) { animation-delay: 90ms; }
+.superagent-trace li:nth-child(5) { animation-delay: 120ms; }
+@keyframes superagent-event-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.superagent-track-marker { position: relative; display: grid; justify-items: center; }
+.superagent-track-marker::after { content: ""; width: 1px; height: 100%; background: var(--line-strong); }
+.superagent-trace li:last-child .superagent-track-marker::after { display: none; }
+.superagent-track-marker span {
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 800;
+}
+.superagent-trace .phase-replan .superagent-track-marker span { border-color: #d6ad6d; color: var(--review); background: var(--review-soft); }
+.superagent-trace .phase-complete .superagent-track-marker span { border-color: #67a999; color: var(--trusted); background: var(--trusted-soft); }
+.superagent-event-body { min-width: 0; padding: 1px 0 15px; }
+.superagent-event-meta { display: flex; align-items: center; gap: 9px; }
+.superagent-event-meta strong { color: var(--trusted); font: 800 10px/1.3 Consolas, monospace; }
+.superagent-event-meta span { color: var(--muted); font-size: 10px; }
+.superagent-event-body p { margin: 5px 0 7px; font-size: 11px; line-height: 1.55; }
+.superagent-evidence-codes { display: flex; flex-wrap: wrap; gap: 5px; }
+.superagent-evidence-codes code {
+  max-width: 100%;
+  padding: 2px 5px;
+  overflow-wrap: anywhere;
+  color: #4f625d;
+  background: var(--surface-soft);
+  font-size: 9px;
+}
+.superagent-empty {
+  min-height: 390px;
+  border-top: 2px solid var(--ink);
+  color: var(--muted);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  text-align: center;
+}
+.superagent-empty strong { color: var(--ink); font-size: 14px; }
+.superagent-empty span { max-width: 410px; font-size: 11px; line-height: 1.6; }
+.superagent-closure { margin-top: 16px; border-top: 2px solid var(--trusted); }
+.superagent-closure.is-degraded { border-top-color: var(--blocked); }
+.superagent-closure-summary { display: grid; grid-template-columns: .65fr .9fr 1.45fr; border-bottom: 1px solid var(--line); }
+.superagent-closure-summary > div { min-width: 0; padding: 13px 16px; border-right: 1px solid var(--line); display: grid; gap: 5px; }
+.superagent-closure-summary > div:last-child { border-right: 0; }
+.superagent-closure-summary span { color: var(--muted); font-size: 9px; }
+.superagent-closure-summary strong { font-size: 12px; }
+.superagent-closure-summary code { overflow-wrap: anywhere; font-size: 10px; }
+.superagent-receipt-heading { min-height: 39px; padding: 8px 16px; background: var(--surface-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.superagent-receipt-heading strong { font-size: 11px; }
+.superagent-receipt-heading span { color: var(--muted); font-size: 9px; }
+.superagent-receipts article {
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(110px, .7fr);
+  align-items: center;
+  gap: 9px;
+  color: var(--trusted);
+}
+.superagent-receipts article.is-failed { color: var(--blocked); }
+.superagent-receipts article > div { min-width: 0; display: grid; gap: 3px; }
+.superagent-receipts article strong { color: var(--ink); font-size: 11px; }
+.superagent-receipts article small { color: var(--muted); font-size: 9px; }
+.superagent-receipts article code { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 9px; }
+.superagent-no-tools { margin: 0; padding: 18px 16px; border-top: 1px solid var(--line); color: var(--trusted); font-size: 11px; }
+.superagent-limitations { padding: 10px 16px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.superagent-limitations span { color: var(--muted); font-size: 9px; line-height: 1.5; }
+
+@media (max-width: 1100px) {
+  .superagent-control-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .superagent-start-button { width: 100%; }
+}
+
+@media (max-width: 760px) {
+  .sidebar nav a { font-size: 8px; }
+  .superagent-page .page-header { flex-direction: column; }
+  .superagent-page .readiness { max-width: none; justify-content: flex-start; }
+  .superagent-control-band { grid-template-columns: 1fr; padding: 13px; }
+  .superagent-workspace { grid-template-columns: 1fr; }
+  .superagent-role-list { grid-template-columns: 1fr; }
+  .superagent-role-list article { min-height: 62px; }
+  .superagent-closure-summary { grid-template-columns: 1fr; }
+  .superagent-closure-summary > div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .superagent-closure-summary > div:last-child { border-bottom: 0; }
+  .superagent-receipts article { grid-template-columns: 24px minmax(0, 1fr); }
+  .superagent-receipts article code { grid-column: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .superagent-spinner,
+  .superagent-trace li { animation: none; }
 }

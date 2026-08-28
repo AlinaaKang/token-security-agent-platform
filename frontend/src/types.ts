@@ -54,6 +54,12 @@ export interface HealthResponse {
     ready: boolean;
     reason: "disabled" | "unavailable" | "ready";
   };
+  superagent?: {
+    ready: boolean;
+    internal_only: true;
+    max_tool_calls: 3;
+    max_trace_events: 12;
+  };
 }
 
 export type LabToolId = "gateway_enforcement" | "security_case" | "evidence_bundle";
@@ -218,6 +224,80 @@ export interface LabMetrics {
   action_preservation_rate: number | null;
   latency_ms: { p50: number; p95: number };
   privacy_violation_count: number;
+}
+
+export type SuperAgentObjective = "investigate_and_respond";
+export type SuperAgentFinalStatus = "closed_safe" | "contained" | "review_required" | "degraded";
+export type SuperAgentTracePhase = "plan" | "act" | "observe" | "replan" | "complete";
+export type SuperAgentActor =
+  | "coordinator"
+  | "semantic_analyst"
+  | "token_analyst"
+  | "knowledge_analyst"
+  | "response_operator";
+export type SuperAgentEventStatus = "planned" | "succeeded" | "failed" | "skipped";
+
+export interface SuperAgentCapabilities {
+  ready: true;
+  internal_only: true;
+  objectives: SuperAgentObjective[];
+  actors: SuperAgentActor[];
+  max_tool_calls: 3;
+  max_trace_events: 12;
+  replanning_limit: 1;
+}
+
+export interface SuperAgentMissionRequest {
+  objective: SuperAgentObjective;
+  scenario_kind: "frozen";
+  sample_id: string;
+  mode: Mode;
+}
+
+export interface SuperAgentPlanStep {
+  sequence: number;
+  actor: SuperAgentActor;
+  action_code: string;
+  summary: string;
+}
+
+export interface SuperAgentTraceEvent {
+  sequence: number;
+  phase: SuperAgentTracePhase;
+  actor: SuperAgentActor;
+  status: SuperAgentEventStatus;
+  summary: string;
+  evidence_codes: string[];
+  tool_id: LabToolId | null;
+}
+
+export interface SuperAgentExecutionReference {
+  execution_id: string;
+  tool_id: LabToolId;
+  status: LabExecutionStatus;
+  source_action: Decision;
+  effective_action: Decision;
+  receipt_id: string | null;
+  artifact_id: string | null;
+  evidence_sha256: string | null;
+}
+
+export interface SuperAgentMissionResult {
+  mission_id: string;
+  run_id: string;
+  objective: SuperAgentObjective;
+  scenario_id: string;
+  scenario_label: string;
+  attack_family: string | null;
+  mode: Mode;
+  base_action: Decision;
+  final_status: SuperAgentFinalStatus;
+  initial_plan: SuperAgentPlanStep[];
+  final_plan: LabToolId[];
+  events: SuperAgentTraceEvent[];
+  executions: SuperAgentExecutionReference[];
+  limitations: string[];
+  created_at: string;
 }
 
 export type LabRunRequest =

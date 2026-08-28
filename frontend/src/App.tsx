@@ -1,4 +1,4 @@
-import { BarChart3, FileWarning, FlaskConical, Gamepad2, ScanLine, ShieldCheck } from "lucide-react";
+import { BarChart3, FileWarning, FlaskConical, Gamepad2, ScanLine, ShieldCheck, Workflow } from "lucide-react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
 
 import { AnalyzePage } from "./pages/AnalyzePage";
@@ -6,6 +6,7 @@ import { ChallengePage } from "./pages/ChallengePage";
 import { EvaluationPage } from "./pages/EvaluationPage";
 import { EventsPage } from "./pages/EventsPage";
 import { LabPage } from "./pages/LabPage";
+import { SuperAgentPage } from "./pages/SuperAgentPage";
 import "./styles.css";
 
 const navigation = [
@@ -13,6 +14,7 @@ const navigation = [
   { to: "/events", label: "安全事件", icon: FileWarning },
   { to: "/evaluation", label: "评测中心", icon: BarChart3 },
   { to: "/lab", label: "攻防实验舱", icon: FlaskConical },
+  { to: "/super-agent", label: "自主处置", icon: Workflow },
   { to: "/challenge", label: "Token 侦探挑战", icon: Gamepad2 },
 ];
 
@@ -39,6 +41,7 @@ function Shell() {
         <Route path="/events" element={<EventsPage />} />
         <Route path="/evaluation" element={<EvaluationPage />} />
         <Route path="/lab" element={<LabPage />} />
+        <Route path="/super-agent" element={<SuperAgentPage />} />
         <Route path="/challenge" element={<ChallengePage />} />
         <Route path="*" element={<Navigate to="/analyze" replace />} />
       </Routes>
