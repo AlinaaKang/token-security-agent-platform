@@ -1688,6 +1688,21 @@ td:first-child { min-width: 128px; }
   gap: 7px;
   font-size: 11px;
 }
+.lab-history-error button {
+  min-height: 30px;
+  margin-left: auto;
+  padding: 0 9px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: var(--blocked);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-weight: 700;
+  cursor: pointer;
+}
 .lab-tool-list { display: grid; }
 .lab-tool-list article {
   min-width: 0;

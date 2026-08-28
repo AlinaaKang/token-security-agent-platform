@@ -5,6 +5,7 @@ import {
   FileDown,
   LoaderCircle,
   Play,
+  RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -40,7 +41,10 @@ function mergeExecutions(
   for (const item of [...primary, ...secondary]) {
     if (!byId.has(item.execution_id)) byId.set(item.execution_id, item);
   }
-  return [...byId.values()];
+  return [...byId.values()].sort((left, right) => {
+    const createdAtOrder = Date.parse(right.created_at) - Date.parse(left.created_at);
+    return createdAtOrder || right.execution_id.localeCompare(left.execution_id);
+  });
 }
 
 function formatTimestamp(value: string): string {
@@ -72,11 +76,15 @@ export function LabToolCenter({ run, hidden = false }: LabToolCenterProps) {
   const [busy, setBusy] = useState<{ toolId: LabToolId; kind: "preview" | "execute" } | null>(null);
   const [confirmation, setConfirmation] = useState<LabToolId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [historyLoadFailed, setHistoryLoadFailed] = useState(false);
   const retryKeys = useRef(new Map<LabToolId, string>());
   const confirmationDialog = useRef<HTMLDialogElement | null>(null);
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
   const mounted = useRef(false);
-  const historyLoadRunId = useRef<string | null>(null);
+  const historyLoad = useRef<{
+    runId: string;
+    status: "loading" | "loaded";
+  } | null>(null);
   const currentRunId = useRef(run.run_id);
   currentRunId.current = run.run_id;
 
@@ -85,18 +93,24 @@ export function LabToolCenter({ run, hidden = false }: LabToolCenterProps) {
     return () => { mounted.current = false; };
   }, []);
 
-  useEffect(() => {
+  function loadHistory() {
     const runId = run.run_id;
-    if (historyLoadRunId.current === runId) return;
-    historyLoadRunId.current = runId;
+    if (historyLoad.current?.runId === runId) return;
+    const load: NonNullable<typeof historyLoad.current> = { runId, status: "loading" };
+    historyLoad.current = load;
+    setHistoryLoadFailed(false);
     api.listLabExecutions(runId).then((items) => {
+      if (historyLoad.current === load) load.status = "loaded";
       if (!mounted.current || currentRunId.current !== runId) return;
       setHistory((current) => mergeExecutions(items, current));
     }).catch(() => {
-      if (mounted.current && currentRunId.current === runId) {
-        setError("执行历史暂不可用，请稍后重试。");
-      }
+      if (historyLoad.current === load) historyLoad.current = null;
+      if (mounted.current && currentRunId.current === runId) setHistoryLoadFailed(true);
     });
+  }
+
+  useEffect(() => {
+    loadHistory();
   }, [run.run_id]);
 
   async function previewTool(toolId: LabToolId) {
@@ -170,6 +184,15 @@ export function LabToolCenter({ run, hidden = false }: LabToolCenterProps) {
       </header>
 
       {error ? <div className="lab-tool-error" role="status"><CircleAlert size={15} />{error}</div> : null}
+      {historyLoadFailed ? (
+        <div className="lab-tool-error lab-history-error" role="status">
+          <CircleAlert size={15} aria-hidden="true" />
+          <span>执行历史暂不可用。</span>
+          <button type="button" onClick={loadHistory}>
+            <RotateCcw size={14} aria-hidden="true" />重试执行历史
+          </button>
+        </div>
+      ) : null}
 
       <div className="lab-tool-list">
         {run.tool_plans.map((plan) => {

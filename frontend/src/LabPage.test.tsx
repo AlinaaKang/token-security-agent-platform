@@ -455,6 +455,72 @@ describe("security lab workspace", () => {
     expect(requests.filter((item) => item.url === "/api/v1/lab/runs/lab_123/executions")).toHaveLength(1);
   });
 
+  it("retries a failed StrictMode history load on an accessible user command", async () => {
+    const requests = installFetch();
+    const fetchMock = vi.mocked(fetch);
+    const baseFetch = fetchMock.getMockImplementation();
+    let historyAttempts = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/executions")) {
+        requests.push({ url, init });
+        historyAttempts += 1;
+        return historyAttempts === 1
+          ? response({ error: { code: "lab_tool_storage_unavailable", message: "PRIVATE_HISTORY_ERROR" } }, false, 503) as ReturnType<typeof fetch>
+          : response([execution]) as ReturnType<typeof fetch>;
+      }
+      if (baseFetch) return baseFetch(input, init) as ReturnType<typeof fetch>;
+      throw new Error(`Unexpected replacement request: ${url}`);
+    });
+    render(<StrictMode><App /></StrictMode>);
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+
+    const retry = await screen.findByRole("button", { name: "重试执行历史" });
+    expect(requests.filter((item) => item.url.endsWith("/executions"))).toHaveLength(1);
+    expect(document.body).not.toHaveTextContent("PRIVATE_HISTORY_ERROR");
+    fireEvent.click(retry);
+
+    expect(await screen.findByText(execution.receipt_id)).toBeInTheDocument();
+    expect(requests.filter((item) => item.url.endsWith("/executions"))).toHaveLength(2);
+  });
+
+  it("keeps newer execution receipts first when delayed history arrives", async () => {
+    const oldExecution = {
+      ...execution,
+      execution_id: "exec_00000000000000000000000000000000",
+      receipt_id: "receipt_00000000000000000000000000000000",
+      created_at: "2026-08-28T09:00:00Z",
+    };
+    let resolveHistory!: (value: Awaited<ReturnType<typeof response>>) => void;
+    const pendingHistory = new Promise<Awaited<ReturnType<typeof response>>>((resolve) => {
+      resolveHistory = resolve;
+    });
+    installFetch();
+    const fetchMock = vi.mocked(fetch);
+    const baseFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/executions")) return pendingHistory as ReturnType<typeof fetch>;
+      if (baseFetch) return baseFetch(input, init) as ReturnType<typeof fetch>;
+      throw new Error(`Unexpected replacement request: ${String(input)}`);
+    });
+    render(<App />);
+    await startRun();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认执行网关策略预览" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅在平台内部执行" }));
+    expect(await screen.findByText(execution.receipt_id)).toBeInTheDocument();
+
+    resolveHistory(await response([oldExecution, execution]));
+    expect(await screen.findByText(oldExecution.receipt_id)).toBeInTheDocument();
+    const ledger = screen.getByText("回执账本").closest(".lab-receipt-ledger");
+    const rows = ledger?.querySelectorAll(".lab-receipt-row") ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent(execution.receipt_id);
+    expect(rows[1]).toHaveTextContent(oldExecution.receipt_id);
+    expect(screen.getAllByText(execution.receipt_id)).toHaveLength(1);
+  });
+
   it("renders legal knowledge citations and a redacted case report", async () => {
     installFetch();
     render(<App />);
