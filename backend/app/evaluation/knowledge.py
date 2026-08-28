@@ -6,12 +6,17 @@ import platform
 import sqlite3
 import statistics
 import time
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.knowledge.models import KnowledgeId, KnowledgeSnapshot, RiskDomain
 from app.knowledge.query import RetrievalMetadata, SafeQueryBuilder
 from app.knowledge.retriever import LocalKnowledgeRetriever
+
+
+EvaluationSplit = Literal["development", "test"]
+TargetName = Literal["hit_at_3", "citation_validity", "decision_invariance"]
 
 
 class KnowledgeEvaluationCase(BaseModel):
@@ -36,12 +41,15 @@ class KnowledgeEvaluationReport(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: int = Field(ge=1, le=1)
+    split: EvaluationSplit
     case_count: int = Field(gt=0)
     hit_at_1: float = Field(ge=0, le=1, allow_inf_nan=False)
     hit_at_3: float = Field(ge=0, le=1, allow_inf_nan=False)
     mrr: float = Field(ge=0, le=1, allow_inf_nan=False)
     citation_validity: float = Field(ge=0, le=1, allow_inf_nan=False)
     decision_invariance: float = Field(ge=0, le=1, allow_inf_nan=False)
+    decision_invariance_basis: Literal["retrieval_has_no_decision_output"]
+    target_status: dict[TargetName, bool]
     domains: dict[RiskDomain, DomainRetrievalMetrics]
     snapshot_version: str = Field(min_length=1)
     snapshot_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
@@ -51,6 +59,27 @@ class KnowledgeEvaluationReport(BaseModel):
     runtime_versions: dict[str, str]
     generated_report_count: int = Field(ge=0)
     fallback_report_count: int = Field(ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def load_legacy_official_v1_report(cls, value: object) -> object:
+        if not isinstance(value, dict) or value.get("snapshot_version") != "official-v1":
+            return value
+        migrated = dict(value)
+        migrated.setdefault("split", "development")
+        migrated.setdefault(
+            "decision_invariance_basis",
+            "retrieval_has_no_decision_output",
+        )
+        migrated.setdefault(
+            "target_status",
+            {
+                "hit_at_3": migrated.get("hit_at_3", 0.0) >= 0.95,
+                "citation_validity": migrated.get("citation_validity") == 1.0,
+                "decision_invariance": migrated.get("decision_invariance") == 1.0,
+            },
+        )
+        return migrated
 
 
 def _digest_cases(cases: list[KnowledgeEvaluationCase]) -> str:
@@ -69,10 +98,27 @@ def _percentile(values: list[float], percentile: float) -> float:
     return float(ordered[index])
 
 
+def _contains_decision_field(value: object) -> bool:
+    if isinstance(value, BaseModel):
+        return _contains_decision_field(value.model_dump(mode="json"))
+    if isinstance(value, dict):
+        return any(
+            str(key).casefold() == "decision" or _contains_decision_field(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_contains_decision_field(item) for item in value)
+    return False
+
+
 def evaluate_knowledge(
     snapshot: KnowledgeSnapshot,
     cases: list[KnowledgeEvaluationCase],
+    *,
+    split: EvaluationSplit,
 ) -> KnowledgeEvaluationReport:
+    if split not in ("development", "test"):
+        raise ValueError("knowledge evaluation split must be development or test")
     if not cases:
         raise ValueError("knowledge evaluation cases must not be empty")
     case_ids = [case.case_id for case in cases]
@@ -95,6 +141,7 @@ def evaluate_knowledge(
     valid_citation_count = 0
     latencies: list[float] = []
     domain_rows: dict[RiskDomain, list[tuple[bool, bool]]] = {}
+    retrieval_has_no_decision_output = True
     for case in cases:
         started = time.perf_counter()
         query = builder.build(
@@ -103,6 +150,10 @@ def evaluate_knowledge(
             metadata=case.metadata,
         )
         evidence = retriever.search(query, top_k=3)
+        retrieval_has_no_decision_output = (
+            retrieval_has_no_decision_output
+            and not _contains_decision_field(evidence)
+        )
         latencies.append((time.perf_counter() - started) * 1000)
         returned_ids = [item.knowledge_id for item in evidence]
         expected_ids = set(case.expected_any_ids)
@@ -131,16 +182,26 @@ def evaluate_knowledge(
         )
         for domain, rows in sorted(domain_rows.items(), key=lambda item: item[0].value)
     }
+    hit_at_3 = hits_3 / len(cases)
+    citation_validity = (
+        valid_citation_count / citation_count if citation_count else 1.0
+    )
+    decision_invariance = float(retrieval_has_no_decision_output)
     return KnowledgeEvaluationReport(
         schema_version=1,
+        split=split,
         case_count=len(cases),
         hit_at_1=hits_1 / len(cases),
-        hit_at_3=hits_3 / len(cases),
+        hit_at_3=hit_at_3,
         mrr=statistics.fmean(reciprocal_ranks),
-        citation_validity=(
-            valid_citation_count / citation_count if citation_count else 1.0
-        ),
-        decision_invariance=1.0,
+        citation_validity=citation_validity,
+        decision_invariance=decision_invariance,
+        decision_invariance_basis="retrieval_has_no_decision_output",
+        target_status={
+            "hit_at_3": hit_at_3 >= 0.95,
+            "citation_validity": citation_validity == 1.0,
+            "decision_invariance": decision_invariance == 1.0,
+        },
         domains=domains,
         snapshot_version=snapshot.manifest.snapshot_version,
         snapshot_hash=snapshot.manifest.cards_sha256,

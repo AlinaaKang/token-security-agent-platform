@@ -53,10 +53,14 @@ def test_cli_writes_aggregate_ascii_report_without_fixture_terms(
         snapshot_path=Path("knowledge/snapshots/official-v1"),
         fixture_path=fixture,
         output_path=output,
+        split="test",
     )
 
     serialized = output.read_text(encoding="ascii")
+    assert report.split == "test"
     assert report.hit_at_3 == 1.0
     assert "LLM jailbreak" not in serialized
     assert "safe-case-01" not in serialized
     assert "safe_terms" not in serialized
+    assert "query_text" not in serialized
+    assert "case_id" not in serialized
