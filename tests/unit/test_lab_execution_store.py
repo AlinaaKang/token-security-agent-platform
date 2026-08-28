@@ -219,6 +219,22 @@ def test_store_idempotency_key_keeps_only_one_execution(tmp_path: Path) -> None:
     store.close()
 
 
+def test_immediate_write_transaction_does_not_block_another_connection_reader(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lab.sqlite3"
+    writer = SQLiteLabExecutionStore(path)
+    reader = SQLiteLabExecutionStore(path)
+    execution = _execution()
+    writer.commit_result(execution)
+
+    with writer._transaction():
+        assert reader.list_executions("run-001") == (execution,)
+
+    writer.close()
+    reader.close()
+
+
 def test_artifact_write_failure_rolls_back_the_execution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
 

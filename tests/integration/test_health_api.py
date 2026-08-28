@@ -199,3 +199,45 @@ def test_tool_storage_failure_keeps_analysis_ready_and_execution_unavailable(
     assert execution.status_code == 503
     assert execution.json()["error"]["code"] == "lab_unavailable"
     assert "PRIVATE" not in execution.text
+
+
+def test_startup_failure_after_store_construction_closes_resources_and_state(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stores = []
+
+    class RecordingStore:
+        def __init__(self, _path) -> None:
+            self.close_calls = 0
+            stores.append(self)
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    monkeypatch.setenv("TOKEN_SECURITY_LAB_ENABLED", "true")
+    monkeypatch.setenv(
+        "TOKEN_SECURITY_EVENT_DB_PATH", str(tmp_path / "shared.sqlite3")
+    )
+    monkeypatch.setattr(main_module, "SQLiteEventStore", RecordingStore)
+    monkeypatch.setattr(main_module, "SQLiteLabExecutionStore", RecordingStore)
+    monkeypatch.setattr(
+        main_module.ServiceConfig,
+        "from_environ",
+        staticmethod(lambda _environ: object()),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "load_service_bundle",
+        lambda _config: (_ for _ in ()).throw(RuntimeError("startup failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="startup failed"):
+        with TestClient(app):
+            pass
+
+    assert len(stores) == 2
+    assert [store.close_calls for store in stores] == [1, 1]
+    assert all(
+        not hasattr(app.state, name)
+        for name in main_module._LIFESPAN_STATE_NAMES
+    )

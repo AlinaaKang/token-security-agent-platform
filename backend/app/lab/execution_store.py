@@ -35,6 +35,7 @@ _ARTIFACT_COLUMNS = (
     "artifact_id, run_id, execution_id, media_type, payload, sha256, created_at"
 )
 _SCHEMA_VERSION = 1
+_BUSY_TIMEOUT_MS = 5_000
 _SCHEMA_TABLE = "lab_execution_schema"
 _TABLE_COLUMNS = {
     "lab_tool_executions": tuple(_EXECUTION_COLUMNS.split(", ")),
@@ -55,11 +56,18 @@ class SQLiteLabExecutionStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self._lock = threading.RLock()
-        self._connection = sqlite3.connect(path, check_same_thread=False)
+        self._connection = sqlite3.connect(
+            path,
+            check_same_thread=False,
+            timeout=_BUSY_TIMEOUT_MS / 1_000,
+        )
         self._connection.row_factory = sqlite3.Row
         try:
             with self._lock:
                 self._connection.execute("PRAGMA foreign_keys = ON")
+                self._connection.execute(
+                    f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}"
+                )
                 self._initialize_schema()
         except BaseException:
             self._connection.close()
@@ -217,7 +225,7 @@ class SQLiteLabExecutionStore:
     @contextmanager
     def _transaction(self) -> Iterator[None]:
         with self._lock:
-            self._connection.execute("BEGIN")
+            self._connection.execute("BEGIN IMMEDIATE")
             try:
                 yield
             except BaseException:

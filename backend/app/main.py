@@ -5,7 +5,9 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api.analyze import router as analyze_router
 from app.api.events import router as events_router
@@ -46,29 +48,58 @@ _LIFESPAN_STATE_NAMES = (
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     _clear_lifespan_state(application)
-    lab_enabled = lab_enabled_from_environ(os.environ)
-    application.state.lab_enabled = lab_enabled
     event_store = None
     lab_execution_store = None
-    audit_health: dict[str, Any] = {"ready": False, "storage": None}
     try:
-        event_store = SQLiteEventStore(event_db_path_from_environ(os.environ))
-        application.state.event_store = event_store
-        audit_health = {"ready": True, "storage": "sqlite"}
-    except Exception as exc:
-        logger.error("event audit initialization failed error_type=%s", type(exc).__name__)
-
-    if lab_enabled:
+        lab_enabled = lab_enabled_from_environ(os.environ)
+        application.state.lab_enabled = lab_enabled
+        audit_health: dict[str, Any] = {"ready": False, "storage": None}
         try:
-            lab_execution_store = SQLiteLabExecutionStore(
-                event_db_path_from_environ(os.environ)
-            )
+            event_store = SQLiteEventStore(event_db_path_from_environ(os.environ))
+            application.state.event_store = event_store
+            audit_health = {"ready": True, "storage": "sqlite"}
         except Exception as exc:
             logger.error(
-                "lab tool storage initialization failed error_type=%s",
-                type(exc).__name__,
+                "event audit initialization failed error_type=%s", type(exc).__name__
             )
 
+        if lab_enabled:
+            try:
+                lab_execution_store = SQLiteLabExecutionStore(
+                    event_db_path_from_environ(os.environ)
+                )
+            except Exception as exc:
+                logger.error(
+                    "lab tool storage initialization failed error_type=%s",
+                    type(exc).__name__,
+                )
+
+        _initialize_lifespan_services(
+            application,
+            lab_enabled=lab_enabled,
+            lab_execution_store=lab_execution_store,
+            audit_health=audit_health,
+        )
+        yield
+    finally:
+        try:
+            if lab_execution_store is not None:
+                lab_execution_store.close()
+        finally:
+            try:
+                if event_store is not None:
+                    event_store.close()
+            finally:
+                _clear_lifespan_state(application)
+
+
+def _initialize_lifespan_services(
+    application: FastAPI,
+    *,
+    lab_enabled: bool,
+    lab_execution_store: SQLiteLabExecutionStore | None,
+    audit_health: dict[str, Any],
+) -> None:
     config = ServiceConfig.from_environ(os.environ)
     active_calibration_version = None
     workflow = None
@@ -210,18 +241,6 @@ async def lifespan(application: FastAPI):
         "demo": demo_health,
         "lab": lab_health,
     }
-    try:
-        yield
-    finally:
-        try:
-            if lab_execution_store is not None:
-                lab_execution_store.close()
-        finally:
-            try:
-                if event_store is not None:
-                    event_store.close()
-            finally:
-                _clear_lifespan_state(application)
 
 
 def _clear_lifespan_state(application: FastAPI) -> None:
@@ -231,6 +250,23 @@ def _clear_lifespan_state(application: FastAPI) -> None:
 
 
 app = FastAPI(title=PRODUCT_NAME, version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error(
+    _request: Request, _error: RequestValidationError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "request_validation_failed",
+                "message": "request validation failed",
+            }
+        },
+    )
+
+
 app.include_router(analyze_router)
 app.include_router(events_router)
 app.include_router(evaluation_router)
