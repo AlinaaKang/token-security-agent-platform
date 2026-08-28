@@ -151,6 +151,18 @@ def test_qwen_generator_returns_generated_report_for_valid_citations() -> None:
     assert "query_text" not in serialized_messages
 
 
+def test_qwen_generator_rejects_empty_evidence_before_runtime_invocation() -> None:
+    runtime = FakeStructuredRuntime(TimeoutError("SAFE_PRIVATE_TIMEOUT"))
+
+    with pytest.raises(
+        ValueError,
+        match="^grounded report requires at least one retrieved evidence item$",
+    ):
+        QwenGroundedReportGenerator(runtime).generate(_facts(), [])
+
+    assert runtime.messages is None
+
+
 @pytest.mark.parametrize(
     ("status", "failure_code"),
     [

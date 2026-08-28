@@ -221,6 +221,10 @@ class QwenGroundedReportGenerator:
         facts: NormalizedSecurityFacts,
         evidence: list[KnowledgeEvidence],
     ) -> ReportGeneration:
+        if not evidence:
+            raise ValueError(
+                "grounded report requires at least one retrieved evidence item"
+            )
         allowed_ids = {item.knowledge_id for item in evidence}
         messages = build_report_messages(facts, evidence)
         try:
