@@ -16,6 +16,7 @@ CONFIG = DATA / "report-generation-config-v2.json"
 DEVELOPMENT = DATA / "report-generation-development-report-v2.json"
 TEST = DATA / "report-generation-test-report-v2.json"
 CORRECTION = DATA / "report-generation-correction-v2.json"
+PLAN = Path("docs/superpowers/plans/2026-08-28-advanced-task-completion.md")
 
 
 def _copy_historical_artifacts(root: Path, *, correction: bool) -> tuple[Path, Path, Path]:
@@ -115,6 +116,18 @@ def test_official_summary_cli_defaults_to_effective_private_output() -> None:
         return set()
 
     assert keys(payload).isdisjoint(forbidden)
+
+
+def test_task_plan_requires_effective_summary_for_documented_target_statuses() -> None:
+    plan = PLAN.read_text(encoding="utf-8")
+    task_10 = plan.split("### Task 10:", maxsplit=1)[1].split(
+        "### Task 11:", maxsplit=1
+    )[0]
+
+    assert "python scripts/summarize_grounded_reports.py" in task_10
+    assert "Only the effective summary output may supply target status" in task_10
+    assert "historical-only superseded" in task_10
+    assert "must not be used as a source for action invariance or any target PASS" in task_10
 
 
 def test_official_summary_cli_fails_closed_without_correction(

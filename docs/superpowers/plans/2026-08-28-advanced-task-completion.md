@@ -828,7 +828,7 @@ git commit -m "test: verify advanced task privacy boundary"
 
 **Interfaces:**
 - Produces: competition-ready evidence that distinguishes current measurements, missed targets, and unimplemented external integrations.
-- Consumes: committed v2 aggregate JSON reports, full test output, build output, and browser observations.
+- Consumes: the effective grounded-report summary emitted by `python scripts/summarize_grounded_reports.py` for target status; committed v2 config and aggregate JSON artifacts only as historical-only superseded evidence; full test output, build output, and browser observations.
 
 - [ ] **Step 1: Start the verified local frontend and backend/tunnel**
 
@@ -853,6 +853,16 @@ Check browser console for errors and confirm the UI says “平台内部执行�
 At 390 x 844, verify no horizontal overflow, no clipped command labels, and no overlap. Enable reduced motion and confirm the busy state remains understandable without continuous animation. Revisit `/analyze` and `/challenge` to verify their primary workflows are unchanged.
 
 - [ ] **Step 4: Update documentation from measured artifacts only**
+
+Before editing any of the three documentation files, first run:
+
+```powershell
+python scripts/summarize_grounded_reports.py
+```
+
+Only the effective summary output may supply target status to these documents.
+The raw config, development aggregate, and frozen aggregate are
+historical-only superseded original evidence; they must not be used as a source for action invariance or any target PASS.
 
 In `experiment-report.md`, include:
 
@@ -924,4 +934,15 @@ If no defect is found, create no empty commit.
 
 - [ ] **Step 4: Present the branch using the finishing workflow**
 
-Report fresh test counts, measured v2 metrics, target misses, the live `/lab` URL, privacy result, commit list, and the existing pull request. Do not merge or push additional external changes without the user’s instruction.
+Before reporting grounded-report target status, rerun:
+
+```powershell
+python scripts/summarize_grounded_reports.py
+```
+
+Report only the effective summary's target statuses. Raw config, development,
+and frozen aggregate values may be described only as historical-only
+superseded evidence and cannot support action invariance or a target PASS.
+Also report fresh test counts, measured v2 metrics, target misses, the live
+`/lab` URL, privacy result, commit list, and the existing pull request. Do not
+merge or push additional external changes without the user’s instruction.
