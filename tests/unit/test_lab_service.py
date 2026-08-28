@@ -371,8 +371,11 @@ def test_tool_failure_keeps_a_blocked_run_blocked() -> None:
     assert service.get_run(run.run_id) == updated
 
 
-def test_metrics_aggregate_only_redacted_bounded_run_outcomes() -> None:
-    service = LabService(workflow=RecordingWorkflow())
+def test_metrics_aggregate_only_redacted_bounded_run_outcomes(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(workflow=RecordingWorkflow(), execution_store=store)
     run = service.create_run(
         LabRunRequest(
             scenario_kind="custom",
@@ -381,6 +384,14 @@ def test_metrics_aggregate_only_redacted_bounded_run_outcomes() -> None:
     )
     service.run_tool(run.run_id, "gateway_preview", inject_failure=False)
     service.run_tool(run.run_id, "soc_case_preview", inject_failure=True)
+    service.execute_tool(
+        run.run_id,
+        LabToolId.GATEWAY_ENFORCEMENT,
+        LabExecuteRequest(
+            confirmed=True,
+            idempotency_key=UUID("00000000-0000-0000-0000-000000000040"),
+        ),
+    )
 
     metrics = service.metrics()
 
@@ -397,8 +408,9 @@ def test_metrics_aggregate_only_redacted_bounded_run_outcomes() -> None:
         "tool_success_rate": 0.5,
         "report_generated_count": 1,
         "report_fallback_count": 0,
-        "action_invariance_count": 1,
-        "action_invariance_rate": 1.0,
+        "confirmed_execution_count": 1,
+        "preserved_action_execution_count": 1,
+        "action_preservation_rate": 1.0,
         "latency_ms": {"p50": 30.0, "p95": 30.0},
         "privacy_violation_count": 0,
     }
@@ -413,6 +425,24 @@ def test_metrics_aggregate_only_redacted_bounded_run_outcomes() -> None:
         "PRIVATE_CONTINUATION",
     ):
         assert forbidden not in serialized
+    store.close()
+
+
+def test_metrics_report_no_action_preservation_rate_without_confirmed_execution(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    service = LabService(workflow=RecordingWorkflow(), execution_store=store)
+    service.create_run(
+        LabRunRequest(scenario_kind="custom", custom_input="Safe input")
+    )
+
+    metrics = service.metrics()
+
+    assert metrics.confirmed_execution_count == 0
+    assert metrics.preserved_action_execution_count == 0
+    assert metrics.action_preservation_rate is None
+    store.close()
 
 
 def test_metrics_do_not_treat_unavailable_semantics_as_evidence_agreement() -> None:

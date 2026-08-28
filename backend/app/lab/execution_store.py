@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -287,6 +288,13 @@ def _validate_result(
         execution.source_action, execution.effective_action
     ):
         raise ValueError("effective_action cannot be weaker than source_action")
+    artifact_metadata = (
+        artifact is not None,
+        execution.artifact_id is not None,
+        execution.evidence_sha256 is not None,
+    )
+    if any(artifact_metadata) and not all(artifact_metadata):
+        raise ValueError("artifact metadata must be complete")
     normalize_persisted_created_at(execution.created_at)
     if security_case is not None:
         assert_public_payload(security_case)
@@ -312,6 +320,11 @@ def _validate_result(
         bundle = parse_canonical_evidence_bundle(
             artifact.media_type, artifact.payload
         )
+        payload_sha256 = "sha256:" + hashlib.sha256(artifact.payload).hexdigest()
+        if artifact.sha256 != payload_sha256:
+            raise ValueError("artifact digest must match payload")
+        if execution.evidence_sha256 != artifact.sha256:
+            raise ValueError("execution digest must match artifact")
         normalize_persisted_created_at(artifact.created_at)
         if (
             artifact.run_id != execution.run_id

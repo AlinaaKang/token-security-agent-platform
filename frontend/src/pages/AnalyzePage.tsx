@@ -71,6 +71,7 @@ const publisherLabels: Record<KnowledgePublisher, string> = {
   owasp: "OWASP",
   mitre: "MITRE",
   nist: "NIST",
+  cac: "国家网信办",
 };
 
 function publisherLabel(value: string) {

@@ -35,8 +35,9 @@ const metrics = {
   tool_success_rate: 0,
   report_generated_count: 1,
   report_fallback_count: 0,
-  action_invariance_count: 1,
-  action_invariance_rate: 1,
+  confirmed_execution_count: 0,
+  preserved_action_execution_count: 0,
+  action_preservation_rate: null,
   latency_ms: { p50: 30, p95: 30 },
   privacy_violation_count: 0,
 };
@@ -102,6 +103,22 @@ const run = {
       },
       retrieval_score: 4,
       matched_tags: ["jailbreak"],
+    }, {
+      knowledge_id: "cac-generative-ai-interim-measures",
+      title_zh: "生成式人工智能服务管理要求",
+      risk_domain: "governance",
+      summary: "面向公众的生成式人工智能服务应兼顾发展与安全治理。",
+      recommendations: ["明确服务提供者的安全治理和事件处置责任。"],
+      source: {
+        publisher: "cac",
+        title: "生成式人工智能服务管理暂行办法",
+        url: "https://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm",
+        version: "2023",
+        verified_at: "2026-08-28T00:00:00Z",
+        usage_note: "中文摘要依据国家网信办官方发布。",
+      },
+      retrieval_score: 3,
+      matched_tags: ["governance"],
     }],
     report_status: "fallback",
   },
@@ -176,6 +193,8 @@ function installFetch(options: {
   history?: unknown[];
   executeResponses?: Array<{ payload: unknown; ok?: boolean; status?: number }>;
   runs?: unknown[];
+  scenarioFailure?: boolean;
+  metricsFailure?: boolean;
 } = {}) {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
   const executeResponses = [...(options.executeResponses ?? [])];
@@ -190,8 +209,16 @@ function installFetch(options: {
       }
       return response(health);
     }
-    if (url === "/api/v1/lab/scenarios") return response(scenarios);
-    if (url === "/api/v1/lab/metrics") return response(metrics);
+    if (url === "/api/v1/lab/scenarios") {
+      return options.scenarioFailure
+        ? response({ error: { message: "scenario unavailable" } }, false, 503)
+        : response(scenarios);
+    }
+    if (url === "/api/v1/lab/metrics") {
+      return options.metricsFailure
+        ? response({ error: { message: "metrics unavailable" } }, false, 503)
+        : response(metrics);
+    }
     if (url === "/api/v1/lab/runs") return response(runs.shift() ?? run, true, 201);
     if (url === "/api/v1/lab/runs/lab_123") return response(run);
     if (url.endsWith("/executions")) return response(options.history ?? []);
@@ -317,6 +344,19 @@ describe("security lab workspace", () => {
     expect(await screen.findByText(execution.receipt_id)).toBeInTheDocument();
     expect(requests.some((item) => item.url === "/api/v1/lab/runs/lab_123")).toBe(true);
     expect(requests.some((item) => item.url === "/api/v1/lab/runs" && item.init?.method === "POST")).toBe(false);
+  });
+
+  it.each([
+    ["场景", { scenarioFailure: true }],
+    ["指标", { metricsFailure: true }],
+  ])("辅助%s接口失败时仍恢复最后一次脱敏运行", async (_label, failure) => {
+    const requests = installFetch(failure);
+    window.sessionStorage.setItem("token-security-lab-run-id", run.run_id);
+
+    render(<App />);
+
+    expect(await screen.findByText("证据到达顺序")).toBeInTheDocument();
+    expect(requests.some((item) => item.url === "/api/v1/lab/runs/lab_123")).toBe(true);
   });
 
   it("requires explicit confirmation, focuses cancel, and cancels without a request", async () => {
@@ -550,6 +590,10 @@ describe("security lab workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始调查" }));
 
     expect(await screen.findByText("OWASP GenAI Security Project")).toBeInTheDocument();
+    expect(screen.getByText("生成式人工智能服务管理暂行办法")).toBeInTheDocument();
+    expect(screen.getByText("国家网信办")).toBeInTheDocument();
+    expect(screen.getByText("治理与合规")).toBeInTheDocument();
+    expect(screen.queryByText("undefined")).not.toBeInTheDocument();
     expect(screen.getAllByText("owasp-llm01-prompt-injection").length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "脱敏案件报告" })).toBeInTheDocument();
     const page = document.body.textContent ?? "";
@@ -574,7 +618,10 @@ describe("security lab workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始调查" }));
 
     expect(await screen.findByRole("region", { name: "实验舱运行指标" })).toBeInTheDocument();
-    expect(screen.getByText("实验舱运行指标")).toBeInTheDocument();
+    const metricsRegion = screen.getByRole("region", { name: "实验舱运行指标" });
+    expect(within(metricsRegion).getByText("实验舱运行指标")).toBeInTheDocument();
+    expect(within(metricsRegion).getByText("已验证执行动作保持率")).toBeInTheDocument();
+    expect(within(metricsRegion).getByText("N/A")).toBeInTheDocument();
     expect(screen.getByText("这些是运行覆盖与稳定性数据，不是冻结分类性能。" )).toBeInTheDocument();
     expect(screen.queryByText("agent-ablation-v1")).not.toBeInTheDocument();
   });

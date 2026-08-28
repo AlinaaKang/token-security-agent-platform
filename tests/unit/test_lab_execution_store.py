@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
@@ -47,7 +48,15 @@ def _canonical_evidence_payload(**changes: object) -> bytes:
     ).encode("utf-8") + b"\n"
 
 
-def _execution(*, suffix: str = "001", created_at: datetime = _TIME) -> LabToolExecution:
+def _execution(
+    *,
+    suffix: str = "001",
+    created_at: datetime = _TIME,
+    with_artifact: bool = False,
+) -> LabToolExecution:
+    evidence_sha256 = "sha256:" + hashlib.sha256(
+        _canonical_evidence_payload()
+    ).hexdigest()
     return LabToolExecution(
         execution_id=f"execution-{suffix}",
         run_id="run-001",
@@ -61,9 +70,9 @@ def _execution(*, suffix: str = "001", created_at: datetime = _TIME) -> LabToolE
         knowledge_snapshot_sha256=_SNAPSHOT_PROVENANCE,
         knowledge_ids=("owasp-llm01-prompt-injection",),
         receipt_id=f"receipt-{suffix}",
-        artifact_id=f"artifact-{suffix}",
+        artifact_id=f"artifact-{suffix}" if with_artifact else None,
         error_code=None,
-        evidence_sha256="sha256:" + "a" * 64,
+        evidence_sha256=evidence_sha256 if with_artifact else None,
         latency_ms=5.0,
         created_at=created_at,
     )
@@ -94,24 +103,84 @@ def _security_case(**changes: object) -> LabSecurityCase:
 
 
 def _artifact(**changes: object) -> LabArtifact:
+    payload = _canonical_evidence_payload()
     values: dict[str, object] = {
         "artifact_id": "artifact-001",
         "run_id": "run-001",
         "execution_id": "execution-001",
         "media_type": "application/json",
-        "payload": _canonical_evidence_payload(),
-        "sha256": "sha256:" + "b" * 64,
+        "payload": payload,
+        "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
         "created_at": _TIME,
     }
     values.update(changes)
+    if "payload" in changes and "sha256" not in changes:
+        changed_payload = values["payload"]
+        assert isinstance(changed_payload, bytes)
+        values["sha256"] = "sha256:" + hashlib.sha256(changed_payload).hexdigest()
     return LabArtifact.model_validate(values)
+
+
+def test_store_rejects_artifact_digest_that_does_not_match_payload(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    artifact = _artifact(sha256="sha256:" + "f" * 64)
+
+    with pytest.raises(ValueError, match="artifact digest must match payload"):
+        store.commit_result(_execution(with_artifact=True), artifact=artifact)
+
+    assert store.list_executions("run-001") == ()
+    store.close()
+
+
+def test_store_rejects_execution_digest_that_does_not_match_artifact(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    execution = _execution(with_artifact=True).model_copy(
+        update={"evidence_sha256": "sha256:" + "f" * 64}
+    )
+
+    with pytest.raises(ValueError, match="execution digest must match artifact"):
+        store.commit_result(execution, artifact=_artifact())
+
+    assert store.list_executions("run-001") == ()
+    store.close()
+
+
+def test_store_rejects_execution_artifact_metadata_without_artifact(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+
+    with pytest.raises(ValueError, match="artifact metadata must be complete"):
+        store.commit_result(_execution(with_artifact=True))
+
+    assert store.list_executions("run-001") == ()
+    store.close()
+
+
+def test_store_rejects_artifact_without_execution_artifact_metadata(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
+    execution = _execution(with_artifact=True).model_copy(
+        update={"artifact_id": None, "evidence_sha256": None}
+    )
+
+    with pytest.raises(ValueError, match="artifact metadata must be complete"):
+        store.commit_result(execution, artifact=_artifact())
+
+    assert store.list_executions("run-001") == ()
+    store.close()
 
 
 def test_store_creates_three_tables_and_commits_related_records_atomically(
     tmp_path: Path,
 ) -> None:
     store = SQLiteLabExecutionStore(tmp_path / "lab.sqlite3")
-    execution = _execution()
+    execution = _execution(with_artifact=True)
 
     stored = store.commit_result(
         execution, security_case=_security_case(), artifact=_artifact()
@@ -244,7 +313,7 @@ def test_artifact_write_failure_rolls_back_the_execution(tmp_path: Path, monkeyp
     monkeypatch.setattr(store, "_insert_artifact", fail)
 
     with pytest.raises(RuntimeError, match="artifact write failed"):
-        store.commit_result(_execution(), artifact=_artifact())
+        store.commit_result(_execution(with_artifact=True), artifact=_artifact())
 
     assert store.list_executions("run-001") == ()
     with pytest.raises(LookupError, match="artifact-001"):
@@ -262,7 +331,7 @@ def test_store_rejects_bypassed_artifact_privacy_validation_before_writing(
     )
 
     with pytest.raises(ValueError):
-        store.commit_result(_execution(), artifact=unsafe)
+        store.commit_result(_execution(with_artifact=True), artifact=unsafe)
 
     assert store.list_executions("run-001") == ()
     store.close()
@@ -278,7 +347,7 @@ def test_store_rejects_bypassed_identifier_shaped_provenance(tmp_path: Path) -> 
     )
 
     with pytest.raises(ValueError):
-        store.commit_result(_execution(), artifact=unsafe)
+        store.commit_result(_execution(with_artifact=True), artifact=unsafe)
 
     assert store.list_executions("run-001") == ()
     store.close()
@@ -291,9 +360,12 @@ def test_store_rejects_a_schema_valid_artifact_with_unbound_provenance(
     mismatched = _artifact(
         payload=_canonical_evidence_payload(model_provenance_sha256="sha256:" + "f" * 64)
     )
+    execution = _execution(with_artifact=True).model_copy(
+        update={"evidence_sha256": mismatched.sha256}
+    )
 
     with pytest.raises(ValueError, match="provenance must match"):
-        store.commit_result(_execution(), artifact=mismatched)
+        store.commit_result(execution, artifact=mismatched)
 
     assert store.list_executions("run-001") == ()
     store.close()
@@ -306,9 +378,12 @@ def test_store_rejects_an_artifact_action_that_differs_from_its_execution(
     mismatched = _artifact(
         payload=_canonical_evidence_payload(effective_action="allow")
     )
+    execution = _execution(with_artifact=True).model_copy(
+        update={"evidence_sha256": mismatched.sha256}
+    )
 
     with pytest.raises(ValueError, match="artifact action must match"):
-        store.commit_result(_execution(), artifact=mismatched)
+        store.commit_result(execution, artifact=mismatched)
 
     assert store.list_executions("run-001") == ()
     assert store._connection.execute("SELECT COUNT(*) FROM lab_artifacts").fetchone()[

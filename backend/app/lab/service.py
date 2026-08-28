@@ -301,12 +301,18 @@ class LabService:
         tool_failure = sum(result.status == "failed" for result in tool_results)
         generated = sum(run.case_report.report_status == "deterministic" for run in runs)
         fallback = sum(run.case_report.report_status == "fallback" for run in runs)
-        invariant = sum(
-            all(
-                result.effective_action == run.detection.decision
-                for result in run.tool_results
-            )
+        executions = tuple(
+            (run, execution)
             for run in runs
+            for execution in (
+                self._execution_store.list_executions(run.run_id)
+                if self._execution_store is not None
+                else ()
+            )
+        )
+        preserved_actions = sum(
+            execution.effective_action == run.detection.decision
+            for run, execution in executions
         )
         latencies = [run.detection.latency_ms for run in runs]
         metrics = LabMetrics(
@@ -322,8 +328,11 @@ class LabService:
             tool_success_rate=_rate(tool_success, tool_success + tool_failure),
             report_generated_count=generated,
             report_fallback_count=fallback,
-            action_invariance_count=invariant,
-            action_invariance_rate=_rate(invariant, run_count),
+            confirmed_execution_count=len(executions),
+            preserved_action_execution_count=preserved_actions,
+            action_preservation_rate=(
+                _rate(preserved_actions, len(executions)) if executions else None
+            ),
             latency_ms=LabLatencySummary(
                 p50=_percentile(latencies, 0.5),
                 p95=_percentile(latencies, 0.95),

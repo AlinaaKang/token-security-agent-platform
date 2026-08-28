@@ -2,12 +2,15 @@ export type Mode = "analysis" | "gateway";
 export type KnowledgeMode = "off" | "evidence" | "report";
 export type KnowledgeStatus = "off" | "ready" | "unavailable" | "degraded";
 export type ReportStatus = "off" | "generated" | "fallback" | "unavailable";
-export type KnowledgePublisher = "owasp" | "mitre" | "nist";
+export type KnowledgePublisher = "owasp" | "mitre" | "nist" | "cac";
 export type RiskDomain =
   | "prompt_injection"
   | "jailbreak"
   | "sensitive_information"
   | "excessive_agency"
+  | "supply_chain"
+  | "data_model_poisoning"
+  | "unbounded_resource_consumption"
   | "governance"
   | "incident_response";
 export type Decision = "allow" | "review" | "block" | "sanitize_recheck";
@@ -210,8 +213,9 @@ export interface LabMetrics {
   tool_success_rate: number;
   report_generated_count: number;
   report_fallback_count: number;
-  action_invariance_count: number;
-  action_invariance_rate: number;
+  confirmed_execution_count: number;
+  preserved_action_execution_count: number;
+  action_preservation_rate: number | null;
   latency_ms: { p50: number; p95: number };
   privacy_violation_count: number;
 }

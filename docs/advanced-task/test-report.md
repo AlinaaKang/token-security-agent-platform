@@ -6,10 +6,10 @@
 
 | 范围 | 本轮结果 |
 | --- | --- |
-| 后端单元/集成/回归 | 483 passed，1 skipped，0 failed |
-| 前端交互 | 131 passed，0 failed |
+| 后端单元/集成/回归 | 488 passed，1 skipped，0 failed |
+| 前端交互 | 133 passed，0 failed |
 | TypeScript + Vite 构建 | 通过，1608 modules transformed |
-| `/lab` 聚焦前端 | 18 passed |
+| `/lab` 聚焦前端 | 20 passed |
 | Windows PowerShell 5.1 API 隐私回归 | 1 passed |
 
 后端全量测试使用项目 Python 环境并显式设置 `PYTHONPATH=backend`。唯一 skipped 是本机未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的真实 GPU runtime 集成测试；真实模型链路由 AutoDL 浏览器验收覆盖。
@@ -67,6 +67,10 @@ api_violations=0
 1. Windows PowerShell 5.1 不会自动加载 `System.Net.Http`，真实隐私命令曾返回固定 `unhandled_error`。新增 5.1 HTTP 红测试后显式加载程序集。
 2. `/lab` 的 run 只存在 React 内存，刷新后 UI 无法恢复回执。现在会话中只保存脱敏 run ID，再通过服务端 run 和 SQLite 恢复；不保存 Prompt 或 Token。
 3. 移动端知识链使用九列 `max-content`，页面本身不超宽但内容被内部裁剪。现在改为可换行证据链，并用浏览器宽度断言复核。
+4. 证据 artifact 声明摘要与 payload、execution 回执此前未在写入边界三方绑定。现在 artifact 对象、artifact ID 与回执摘要必须同存同空；三者存在时写入前强制摘要一致，下载时继续复算。四条回归测试覆盖双向缺失和两种摘要不一致。
+5. 运行指标曾用 dry-run 结果和空集合 `all()` 计算“基础动作不变率”。现在只统计 SQLite 已确认执行，显示明确分子、分母；零执行时页面显示 `N/A`。
+6. official-v2 已支持 CAC 和三个新增风险域，但前端类型与标签仍停在 v1。现在四个发布方和九个风险域均有穷尽类型、中文标签与未知值回退，并用真实 CAC 卡片回归。
+7. 场景或指标接口失败曾阻断刷新恢复。现在三个启动任务使用独立失败边界，两种辅助失败路径均能恢复脱敏 run。
 
 ## 7. 未实现与不声明
 

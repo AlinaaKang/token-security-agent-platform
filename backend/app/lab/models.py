@@ -296,8 +296,9 @@ class LabMetrics(BaseModel):
     tool_success_rate: float = Field(ge=0, le=1)
     report_generated_count: int = Field(ge=0)
     report_fallback_count: int = Field(ge=0)
-    action_invariance_count: int = Field(ge=0)
-    action_invariance_rate: float = Field(ge=0, le=1)
+    confirmed_execution_count: int = Field(ge=0)
+    preserved_action_execution_count: int = Field(ge=0)
+    action_preservation_rate: float | None = Field(default=None, ge=0, le=1)
     latency_ms: LabLatencySummary
     privacy_violation_count: int = Field(ge=0)
 

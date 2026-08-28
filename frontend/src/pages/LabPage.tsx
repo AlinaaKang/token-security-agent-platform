@@ -24,7 +24,9 @@ import type {
   LabMetrics,
   LabRunResult,
   LabScenario,
+  KnowledgePublisher,
   Mode,
+  RiskDomain,
 } from "../types";
 
 
@@ -49,7 +51,32 @@ const interpretationLabels: Record<LabCounterfactualInterpretation, string> = {
   inconclusive: "证据不足",
 };
 
-const publisherLabels = { owasp: "OWASP", mitre: "MITRE", nist: "NIST" } as const;
+const publisherLabels: Record<KnowledgePublisher, string> = {
+  owasp: "OWASP",
+  mitre: "MITRE",
+  nist: "NIST",
+  cac: "国家网信办",
+};
+
+const riskDomainLabels: Record<RiskDomain, string> = {
+  prompt_injection: "提示词注入",
+  jailbreak: "越狱攻击",
+  sensitive_information: "敏感信息",
+  excessive_agency: "过度代理权限",
+  supply_chain: "供应链",
+  data_model_poisoning: "数据与模型投毒",
+  unbounded_resource_consumption: "无界资源消耗",
+  governance: "治理与合规",
+  incident_response: "事件响应",
+};
+
+function publisherLabel(value: string) {
+  return publisherLabels[value as KnowledgePublisher] ?? "官方来源";
+}
+
+function riskDomainLabel(value: string) {
+  return riskDomainLabels[value as RiskDomain] ?? "其他风险";
+}
 
 type LabTab = "evidence" | "counterfactual" | "tools";
 
@@ -161,10 +188,10 @@ function KnowledgeAndReport({ run }: { run: LabRunResult }) {
         </div>
         {run.detection.knowledge_evidence.length ? run.detection.knowledge_evidence.map((item) => (
           <div className="lab-knowledge-relation" key={item.knowledge_id}>
-            <span>{publisherLabels[item.source.publisher]}</span>
+            <span>{publisherLabel(item.source.publisher)}</span>
             <a href={item.source.url} target="_blank" rel="noreferrer">{item.source.title}</a>
             <ArrowRight size={14} />
-            <span>{item.risk_domain}</span>
+            <span>{riskDomainLabel(item.risk_domain)}</span>
             <ArrowRight size={14} />
             <strong>{item.recommendations[0]}</strong>
             <ArrowRight size={14} />
@@ -202,7 +229,10 @@ function MetricsPanel({ metrics }: { metrics: LabMetrics }) {
         <div><span>反事实执行覆盖</span><strong>{percent(metrics.counterfactual_execution_rate)}</strong></div>
         <div><span>证据冲突率</span><strong>{percent(metrics.evidence_conflict_rate)}</strong></div>
         <div><span>工具预览成功率</span><strong>{percent(metrics.tool_success_rate)}</strong></div>
-        <div><span>基础动作不变率</span><strong>{percent(metrics.action_invariance_rate)}</strong></div>
+        <div>
+          <span>已验证执行动作保持率</span>
+          <strong>{metrics.action_preservation_rate === null ? "N/A" : percent(metrics.action_preservation_rate)}</strong>
+        </div>
         <div><span>运行延迟 P50</span><strong>{metrics.latency_ms.p50.toFixed(1)} ms</strong></div>
         <div><span>运行延迟 P95</span><strong>{metrics.latency_ms.p95.toFixed(1)} ms</strong></div>
       </div>
@@ -232,26 +262,36 @@ export function LabPage() {
       if (!active) return;
       setHealth(state);
       if (!state.lab?.ready) return;
-      try {
-        const items = await api.labScenarios();
-        if (active) setScenarios(items);
-        const aggregate = await api.labMetrics();
-        if (active) setMetrics(aggregate);
-        const lastRunId = readLastRunId();
-        if (lastRunId) {
-          try {
-            const restoredRun = await api.getLabRun(lastRunId);
-            if (active) {
-              setRun(restoredRun);
-              setMode(restoredRun.mode);
-            }
-          } catch {
-            rememberLastRunId(null);
-          }
+      const loadScenarios = async () => {
+        try {
+          const items = await api.labScenarios();
+          if (active) setScenarios(items);
+        } catch {
+          if (active) setError("实验场景加载失败");
         }
-      } catch (caught) {
-        if (active) setError(caught instanceof Error ? caught.message : "实验场景加载失败");
-      }
+      };
+      const loadMetrics = async () => {
+        try {
+          const aggregate = await api.labMetrics();
+          if (active) setMetrics(aggregate);
+        } catch {
+          if (active) setError("实验指标加载失败");
+        }
+      };
+      const restoreLastRun = async () => {
+        const lastRunId = readLastRunId();
+        if (!lastRunId) return;
+        try {
+          const restoredRun = await api.getLabRun(lastRunId);
+          if (active) {
+            setRun(restoredRun);
+            setMode(restoredRun.mode);
+          }
+        } catch {
+          rememberLastRunId(null);
+        }
+      };
+      await Promise.all([loadScenarios(), loadMetrics(), restoreLastRun()]);
     }).catch(() => {
       if (active) setError("无法连接检测服务");
     });
