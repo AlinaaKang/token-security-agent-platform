@@ -30,7 +30,7 @@ from app.evaluation.normalize import (
     RowAdapter,
 )
 from app.knowledge.loader import load_knowledge_snapshot
-from app.model.runtime import TransformersModelRuntime
+from app.model.runtime import TransformersModelRuntime, fingerprint_checkpoint
 
 
 FAMILIES = ("gcg", "autodan", "advprompter")
@@ -182,19 +182,27 @@ def _write_aggregate(
     temporary.replace(path)
 
 
-def _runtime_version(runtime: object) -> str:
+def _runtime_identity(runtime: object) -> tuple[str, str]:
     readiness_method = getattr(runtime, "readiness", None)
     if not callable(readiness_method):
         raise ValueError("loaded runtime model identity unavailable")
     readiness = readiness_method()
     model_id = getattr(readiness, "model_id", None)
+    checkpoint_fingerprint = getattr(
+        readiness, "checkpoint_fingerprint", None
+    )
     if (
         getattr(readiness, "ready", None) is not True
         or not isinstance(model_id, str)
         or not model_id.strip()
     ):
         raise ValueError("loaded runtime model identity unavailable")
-    return model_id
+    if (
+        not isinstance(checkpoint_fingerprint, str)
+        or not checkpoint_fingerprint.strip()
+    ):
+        raise ValueError("loaded runtime checkpoint fingerprint unavailable")
+    return model_id, checkpoint_fingerprint
 
 
 def _validate_development_aggregate(
@@ -216,6 +224,14 @@ def _validate_development_aggregate(
         raise ValueError("development aggregate snapshot hash mismatch")
     if report.model_version != selected.model_version:
         raise ValueError("development aggregate model identity mismatch")
+    if report.checkpoint_fingerprint is None:
+        raise ValueError(
+            "legacy_unverified development checkpoint identity"
+        )
+    if report.checkpoint_fingerprint != selected.checkpoint_fingerprint:
+        raise ValueError(
+            "development aggregate checkpoint fingerprint mismatch"
+        )
     if {result.config for result in report.candidate_results} != set(
         CANDIDATE_REPORT_CONFIGS
     ):
@@ -257,21 +273,26 @@ def run_experiment(
         raise FileExistsError("experiment output already exists")
     if phase == "test":
         selected_file = load_selected_report_config(selected_config_path)
-        if (
-            selected_file.model_version != REPORT_MODEL_VERSION
-            or model_path != selected_file.model_version
-        ):
+        if selected_file.model_version != REPORT_MODEL_VERSION:
             raise ValueError("frozen report model identity mismatch")
         if not development_report_path.is_file():
             raise FileNotFoundError(
                 "development aggregate is required for frozen test"
             )
+        if selected_file.checkpoint_fingerprint is None:
+            raise ValueError("legacy_unverified checkpoint identity")
     else:
         selected_file = None
-        if model_path != REPORT_MODEL_VERSION:
-            raise ValueError("development report model identity mismatch")
         if selected_config_path.exists():
             raise FileExistsError("selected report config already exists")
+
+    configured_checkpoint_fingerprint = fingerprint_checkpoint(model_path)
+    if (
+        selected_file is not None
+        and selected_file.checkpoint_fingerprint
+        != configured_checkpoint_fingerprint
+    ):
+        raise ValueError("configured checkpoint fingerprint mismatch")
 
     all_samples = load_report_samples(
         autodan_csv=autodan_csv,
@@ -303,14 +324,9 @@ def run_experiment(
     load_runtime = getattr(runtime, "load", None)
     if callable(load_runtime):
         load_runtime()
-    runtime_version = _runtime_version(runtime)
-    expected_model_version = (
-        selected_file.model_version
-        if selected_file is not None
-        else REPORT_MODEL_VERSION
-    )
-    if runtime_version != expected_model_version:
-        raise ValueError("loaded runtime model identity mismatch")
+    _, runtime_checkpoint_fingerprint = _runtime_identity(runtime)
+    if runtime_checkpoint_fingerprint != configured_checkpoint_fingerprint:
+        raise ValueError("loaded runtime checkpoint fingerprint mismatch")
     configurations = (
         CANDIDATE_REPORT_CONFIGS
         if phase == "development"
@@ -333,7 +349,8 @@ def run_experiment(
     report = build_experiment_report(
         phase=phase,
         snapshot=snapshot,
-        model_version=runtime_version,
+        model_version=REPORT_MODEL_VERSION,
+        checkpoint_fingerprint=configured_checkpoint_fingerprint,
         candidate_results=results,
         selected_config=selected_config,
     )
@@ -343,7 +360,8 @@ def run_experiment(
             selected_config_path,
             SelectedReportConfig(
                 snapshot_version=snapshot.manifest.snapshot_version,
-                model_version=runtime_version,
+                model_version=REPORT_MODEL_VERSION,
+                checkpoint_fingerprint=configured_checkpoint_fingerprint,
                 max_new_tokens=selected_config.max_new_tokens,
                 timeout_seconds=selected_config.timeout_seconds,
                 selection_rule=SELECTION_RULE,

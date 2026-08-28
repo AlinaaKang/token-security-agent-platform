@@ -74,6 +74,10 @@ class SelectedReportConfig(_StrictModel):
     schema_version: Literal[1] = 1
     snapshot_version: str = Field(min_length=1)
     model_version: str = Field(default=REPORT_MODEL_VERSION, min_length=1)
+    checkpoint_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+    )
     max_new_tokens: Literal[64, 96, 128]
     timeout_seconds: Literal[3.0, 5.0, 6.0]
     selection_rule: SelectionRule = SELECTION_RULE
@@ -160,18 +164,79 @@ class ReportTargetStatus(_StrictModel):
     latency_p95_ms: bool
 
 
+class ReportRuntimeCapabilities(_StrictModel):
+    deadline_enforcement: Literal["cooperative_token_step"] = (
+        "cooperative_token_step"
+    )
+    stuck_cuda_kernel_termination: Literal["cannot_terminate_in_process"] = (
+        "cannot_terminate_in_process"
+    )
+
+
+class HistoricalReportArtifactHashes(_StrictModel):
+    selected_config: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    development_report: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    test_report: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class ReportExperimentCorrection(_StrictModel):
+    schema_version: Literal[1] = 1
+    artifact_hashes: HistoricalReportArtifactHashes
+    action_invariance_evidence: Literal["legacy_unverified"]
+    checkpoint_identity_evidence: Literal["legacy_unverified"]
+    deadline_capability: Literal["legacy_post_return_only"]
+    target_status: ReportTargetStatus
+
+    @model_validator(mode="after")
+    def unverified_action_must_not_pass(self) -> "ReportExperimentCorrection":
+        if self.target_status.action_invariance:
+            raise ValueError("legacy action invariance must not pass")
+        return self
+
+
+def _file_sha256(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load_report_correction(
+    path: Path,
+    *,
+    selected_config_path: Path,
+    development_report_path: Path,
+    test_report_path: Path,
+) -> ReportExperimentCorrection:
+    if not path.is_file():
+        raise FileNotFoundError("report correction artifact does not exist")
+    correction = ReportExperimentCorrection.model_validate_json(
+        path.read_text(encoding="ascii")
+    )
+    actual_hashes = HistoricalReportArtifactHashes(
+        selected_config=_file_sha256(selected_config_path),
+        development_report=_file_sha256(development_report_path),
+        test_report=_file_sha256(test_report_path),
+    )
+    if actual_hashes != correction.artifact_hashes:
+        raise ValueError("historical report artifact hash mismatch")
+    return correction
+
+
 class ReportExperimentReport(_StrictModel):
     schema_version: Literal[1] = 1
     phase: ExperimentPhase
     snapshot_version: str = Field(min_length=1)
     snapshot_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     model_version: str = Field(min_length=1)
+    checkpoint_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+    )
     selection_rule: SelectionRule = SELECTION_RULE
     candidate_results: tuple[ReportConfigResult, ...] = Field(min_length=1)
     selected_config: ReportExperimentConfig
     metrics: ReportExperimentMetrics
     target_status: ReportTargetStatus
     runtime_versions: dict[str, str]
+    runtime_capabilities: ReportRuntimeCapabilities | None = None
 
     @model_validator(mode="after")
     def selected_metrics_must_be_a_candidate(self) -> "ReportExperimentReport":
@@ -374,6 +439,7 @@ def build_experiment_report(
     phase: ExperimentPhase,
     snapshot: KnowledgeSnapshot,
     model_version: str,
+    checkpoint_fingerprint: str,
     candidate_results: Sequence[ReportConfigResult],
     selected_config: ReportExperimentConfig,
 ) -> ReportExperimentReport:
@@ -390,6 +456,7 @@ def build_experiment_report(
         snapshot_version=snapshot.manifest.snapshot_version,
         snapshot_hash=snapshot.manifest.cards_sha256,
         model_version=model_version,
+        checkpoint_fingerprint=checkpoint_fingerprint,
         candidate_results=results,
         selected_config=selected_config,
         metrics=metrics,
@@ -400,6 +467,7 @@ def build_experiment_report(
             latency_p95_ms=metrics.latency_p95_ms <= 5000.0,
         ),
         runtime_versions={"python": platform.python_version()},
+        runtime_capabilities=ReportRuntimeCapabilities(),
     )
 
 

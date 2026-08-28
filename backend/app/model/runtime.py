@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -35,6 +36,10 @@ class RuntimeReadiness(BaseModel):
     ready: bool
     model_id: str
     tokenizer_id: str | None
+    checkpoint_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+    )
 
 
 class ModelObservation(BaseModel):
@@ -56,6 +61,77 @@ class SystemPromptObservation(BaseModel):
 
 def hash_system_prompt(system_prompt: str) -> str:
     return "sha256:" + hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
+
+
+def _is_ephemeral_checkpoint_path(relative_path: Path) -> bool:
+    if any(part in {".git", "__pycache__"} for part in relative_path.parts):
+        return True
+    name = relative_path.name.casefold()
+    return name in {"lock", ".lock"} or name.endswith(".lock")
+
+
+def _checkpoint_file_digest(path: Path) -> tuple[int, bytes]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            size += len(chunk)
+            digest.update(chunk)
+    return size, digest.digest()
+
+
+def fingerprint_checkpoint(path: str | Path) -> str:
+    root = Path(path)
+    if not root.is_dir():
+        raise ValueError("checkpoint must be a local directory")
+    files = sorted(
+        (
+            (candidate.relative_to(root).as_posix(), candidate)
+            for candidate in root.rglob("*")
+            if candidate.is_file()
+            and not _is_ephemeral_checkpoint_path(candidate.relative_to(root))
+        ),
+        key=lambda item: item[0],
+    )
+    if not files:
+        raise ValueError("checkpoint directory contains no identity files")
+
+    manifest_digest = hashlib.sha256()
+    manifest_digest.update(b"token-security-agent-checkpoint-manifest-v1\0")
+    for relative_name, file_path in files:
+        encoded_name = relative_name.encode("utf-8")
+        size, file_digest = _checkpoint_file_digest(file_path)
+        manifest_digest.update(len(encoded_name).to_bytes(8, "big"))
+        manifest_digest.update(encoded_name)
+        manifest_digest.update(size.to_bytes(8, "big"))
+        manifest_digest.update(file_digest)
+    return "sha256:" + manifest_digest.hexdigest()
+
+
+class _DeadlineStoppingCriteria:
+    def __init__(
+        self,
+        *,
+        deadline: float,
+        clock: Any,
+        torch_module: Any,
+    ) -> None:
+        self._deadline = deadline
+        self._clock = clock
+        self._torch = torch_module
+        self.triggered = False
+
+    def __call__(self, input_ids: Any, scores: Any, **_: Any) -> Any:
+        expired = self._clock() >= self._deadline
+        self.triggered = self.triggered or expired
+        if hasattr(self._torch, "full") and hasattr(input_ids, "shape"):
+            return self._torch.full(
+                (input_ids.shape[0],),
+                expired,
+                device=input_ids.device,
+                dtype=self._torch.bool,
+            )
+        return expired
 
 
 class TransformersModelRuntime:
@@ -80,6 +156,8 @@ class TransformersModelRuntime:
         self._model: Any | None = None
         self._tokenizer: Any | None = None
         self._torch: Any | None = None
+        self._checkpoint_fingerprint: str | None = None
+        self._stopping_criteria_list_type: Any | None = None
         self._clock = time.perf_counter
 
     def readiness(self) -> RuntimeReadiness:
@@ -96,12 +174,17 @@ class TransformersModelRuntime:
             ready=self._model is not None and self._tokenizer is not None,
             model_id=self.model_id,
             tokenizer_id=tokenizer_id,
+            checkpoint_fingerprint=self._checkpoint_fingerprint,
         )
 
     def load(self) -> None:
         try:
             import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from transformers import (
+                AutoModelForCausalLM,
+                AutoTokenizer,
+                StoppingCriteriaList,
+            )
         except ImportError as exc:
             raise ModelDependencyError(
                 "model dependencies are unavailable; install the 'model' extra"
@@ -129,6 +212,9 @@ class TransformersModelRuntime:
         self._torch = torch
         self._tokenizer = tokenizer
         self._model = model
+        self._stopping_criteria_list_type = StoppingCriteriaList
+        if Path(self.model_id).is_dir():
+            self._checkpoint_fingerprint = fingerprint_checkpoint(self.model_id)
 
     def score_system_prompt(self, system_prompt: str) -> SystemPromptObservation:
         if not system_prompt.strip():
@@ -338,14 +424,28 @@ class TransformersModelRuntime:
         device = next(self._model.parameters()).device
         model_inputs = {name: tensor.to(device) for name, tensor in encoded.items()}
         generation_started = self._clock()
+        deadline_criterion = _DeadlineStoppingCriteria(
+            deadline=generation_started + max_time_seconds,
+            clock=self._clock,
+            torch_module=self._torch,
+        )
+        stopping_criteria = [deadline_criterion]
+        if self._stopping_criteria_list_type is not None:
+            stopping_criteria = self._stopping_criteria_list_type(
+                stopping_criteria
+            )
         with self._torch.inference_mode():
             generated = self._model.generate(
                 **model_inputs,
                 do_sample=False,
                 max_new_tokens=max_new_tokens,
                 max_time=max_time_seconds,
+                stopping_criteria=stopping_criteria,
             )
-        if self._clock() - generation_started >= max_time_seconds:
+        if (
+            deadline_criterion.triggered
+            or self._clock() - generation_started >= max_time_seconds
+        ):
             raise TimeoutError("structured generation timed out")
         continuation = generated[0][input_length:]
         return self._tokenizer.decode(

@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import os
 from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+import app.model.runtime as model_runtime
 from app.model.runtime import (
     ModelObservation,
     ModelUnavailableError,
@@ -26,6 +28,46 @@ def test_system_prompt_hash_is_stable_and_does_not_expose_prompt() -> None:
     assert system_prompt not in digest
 
 
+def test_checkpoint_fingerprint_is_path_independent_and_content_bound(
+    tmp_path,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    for root in (first, second):
+        (root / "weights").mkdir(parents=True)
+        (root / "config.json").write_bytes(b'{"model":"fixed"}')
+        (root / "weights" / "model.safetensors").write_bytes(b"weights-v1")
+
+    first_fingerprint = model_runtime.fingerprint_checkpoint(first)
+    second_fingerprint = model_runtime.fingerprint_checkpoint(second)
+    (second / "weights" / "model.safetensors").write_bytes(b"weights-v2")
+
+    assert first_fingerprint == second_fingerprint
+    assert model_runtime.fingerprint_checkpoint(second) != first_fingerprint
+    assert str(first) not in first_fingerprint
+    assert str(second) not in second_fingerprint
+
+
+def test_checkpoint_fingerprint_accepts_relative_and_absolute_directories(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "model.safetensors").write_bytes(b"fixed-weights")
+    monkeypatch.chdir(tmp_path)
+
+    relative_fingerprint = model_runtime.fingerprint_checkpoint(
+        Path("checkpoint")
+    )
+    absolute_fingerprint = model_runtime.fingerprint_checkpoint(
+        checkpoint.resolve()
+    )
+
+    assert relative_fingerprint == absolute_fingerprint
+    assert relative_fingerprint.startswith("sha256:")
+
+
 def test_unloaded_runtime_reports_identity_and_not_ready() -> None:
     runtime = TransformersModelRuntime(model_id="Qwen/Qwen2.5-7B-Instruct")
 
@@ -33,6 +75,7 @@ def test_unloaded_runtime_reports_identity_and_not_ready() -> None:
         "ready": False,
         "model_id": "Qwen/Qwen2.5-7B-Instruct",
         "tokenizer_id": None,
+        "checkpoint_fingerprint": None,
     }
     with pytest.raises(ModelUnavailableError, match="not loaded"):
         runtime.score_prompt("System policy", "Summarize this report.")
@@ -98,6 +141,21 @@ class StructuredFakeModel:
         return [[11, 12, 13, 91, 92]]
 
 
+class DeadlineAwareFakeModel(StructuredFakeModel):
+    def __init__(self) -> None:
+        super().__init__()
+        self.deadline_result: Any | None = None
+
+    def generate(self, **kwargs: Any) -> list[list[int]]:
+        self.generate_kwargs = kwargs
+        criterion = kwargs["stopping_criteria"][0]
+        self.deadline_result = criterion(
+            SimpleNamespace(shape=(1, 4), device="cuda:0"),
+            None,
+        )
+        return [[11, 12, 13, 91, 92]]
+
+
 class StructuredFakeTorch:
     @staticmethod
     def inference_mode():
@@ -149,6 +207,26 @@ def test_structured_generation_classifies_deadline_return_as_timeout() -> None:
             max_time_seconds=3.0,
         )
 
+    assert tokenizer.decode_calls == []
+
+
+def test_structured_generation_uses_token_step_deadline_before_decoding() -> None:
+    runtime = TransformersModelRuntime(model_id="fake-model")
+    tokenizer = StructuredFakeTokenizer()
+    model = DeadlineAwareFakeModel()
+    runtime._tokenizer = tokenizer
+    runtime._model = model
+    runtime._torch = StructuredFakeTorch()
+    runtime._clock = SequenceClock([10.0, 13.1, 13.1])
+
+    with pytest.raises(TimeoutError, match="structured generation timed out"):
+        runtime.generate_structured(
+            [{"role": "system", "content": "fixed schema"}],
+            max_new_tokens=256,
+            max_time_seconds=3.0,
+        )
+
+    assert model.deadline_result is True
     assert tokenizer.decode_calls == []
 
 

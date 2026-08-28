@@ -13,6 +13,7 @@ from app.evaluation.grounded_report import (
     ReportExperimentConfig,
     ReportExperimentMetrics,
     assert_disjoint_sample_ids,
+    build_experiment_report,
     evaluate_report_config,
     select_report_config,
 )
@@ -234,3 +235,76 @@ def test_development_and_test_sample_ids_must_be_disjoint() -> None:
 
     with pytest.raises(ValueError, match="overlap"):
         assert_disjoint_sample_ids(["same"], ["same"])
+
+
+def test_historical_correction_marks_action_invariance_unverified() -> None:
+    config_path = Path("data/report-generation-config-v2.json")
+    development_path = Path("data/report-generation-development-report-v2.json")
+    test_path = Path("data/report-generation-test-report-v2.json")
+    original_bytes = {
+        path: path.read_bytes()
+        for path in (config_path, development_path, test_path)
+    }
+
+    correction = grounded_report.load_report_correction(
+        Path("data/report-generation-correction-v2.json"),
+        selected_config_path=config_path,
+        development_report_path=development_path,
+        test_report_path=test_path,
+    )
+
+    assert correction.action_invariance_evidence == "legacy_unverified"
+    assert correction.target_status.action_invariance is False
+    assert correction.checkpoint_identity_evidence == "legacy_unverified"
+    assert correction.deadline_capability == "legacy_post_return_only"
+    assert {
+        path: path.read_bytes()
+        for path in (config_path, development_path, test_path)
+    } == original_bytes
+
+
+def test_historical_correction_rejects_changed_source_artifact(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "selected.json"
+    config_path.write_bytes(
+        Path("data/report-generation-config-v2.json").read_bytes() + b" "
+    )
+
+    with pytest.raises(ValueError, match="artifact hash mismatch"):
+        grounded_report.load_report_correction(
+            Path("data/report-generation-correction-v2.json"),
+            selected_config_path=config_path,
+            development_report_path=Path(
+                "data/report-generation-development-report-v2.json"
+            ),
+            test_report_path=Path("data/report-generation-test-report-v2.json"),
+        )
+
+
+def test_future_report_declares_deadline_capabilities() -> None:
+    config = ReportExperimentConfig(max_new_tokens=64, timeout_seconds=5.0)
+    result = ReportConfigResult(
+        config=config,
+        metrics=_metrics(
+            generated_rate=1.0,
+            citation_validity=1.0,
+            latency_p95_ms=1000.0,
+        ),
+    )
+
+    report = build_experiment_report(
+        phase="test",
+        snapshot=load_knowledge_snapshot(
+            Path("knowledge/snapshots/official-v2")
+        ),
+        model_version="Qwen2.5-7B-Instruct",
+        checkpoint_fingerprint="sha256:" + "1" * 64,
+        candidate_results=[result],
+        selected_config=config,
+    )
+
+    assert report.runtime_capabilities.model_dump() == {
+        "deadline_enforcement": "cooperative_token_step",
+        "stuck_cuda_kernel_termination": "cannot_terminate_in_process",
+    }
