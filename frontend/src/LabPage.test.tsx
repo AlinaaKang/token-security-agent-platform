@@ -193,6 +193,7 @@ function installFetch(options: {
     if (url === "/api/v1/lab/scenarios") return response(scenarios);
     if (url === "/api/v1/lab/metrics") return response(metrics);
     if (url === "/api/v1/lab/runs") return response(runs.shift() ?? run, true, 201);
+    if (url === "/api/v1/lab/runs/lab_123") return response(run);
     if (url.endsWith("/executions")) return response(options.history ?? []);
     if (url.includes("/execute")) {
       const next = executeResponses.shift();
@@ -227,6 +228,7 @@ async function startRun() {
 describe("security lab workspace", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/lab");
+    window.sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -302,6 +304,19 @@ describe("security lab workspace", () => {
     expect(await within(toolCenter).findByText("预览失败")).toBeInTheDocument();
     expect(requests.some((item) => item.url.endsWith("/tools/gateway_enforcement/dry-run"))).toBe(true);
     expect(requests.some((item) => item.url.includes("/execute"))).toBe(false);
+  });
+
+  it("restores the last redacted run and execution history after refresh", async () => {
+    const requests = installFetch({ history: [execution] });
+    window.sessionStorage.setItem("token-security-lab-run-id", run.run_id);
+
+    render(<App />);
+
+    expect(await screen.findByText("证据到达顺序")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "工具执行中心" }));
+    expect(await screen.findByText(execution.receipt_id)).toBeInTheDocument();
+    expect(requests.some((item) => item.url === "/api/v1/lab/runs/lab_123")).toBe(true);
+    expect(requests.some((item) => item.url === "/api/v1/lab/runs" && item.init?.method === "POST")).toBe(false);
   });
 
   it("requires explicit confirmation, focuses cancel, and cancels without a request", async () => {

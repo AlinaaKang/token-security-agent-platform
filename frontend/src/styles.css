@@ -1884,7 +1884,8 @@ td:first-child { min-width: 128px; }
   .lab-receipt-row { padding: 13px 14px; grid-template-columns: 24px minmax(0, 1fr); align-items: start; }
   .lab-receipt-row dl { grid-template-columns: 1fr 1fr; }
   .lab-artifact-download, .lab-artifact-placeholder { grid-column: 1 / -1; width: 100%; }
-  .lab-knowledge-relation { overflow-x: auto; grid-template-columns: repeat(9, max-content); }
+  .lab-knowledge-relation { overflow-x: visible; display: flex; flex-wrap: wrap; }
+  .lab-knowledge-relation > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .lab-report-band dl { grid-template-columns: 1fr; }
   .lab-report-band dl > div { border-right: 0; border-bottom: 1px solid var(--line); }
   .lab-report-band dl > div:last-child { border-bottom: 0; }

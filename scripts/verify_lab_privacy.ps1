@@ -434,6 +434,7 @@ function Invoke-AndScanApiJson {
 }
 
 if ($BaseUrl.Length -gt 0) {
+    Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
     $client = [System.Net.Http.HttpClient]::new()
     $client.Timeout = [TimeSpan]::FromMinutes(10)
     try {

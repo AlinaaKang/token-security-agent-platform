@@ -610,6 +610,22 @@ def test_privacy_verifier_scans_every_advanced_api_surface() -> None:
     )
 
 
+@pytest.mark.skipif(
+    not WINDOWS_POWERSHELL.exists(), reason="Windows PowerShell is unavailable"
+)
+def test_windows_powershell_scans_every_advanced_api_surface() -> None:
+    with _privacy_api() as base_url:
+        result = _run(
+            "-BaseUrl",
+            base_url,
+            "-SkipTrackedPathScan",
+            shell=WINDOWS_POWERSHELL,
+        )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "api_requests=9" in result.stdout
+
+
 def test_privacy_verifier_fails_without_printing_reflected_api_sentinel() -> None:
     with _privacy_api(reflect_private=True) as base_url:
         result = _run("-BaseUrl", base_url, "-SkipTrackedPathScan")

@@ -53,6 +53,25 @@ const publisherLabels = { owasp: "OWASP", mitre: "MITRE", nist: "NIST" } as cons
 
 type LabTab = "evidence" | "counterfactual" | "tools";
 
+const lastRunStorageKey = "token-security-lab-run-id";
+
+function readLastRunId(): string | null {
+  try {
+    return window.sessionStorage.getItem(lastRunStorageKey);
+  } catch {
+    return null;
+  }
+}
+
+function rememberLastRunId(runId: string | null) {
+  try {
+    if (runId) window.sessionStorage.setItem(lastRunStorageKey, runId);
+    else window.sessionStorage.removeItem(lastRunStorageKey);
+  } catch {
+    // Session storage is optional; the live run remains usable without it.
+  }
+}
+
 function EvidenceTimeline({ run }: { run: LabRunResult }) {
   return (
     <section className="lab-band lab-evidence-arrival">
@@ -218,6 +237,18 @@ export function LabPage() {
         if (active) setScenarios(items);
         const aggregate = await api.labMetrics();
         if (active) setMetrics(aggregate);
+        const lastRunId = readLastRunId();
+        if (lastRunId) {
+          try {
+            const restoredRun = await api.getLabRun(lastRunId);
+            if (active) {
+              setRun(restoredRun);
+              setMode(restoredRun.mode);
+            }
+          } catch {
+            rememberLastRunId(null);
+          }
+        }
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : "实验场景加载失败");
       }
@@ -245,6 +276,7 @@ export function LabPage() {
         : { scenario_kind: "frozen" as const, sample_id: selectedScenario, mode };
       const createdRun = await api.createLabRun(payload);
       setRun(createdRun);
+      rememberLastRunId(createdRun.run_id);
       if (selectedScenario === "custom") setCustomInput("");
       api.labMetrics().then(setMetrics).catch(() => undefined);
     } catch (caught) {
