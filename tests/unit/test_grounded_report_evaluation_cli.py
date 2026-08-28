@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, NoReturn
 
 import pytest
@@ -78,6 +79,25 @@ def _selection_key(family: str, sample_id: str) -> str:
 
 def _runtime_must_not_start(**_: object) -> NoReturn:
     raise AssertionError("frozen gate must reject before runtime startup")
+
+
+class MismatchedModelRuntime:
+    def __init__(self, **_: object) -> None:
+        self.loaded = False
+
+    def load(self) -> None:
+        self.loaded = True
+
+    def readiness(self) -> SimpleNamespace:
+        return SimpleNamespace(ready=True, model_id="different-model")
+
+
+class MissingModelIdentityRuntime:
+    def __init__(self, **_: object) -> None:
+        self.loaded = False
+
+    def load(self) -> None:
+        self.loaded = True
 
 
 def _run_frozen_with_aggregate(
@@ -268,3 +288,83 @@ def test_frozen_gate_rejects_development_snapshot_hash_mismatch(
 
     with pytest.raises(ValueError, match="snapshot hash"):
         _run_frozen_with_aggregate(tmp_path, payload)
+
+
+def test_frozen_gate_rejects_development_model_identity_mismatch(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(
+        Path("data/report-generation-development-report-v2.json").read_text(
+            encoding="ascii"
+        )
+    )
+    payload["model_version"] = "different-model"
+
+    with pytest.raises(ValueError, match="model identity"):
+        _run_frozen_with_aggregate(tmp_path, payload)
+
+
+def test_frozen_gate_rejects_noncanonical_model_path_before_runtime(
+    tmp_path: Path,
+) -> None:
+    autodan, advprompter, gcg = _write_sources(tmp_path / "sources")
+
+    with pytest.raises(ValueError, match="model identity"):
+        run_experiment(
+            phase="test",
+            autodan_csv=autodan,
+            advprompter_csv=advprompter,
+            gcg_csv=gcg,
+            snapshot_path=Path("knowledge/snapshots/official-v2"),
+            output_path=tmp_path / "test-report.json",
+            selected_config_path=Path("data/report-generation-config-v2.json"),
+            development_report_path=Path(
+                "data/report-generation-development-report-v2.json"
+            ),
+            model_path="different-model",
+            runtime_factory=_runtime_must_not_start,
+        )
+
+
+def test_frozen_gate_rejects_loaded_runtime_model_identity_mismatch(
+    tmp_path: Path,
+) -> None:
+    autodan, advprompter, gcg = _write_sources(tmp_path / "sources")
+
+    with pytest.raises(ValueError, match="model identity"):
+        run_experiment(
+            phase="test",
+            autodan_csv=autodan,
+            advprompter_csv=advprompter,
+            gcg_csv=gcg,
+            snapshot_path=Path("knowledge/snapshots/official-v2"),
+            output_path=tmp_path / "test-report.json",
+            selected_config_path=Path("data/report-generation-config-v2.json"),
+            development_report_path=Path(
+                "data/report-generation-development-report-v2.json"
+            ),
+            model_path="Qwen2.5-7B-Instruct",
+            runtime_factory=MismatchedModelRuntime,
+        )
+
+
+def test_frozen_gate_rejects_runtime_without_loaded_model_identity(
+    tmp_path: Path,
+) -> None:
+    autodan, advprompter, gcg = _write_sources(tmp_path / "sources")
+
+    with pytest.raises(ValueError, match="model identity unavailable"):
+        run_experiment(
+            phase="test",
+            autodan_csv=autodan,
+            advprompter_csv=advprompter,
+            gcg_csv=gcg,
+            snapshot_path=Path("knowledge/snapshots/official-v2"),
+            output_path=tmp_path / "test-report.json",
+            selected_config_path=Path("data/report-generation-config-v2.json"),
+            development_report_path=Path(
+                "data/report-generation-development-report-v2.json"
+            ),
+            model_path="Qwen2.5-7B-Instruct",
+            runtime_factory=MissingModelIdentityRuntime,
+        )

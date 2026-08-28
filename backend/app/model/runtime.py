@@ -80,6 +80,7 @@ class TransformersModelRuntime:
         self._model: Any | None = None
         self._tokenizer: Any | None = None
         self._torch: Any | None = None
+        self._clock = time.perf_counter
 
     def readiness(self) -> RuntimeReadiness:
         tokenizer_id = None
@@ -336,6 +337,7 @@ class TransformersModelRuntime:
             raise PromptTooLongError("structured input exceeds token limit")
         device = next(self._model.parameters()).device
         model_inputs = {name: tensor.to(device) for name, tensor in encoded.items()}
+        generation_started = self._clock()
         with self._torch.inference_mode():
             generated = self._model.generate(
                 **model_inputs,
@@ -343,6 +345,8 @@ class TransformersModelRuntime:
                 max_new_tokens=max_new_tokens,
                 max_time=max_time_seconds,
             )
+        if self._clock() - generation_started >= max_time_seconds:
+            raise TimeoutError("structured generation timed out")
         continuation = generated[0][input_length:]
         return self._tokenizer.decode(
             continuation,

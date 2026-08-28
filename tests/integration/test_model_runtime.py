@@ -104,6 +104,14 @@ class StructuredFakeTorch:
         return nullcontext()
 
 
+class SequenceClock:
+    def __init__(self, values: list[float]) -> None:
+        self._values = iter(values)
+
+    def __call__(self) -> float:
+        return next(self._values)
+
+
 def test_structured_generation_is_bounded_and_decodes_only_continuation() -> None:
     runtime = TransformersModelRuntime(model_id="fake-model")
     tokenizer = StructuredFakeTokenizer()
@@ -124,6 +132,24 @@ def test_structured_generation_is_bounded_and_decodes_only_continuation() -> Non
     assert model.generate_kwargs["do_sample"] is False
     assert model.generate_kwargs["max_new_tokens"] == 256
     assert model.generate_kwargs["max_time"] == 3.0
+
+
+def test_structured_generation_classifies_deadline_return_as_timeout() -> None:
+    runtime = TransformersModelRuntime(model_id="fake-model")
+    tokenizer = StructuredFakeTokenizer()
+    runtime._tokenizer = tokenizer
+    runtime._model = StructuredFakeModel()
+    runtime._torch = StructuredFakeTorch()
+    runtime._clock = SequenceClock([10.0, 13.1])
+
+    with pytest.raises(TimeoutError, match="structured generation timed out"):
+        runtime.generate_structured(
+            [{"role": "system", "content": "fixed schema"}],
+            max_new_tokens=256,
+            max_time_seconds=3.0,
+        )
+
+    assert tokenizer.decode_calls == []
 
 
 def test_structured_generation_requires_loaded_runtime() -> None:

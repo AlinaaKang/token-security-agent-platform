@@ -19,18 +19,21 @@ from pydantic import (
 )
 
 from app.agent.fusion import FusionReason
+from app.agent.workflow import merge_knowledge_enhancement
 from app.knowledge.models import (
+    KnowledgeMode,
     KnowledgeSnapshot,
-    NormalizedSecurityFacts,
     ReportStatus,
 )
-from app.knowledge.query import RetrievalMetadata, SafeQueryBuilder
+from app.knowledge.query import SafeQueryBuilder
 from app.knowledge.reporting import (
     QwenGroundedReportGenerator,
     ReportFailureCode,
+    ReportGeneration,
 )
 from app.knowledge.retriever import LocalKnowledgeRetriever
-from app.schemas import Decision
+from app.knowledge.service import KnowledgeService
+from app.schemas import AnalysisResult, Decision, Provenance, SuspiciousSpan
 from app.semantic.models import SemanticCategory, SemanticSeverity
 
 
@@ -41,6 +44,7 @@ SelectionRule = Literal[
 SELECTION_RULE: SelectionRule = (
     "p95_budget_generated_rate_citation_latency_size"
 )
+REPORT_MODEL_VERSION = "Qwen2.5-7B-Instruct"
 FAILURE_CODES: tuple[ReportFailureCode, ...] = (
     "runtime_timeout",
     "runtime_error",
@@ -69,6 +73,7 @@ CANDIDATE_REPORT_CONFIGS: tuple[ReportExperimentConfig, ...] = tuple(
 class SelectedReportConfig(_StrictModel):
     schema_version: Literal[1] = 1
     snapshot_version: str = Field(min_length=1)
+    model_version: str = Field(default=REPORT_MODEL_VERSION, min_length=1)
     max_new_tokens: Literal[64, 96, 128]
     timeout_seconds: Literal[3.0, 5.0, 6.0]
     selection_rule: SelectionRule = SELECTION_RULE
@@ -193,17 +198,60 @@ def _percentile(values: Sequence[float], percentile: float) -> float:
     return float(ordered[index])
 
 
-def _facts(sample: ReportEvaluationSample) -> NormalizedSecurityFacts:
-    return NormalizedSecurityFacts(
-        semantic_severity=SemanticSeverity.UNSAFE,
-        semantic_categories=(SemanticCategory.JAILBREAK,),
+def _analysis_result(sample: ReportEvaluationSample) -> AnalysisResult:
+    return AnalysisResult(
+        request_id="report-evaluation",
+        decision=sample.decision,
+        risk_score=1.0,
+        detector_score=1.0,
         detector_status="token_anomaly_candidate",
-        anomaly_char_start=sample.suffix_char_start,
+        semantic_severity=SemanticSeverity.UNSAFE,
+        semantic_categories=[SemanticCategory.JAILBREAK],
+        semantic_model_id="report-evaluation",
+        semantic_model_version="report-evaluation",
+        semantic_latency_ms=0.0,
+        semantic_verification="performed",
         fusion_reason=FusionReason.CPD_CANDIDATE,
-        decision=sample.decision.value,
-        mode="analysis",
-        attack_family=sample.family,
+        suspicious_span=SuspiciousSpan(
+            token_start=0,
+            token_end=1,
+            char_start=sample.suffix_char_start,
+            char_end=len(sample.prompt),
+        ),
+        signals=[],
+        evidence=[],
+        actions=[sample.decision.value],
+        provenance=Provenance(
+            model_id="report-evaluation",
+            tokenizer_id="report-evaluation",
+            system_prompt_hash="report-evaluation",
+            calibration_version="report-evaluation",
+        ),
+        latency_ms=0.0,
     )
+
+
+class _RecordingReportGenerator:
+    def __init__(
+        self,
+        delegate: QwenGroundedReportGenerator,
+        *,
+        clock: Callable[[], float],
+    ) -> None:
+        self._delegate = delegate
+        self._clock = clock
+        self.generation: ReportGeneration | None = None
+        self.latency_ms: float | None = None
+
+    def generate(self, facts, evidence) -> ReportGeneration:
+        self.generation = None
+        started = self._clock()
+        try:
+            generation = self._delegate.generate(facts, evidence)
+        finally:
+            self.latency_ms = (self._clock() - started) * 1000
+        self.generation = generation
+        return generation
 
 
 def evaluate_report_config(
@@ -221,12 +269,20 @@ def evaluate_report_config(
     if len(identifiers) != len(set(identifiers)):
         raise ValueError("report evaluation sample IDs must be unique")
 
-    retriever = LocalKnowledgeRetriever(snapshot)
-    query_builder = SafeQueryBuilder()
-    generator = QwenGroundedReportGenerator(
-        runtime,
-        max_new_tokens=config.max_new_tokens,
-        max_time_seconds=config.timeout_seconds,
+    recording_generator = _RecordingReportGenerator(
+        QwenGroundedReportGenerator(
+            runtime,
+            max_new_tokens=config.max_new_tokens,
+            max_time_seconds=config.timeout_seconds,
+        ),
+        clock=clock,
+    )
+    knowledge_service = KnowledgeService(
+        snapshot_version=snapshot.manifest.snapshot_version,
+        query_builder=SafeQueryBuilder(),
+        retriever=LocalKnowledgeRetriever(snapshot),
+        generator=recording_generator,
+        max_results=3,
     )
     generated_count = 0
     valid_citations = 0
@@ -237,38 +293,33 @@ def evaluate_report_config(
     latencies: list[float] = []
 
     for sample in rows:
-        facts = _facts(sample)
-        metadata = RetrievalMetadata(
-            semantic_severity=facts.semantic_severity,
-            semantic_categories=facts.semantic_categories,
-            detector_status=facts.detector_status,
-            fusion_reason=facts.fusion_reason,
-            decision=sample.decision,
-            mode="analysis",
+        basic_result = _analysis_result(sample)
+        enhancement = knowledge_service.enhance(
+            prompt=sample.prompt,
+            result=basic_result,
+            mode=KnowledgeMode.REPORT,
             attack_family=sample.family,
+            work_mode="analysis",
         )
-        query = query_builder.build(
-            sample.prompt,
-            char_onset=sample.suffix_char_start,
-            metadata=metadata,
-        )
-        evidence = retriever.search(query, top_k=3)
-        if not evidence:
-            raise RuntimeError("report evaluation retrieval returned no evidence")
-
-        decision_before = facts.decision
-        started = clock()
-        generation = generator.generate(facts, evidence)
-        latencies.append((clock() - started) * 1000)
-        decision_after = facts.decision
-        invariant_count += decision_before == decision_after
+        generation = recording_generator.generation
+        if (
+            generation is None
+            or recording_generator.latency_ms is None
+            or enhancement.grounded_report is None
+            or not enhancement.knowledge_evidence
+        ):
+            raise RuntimeError("report evaluation enhancement was unavailable")
+        enhanced_result = merge_knowledge_enhancement(basic_result, enhancement)
+        latencies.append(recording_generator.latency_ms)
+        invariant_count += basic_result.decision == enhanced_result.decision
         family_counts[sample.family] += 1
 
+        evidence = enhancement.knowledge_evidence
         allowed_ids = {item.knowledge_id for item in evidence}
-        citations = generation.report.evidence_ids
+        citations = enhanced_result.grounded_report.evidence_ids
         citation_count += len(citations)
         valid_citations += sum(item in allowed_ids for item in citations)
-        if generation.status is ReportStatus.GENERATED:
+        if enhanced_result.report_status is ReportStatus.GENERATED:
             generated_count += 1
         else:
             if generation.failure_code not in FAILURE_CODES:

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import app.evaluation.grounded_report as grounded_report
 from app.evaluation.grounded_report import (
     CANDIDATE_REPORT_CONFIGS,
     ReportConfigResult,
@@ -144,6 +145,42 @@ def test_evaluator_measures_generated_fallback_citations_and_invariance() -> Non
         for marker in private_markers
         for message in runtime.serialized_messages
     )
+
+
+def test_action_invariance_observes_the_production_enhancement_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sample = ReportEvaluationSample(
+        sample_id="private-sample",
+        family="gcg",
+        prompt="PRIVATE_PROMPT PRIVATE_SUFFIX",
+        suffix_char_start=len("PRIVATE_PROMPT"),
+    )
+    production_merge = grounded_report.merge_knowledge_enhancement
+
+    def rewrite_decision(result, enhancement):
+        return production_merge(result, enhancement).model_copy(
+            update={"decision": "allow"}
+        )
+
+    monkeypatch.setattr(
+        grounded_report,
+        "merge_knowledge_enhancement",
+        rewrite_decision,
+        raising=False,
+    )
+
+    result = evaluate_report_config(
+        [sample],
+        snapshot=load_knowledge_snapshot(
+            Path("knowledge/snapshots/official-v2")
+        ),
+        runtime=FakeStructuredRuntime(),
+        config=ReportExperimentConfig(max_new_tokens=64, timeout_seconds=3.0),
+        clock=MillisecondClock(),
+    )
+
+    assert result.metrics.action_invariance == 0.0
 
 
 @pytest.mark.parametrize(

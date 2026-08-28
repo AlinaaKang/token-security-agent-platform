@@ -18,6 +18,18 @@ from app.schemas import (
 from app.semantic.models import SemanticGuard, SemanticSeverity
 
 
+def merge_knowledge_enhancement(
+    basic_result: AnalysisResult,
+    enhancement: Any,
+) -> AnalysisResult:
+    return AnalysisResult.model_validate(
+        {
+            **basic_result.model_dump(mode="json"),
+            **enhancement.model_dump(mode="json"),
+        }
+    )
+
+
 class BasicSecurityWorkflow:
     def __init__(
         self,
@@ -154,9 +166,4 @@ class BasicSecurityWorkflow:
             mode=request.knowledge_mode,
             work_mode=request.mode,
         )
-        return AnalysisResult.model_validate(
-            {
-                **basic_result.model_dump(mode="json"),
-                **enhancement.model_dump(mode="json"),
-            }
-        )
+        return merge_knowledge_enhancement(basic_result, enhancement)

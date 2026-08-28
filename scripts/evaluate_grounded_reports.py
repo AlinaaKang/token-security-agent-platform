@@ -13,6 +13,7 @@ from app.evaluation.grounded_report import (
     ReportEvaluationSample,
     ReportExperimentConfig,
     ReportExperimentReport,
+    REPORT_MODEL_VERSION,
     SELECTION_RULE,
     SelectedReportConfig,
     assert_disjoint_sample_ids,
@@ -181,14 +182,19 @@ def _write_aggregate(
     temporary.replace(path)
 
 
-def _runtime_version(runtime: object, model_path: str) -> str:
+def _runtime_version(runtime: object) -> str:
     readiness_method = getattr(runtime, "readiness", None)
-    if callable(readiness_method):
-        readiness = readiness_method()
-        model_id = getattr(readiness, "model_id", None)
-        if isinstance(model_id, str) and model_id.strip():
-            return Path(model_id).name or model_id
-    return Path(model_path).name or model_path
+    if not callable(readiness_method):
+        raise ValueError("loaded runtime model identity unavailable")
+    readiness = readiness_method()
+    model_id = getattr(readiness, "model_id", None)
+    if (
+        getattr(readiness, "ready", None) is not True
+        or not isinstance(model_id, str)
+        or not model_id.strip()
+    ):
+        raise ValueError("loaded runtime model identity unavailable")
+    return model_id
 
 
 def _validate_development_aggregate(
@@ -208,6 +214,8 @@ def _validate_development_aggregate(
         raise ValueError("development aggregate snapshot version mismatch")
     if report.snapshot_hash != snapshot_hash:
         raise ValueError("development aggregate snapshot hash mismatch")
+    if report.model_version != selected.model_version:
+        raise ValueError("development aggregate model identity mismatch")
     if {result.config for result in report.candidate_results} != set(
         CANDIDATE_REPORT_CONFIGS
     ):
@@ -249,12 +257,19 @@ def run_experiment(
         raise FileExistsError("experiment output already exists")
     if phase == "test":
         selected_file = load_selected_report_config(selected_config_path)
+        if (
+            selected_file.model_version != REPORT_MODEL_VERSION
+            or model_path != selected_file.model_version
+        ):
+            raise ValueError("frozen report model identity mismatch")
         if not development_report_path.is_file():
             raise FileNotFoundError(
                 "development aggregate is required for frozen test"
             )
     else:
         selected_file = None
+        if model_path != REPORT_MODEL_VERSION:
+            raise ValueError("development report model identity mismatch")
         if selected_config_path.exists():
             raise FileExistsError("selected report config already exists")
 
@@ -288,6 +303,14 @@ def run_experiment(
     load_runtime = getattr(runtime, "load", None)
     if callable(load_runtime):
         load_runtime()
+    runtime_version = _runtime_version(runtime)
+    expected_model_version = (
+        selected_file.model_version
+        if selected_file is not None
+        else REPORT_MODEL_VERSION
+    )
+    if runtime_version != expected_model_version:
+        raise ValueError("loaded runtime model identity mismatch")
     configurations = (
         CANDIDATE_REPORT_CONFIGS
         if phase == "development"
@@ -310,7 +333,7 @@ def run_experiment(
     report = build_experiment_report(
         phase=phase,
         snapshot=snapshot,
-        model_version=_runtime_version(runtime, model_path),
+        model_version=runtime_version,
         candidate_results=results,
         selected_config=selected_config,
     )
@@ -320,6 +343,7 @@ def run_experiment(
             selected_config_path,
             SelectedReportConfig(
                 snapshot_version=snapshot.manifest.snapshot_version,
+                model_version=runtime_version,
                 max_new_tokens=selected_config.max_new_tokens,
                 timeout_seconds=selected_config.timeout_seconds,
                 selection_rule=SELECTION_RULE,
