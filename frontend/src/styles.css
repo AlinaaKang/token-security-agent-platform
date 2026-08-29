@@ -50,9 +50,9 @@
   min-height: 182px;
 }
 
-.challenge-mascot-guard { --mascot-travel-x: 56%; --mascot-delay: 0ms; }
-.challenge-mascot-cpd { --mascot-travel-x: 0%; --mascot-delay: 90ms; }
-.challenge-mascot-agent { --mascot-travel-x: -56%; --mascot-delay: 180ms; }
+.challenge-mascot-guard { --mascot-delay: 0ms; }
+.challenge-mascot-cpd { --mascot-delay: 90ms; }
+.challenge-mascot-agent { --mascot-delay: 180ms; }
 
 .challenge-mascot-team[data-phase="setup"] .challenge-mascot {
   animation: challenge-mascot-enter 440ms ease-out both;
@@ -66,21 +66,8 @@
   animation-delay: var(--mascot-delay);
 }
 
-.challenge-mascot[data-motion="approach"] {
-  animation: challenge-mascot-approach 620ms cubic-bezier(.2, .75, .25, 1) both;
-}
-
-.challenge-mascot.active[data-motion="inspect"],
-.challenge-mascot.active[data-motion="conclude"] {
-  transform: translateX(var(--mascot-travel-x)) translateY(-6px);
-}
-
-.challenge-mascot[data-motion="inspect"] .challenge-mascot-image-wrap {
-  animation: challenge-mascot-inspect 620ms ease-in-out both;
-}
-
-.challenge-mascot[data-motion="conclude"] .challenge-mascot-image-wrap {
-  animation: challenge-mascot-conclude 620ms ease-out both;
+.challenge-mascot[data-motion="hop"] .challenge-mascot-image-wrap {
+  animation: challenge-mascot-hop 2200ms ease-in-out infinite;
 }
 
 .challenge-mascot[data-motion="conflict"] .challenge-mascot-image-wrap {
@@ -102,20 +89,10 @@
   50% { transform: translateY(-2px) rotate(1deg); }
 }
 
-@keyframes challenge-mascot-approach {
-  from { transform: translateX(0) translateY(6px); }
-  to { transform: translateX(var(--mascot-travel-x)) translateY(-6px); }
-}
-
-@keyframes challenge-mascot-inspect {
-  0%, 100% { transform: rotate(0); }
-  55% { transform: rotate(4deg) translateY(1px); }
-}
-
-@keyframes challenge-mascot-conclude {
-  0% { transform: translateY(0) rotate(0); }
-  45% { transform: translateY(-3px) rotate(-2deg); }
-  100% { transform: translateY(0) rotate(0); }
+@keyframes challenge-mascot-hop {
+  0%, 12%, 100% { transform: translateY(0); }
+  4% { transform: translateY(-12px); }
+  8% { transform: translateY(-4px); }
 }
 
 @keyframes challenge-mascot-conflict {
@@ -138,6 +115,39 @@
   margin: 0;
   transform: translateY(6px);
   transition: transform 180ms ease;
+}
+
+.challenge-mascot-next-cue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: #79510d;
+  border: 1px solid #e8c77d;
+  border-radius: 6px;
+  background: #fff6df;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 16px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.challenge-mascot-next-cue[data-visible="false"] {
+  visibility: hidden;
+}
+
+.challenge-mascot-next-cue[data-visible="true"] svg {
+  flex: 0 0 auto;
+  animation: challenge-mascot-cue 1100ms ease-in-out infinite;
+}
+
+@keyframes challenge-mascot-cue {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(2px); }
 }
 
 .challenge-mascot-control {
@@ -255,8 +265,9 @@
   filter: none;
 }
 
-.challenge-mascot[data-role-state="presenting"] {
-  transform: translateX(var(--mascot-travel-x)) translateY(-6px);
+.challenge-mascot-control[aria-pressed="true"] .challenge-mascot-image-wrap {
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(79, 130, 178, 0.24);
 }
 
 .lab-mode-switch {
@@ -689,8 +700,7 @@
 }
 
 @media (max-width: 760px) {
-  .challenge-mascot-guard { --mascot-travel-x: 34%; }
-  .challenge-mascot-agent { --mascot-travel-x: -34%; }
+  .challenge-mascot-next-cue { padding-inline: 5px; }
   .challenge-header { align-items: flex-start; flex-direction: column; }
   .challenge-mode-options { grid-template-columns: 1fr; }
   .challenge-mode-options button { height: 76px; }
@@ -729,6 +739,8 @@
   }
 
   .challenge-mascot-control,
+  .challenge-mascot-next-cue,
+  .challenge-mascot-next-cue svg,
   .challenge-investigation-desk {
     animation: none !important;
     transition: none !important;

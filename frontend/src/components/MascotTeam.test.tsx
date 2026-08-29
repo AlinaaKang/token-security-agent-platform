@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createInvestigationState, inspectRole } from "../challenge/investigation";
+import {
+  completeRolePresentation,
+  createInvestigationState,
+  inspectRole,
+} from "../challenge/investigation";
 import { MascotTeam } from "./MascotTeam";
 
 afterEach(cleanup);
@@ -27,7 +31,8 @@ describe("MascotTeam", () => {
     expect(guard).toBeEnabled();
     expect(cpd).toBeDisabled();
     expect(agent).toBeDisabled();
-    expect(screen.getByText("可以汇报")).toBeVisible();
+    expect(screen.getByText("等待点击")).toBeVisible();
+    expect(screen.getByText("下一步：点击语义侦探")).toBeVisible();
     expect(screen.getByText("等待语义侦探汇报")).toBeVisible();
     expect(screen.getByText("等待曲线侦探汇报")).toBeVisible();
     expect(guard).toHaveAttribute("aria-describedby", "mascot-role-status-guard");
@@ -60,29 +65,35 @@ describe("MascotTeam", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("marks a first visit as presenting and moves only that role", () => {
+  it("locks every role while the selected detective presents", () => {
     const state = inspectRole(createInvestigationState(), "guard");
     interactiveTeam(state);
     const figure = screen.getByRole("button", { name: /Guard 语义侦探/ }).closest("figure");
     expect(figure).toHaveAttribute("data-role-state", "presenting");
-    expect(figure).toHaveAttribute("data-motion", "approach");
+    expect(figure).toHaveAttribute("data-motion", "idle");
+    screen.getAllByRole("button").forEach((button) => expect(button).toBeDisabled());
+    expect(screen.queryByText(/下一步：点击/)).not.toBeInTheDocument();
   });
 
-  it("keeps a reviewed role in the lineup without replaying approach", () => {
+  it("keeps a reviewed role selected while the next role hops in place", () => {
     const first = inspectRole(createInvestigationState(), "guard");
-    const reviewed = inspectRole(first, "guard");
+    const guardDone = completeRolePresentation(first, "guard");
+    const reviewed = inspectRole(guardDone, "guard");
     interactiveTeam(reviewed);
     const figure = screen.getByRole("button", { name: /Guard 语义侦探/ }).closest("figure");
     expect(figure).toHaveAttribute("data-role-state", "visited");
     expect(figure).toHaveAttribute("data-motion", "idle");
     expect(screen.getByRole("button", { name: "Guard 语义侦探" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("已汇报，可回看")).toHaveAttribute("id", "mascot-role-status-guard");
+    expect(screen.getByText("正在回看")).toHaveAttribute("id", "mascot-role-status-guard");
+    expect(screen.getByRole("button", { name: "CPD 曲线侦探" }).closest("figure"))
+      .toHaveAttribute("data-motion", "hop");
+    expect(screen.getByText("下一步：点击曲线侦探")).toBeVisible();
   });
 
   it("preserves the existing automatic replay mapping without interaction props", () => {
     render(<MascotTeam phase="investigating" replayStageId="entropy_cpd" evidenceConflict={false} />);
     expect(screen.getByRole("button", { name: "CPD 曲线侦探" }).closest("figure"))
-      .toHaveAttribute("data-motion", "inspect");
+      .toHaveAttribute("data-motion", "hop");
   });
 
   it("keeps all roles mounted and activates CPD for the entropy stage", () => {
@@ -120,15 +131,15 @@ describe("MascotTeam", () => {
   });
 
   it.each([
-    ["semantic_guard", "Guard 语义侦探", "approach"],
-    ["token_observation", "CPD 曲线侦探", "approach"],
-    ["entropy_cpd", "CPD 曲线侦探", "inspect"],
-    ["fixed_fusion", "Agent 小队队长", "approach"],
-    ["knowledge_retrieval", "Agent 小队队长", "conclude"],
-  ] as const)("maps %s to %s motion", (stageId, roleName, motion) => {
+    ["semantic_guard", "Guard 语义侦探"],
+    ["token_observation", "CPD 曲线侦探"],
+    ["entropy_cpd", "CPD 曲线侦探"],
+    ["fixed_fusion", "Agent 小队队长"],
+    ["knowledge_retrieval", "Agent 小队队长"],
+  ] as const)("maps %s to an in-place hop for %s", (stageId, roleName) => {
     render(<MascotTeam phase="investigating" replayStageId={stageId} evidenceConflict={false} />);
     expect(screen.getByRole("button", { name: roleName }).closest("figure"))
-      .toHaveAttribute("data-motion", motion);
+      .toHaveAttribute("data-motion", "hop");
     expect(screen.getAllByRole("figure").filter((figure) => figure.dataset.motion !== "idle"))
       .toHaveLength(1);
   });

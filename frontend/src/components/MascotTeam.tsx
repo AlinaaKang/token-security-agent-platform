@@ -1,4 +1,4 @@
-import { Activity, BadgeCheck, ShieldCheck } from "lucide-react";
+import { Activity, ArrowDown, BadgeCheck, ShieldCheck } from "lucide-react";
 
 import {
   canInspectRole,
@@ -23,7 +23,7 @@ interface MascotTeamProps {
 }
 
 type MascotRole = InvestigationRole;
-type MascotMotion = "idle" | "approach" | "inspect" | "conclude" | "conflict" | "celebrate";
+type MascotMotion = "idle" | "hop" | "conflict" | "celebrate";
 
 const MASCOTS = [
   {
@@ -65,24 +65,21 @@ function motionFor(
   if (phase === "complete") return "celebrate";
   if (phase === "revealed" && evidenceConflict && role === "agent") return "conflict";
   if (phase !== "investigating" || activeRole(stageId) !== role) return "idle";
-  if (stageId === "entropy_cpd") return "inspect";
-  if (stageId === "knowledge_retrieval") return "conclude";
-  return "approach";
+  return "hop";
 }
 
-function interactionMotion(
+function interactionMotion(roleState: InvestigationRoleState): MascotMotion {
+  return roleState === "ready" ? "hop" : "idle";
+}
+
+function roleStatusLabel(
   role: InvestigationRole,
-  roleState: InvestigationRoleState,
-): MascotMotion {
-  if (roleState !== "presenting") return "idle";
-  if (role === "cpd") return "inspect";
-  if (role === "agent") return "conclude";
-  return "approach";
-}
-
-function roleStatusLabel(role: InvestigationRole, state: InvestigationRoleState): string {
-  if (state === "ready") return "可以汇报";
-  if (state === "presenting") return "正在汇报";
+  state: InvestigationRoleState,
+  selected: boolean,
+): string {
+  if (state === "ready") return "等待点击";
+  if (state === "presenting") return "正在逐行汇报";
+  if (state === "visited" && selected) return "正在回看";
   if (state === "visited") return "已汇报，可回看";
   if (role === "cpd") return "等待语义侦探汇报";
   if (role === "agent") return "等待曲线侦探汇报";
@@ -112,10 +109,10 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction
           const roleState = interaction ? roleStateFor(interaction.state, role) : null;
           const selected = interaction?.state.selectedRole === role;
           const motion = interaction
-            ? interactionMotion(role, roleState!)
+            ? interactionMotion(roleState!)
             : motionFor(role, phase, replayStageId, revealEvidenceConflict);
           const canInspect = interaction ? canInspectRole(interaction.state, role) : false;
-          const status = interaction ? roleStatusLabel(role, roleState!) : null;
+          const status = interaction ? roleStatusLabel(role, roleState!, selected) : null;
           const classNames = [
             "challenge-mascot",
             `challenge-mascot-${role}`,
@@ -133,6 +130,18 @@ export function MascotTeam({ phase, replayStageId, evidenceConflict, interaction
               data-role-state={roleState ?? undefined}
               key={role}
             >
+              <div
+                className="challenge-mascot-next-cue"
+                data-visible={roleState === "ready" ? "true" : "false"}
+                aria-hidden={roleState === "ready" ? undefined : "true"}
+              >
+                {roleState === "ready" ? (
+                  <>
+                    <ArrowDown aria-hidden="true" size={14} strokeWidth={2.4} />
+                    <span>{`下一步：点击${shortName}`}</span>
+                  </>
+                ) : null}
+              </div>
               <button
                 type="button"
                 className="challenge-mascot-control"
