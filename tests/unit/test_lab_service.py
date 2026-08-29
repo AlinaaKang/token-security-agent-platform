@@ -275,6 +275,14 @@ def test_protected_public_input_uses_fixed_fallback_for_unknown_family() -> None
     assert public_input.redaction_notice == "[对抗攻击内容已隐藏]"
 
 
+def test_protected_public_input_normalizes_mixed_case_family() -> None:
+    public_input = _protected_public_input(" AutoDAN ")
+
+    assert public_input.content == "自然语言角色与指令包装试图改变模型安全边界。"
+    assert public_input.intent_summary == "自然语言包装的越狱指令识别"
+    assert public_input.redaction_notice == "[对抗攻击内容已隐藏]"
+
+
 def test_lab_lists_each_attack_family_when_one_family_exceeds_global_limit() -> None:
     class CrowdedDemoService(ProtectedDemoService):
         def list_samples(self, *, family: str | None, limit: int):

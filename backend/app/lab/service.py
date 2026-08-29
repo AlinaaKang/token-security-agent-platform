@@ -503,13 +503,14 @@ def _protected_label(family: str) -> str:
 
 
 def _protected_public_input(family: str) -> LabPublicInput:
+    normalized_family = family.strip().casefold()
     return LabPublicInput(
         disclosure="redacted",
         content=_PROTECTED_PUBLIC_CONTENT.get(
-            family, "受保护对抗样本，具体内容已隐藏。"
+            normalized_family, "受保护对抗样本，具体内容已隐藏。"
         ),
         intent_summary=_PROTECTED_PUBLIC_INTENT_SUMMARIES.get(
-            family, "识别受保护的对抗请求"
+            normalized_family, "识别受保护的对抗请求"
         ),
         redaction_notice=REDACTED_INPUT_NOTICE,
     )
