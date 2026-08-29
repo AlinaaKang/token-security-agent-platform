@@ -1,5 +1,4 @@
 import type { LabRunResult, SemanticSeverity } from "../types";
-import type { EvidenceRelation } from "./types";
 import type { InvestigationRole } from "./investigation";
 import { expectedEvidenceRelation } from "./scoring";
 
@@ -14,13 +13,6 @@ const SEMANTIC_LABELS: Record<SemanticSeverity, string> = {
   controversial: "语义争议",
   unsafe: "语义危险",
   unavailable: "语义证据不可用",
-};
-
-const RELATION_LABELS: Record<EvidenceRelation, string> = {
-  dual_normal: "双路正常",
-  semantic_only: "仅语义风险",
-  distribution_only: "仅分布异常",
-  dual_risk: "双路风险",
 };
 
 function guardLines(run: LabRunResult): RoleAuditLine[] {
@@ -71,12 +63,17 @@ function cpdLines(run: LabRunResult): RoleAuditLine[] {
 
 function captainLines(run: LabRunResult): RoleAuditLine[] {
   const relation = expectedEvidenceRelation(run);
+  const evidenceSummary = relation === null
+    ? "现有证据不足以形成双路关系"
+    : relation === "dual_normal" || relation === "dual_risk"
+      ? "两路证据结论一致"
+      : "两路证据存在分歧";
   return [
     { id: "captain-input", label: "证据接收", value: "已收到语义与 CPD 两路公开证据" },
     {
       id: "captain-relation",
       label: "证据关系",
-      value: relation === null ? "证据不足" : RELATION_LABELS[relation],
+      value: evidenceSummary,
     },
     { id: "captain-boundary", label: "展示边界", value: "提交研判前不展示系统动作" },
     { id: "captain-ready", label: "汇总状态", value: "调查证据已汇总，可以进入玩家研判" },

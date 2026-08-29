@@ -101,11 +101,12 @@ describe("challenge role audit lines", () => {
     const values = buildRoleAuditLines(run, "agent").map((line) => line.value);
     expect(values).toEqual([
       "已收到语义与 CPD 两路公开证据",
-      "仅分布异常",
+      "两路证据存在分歧",
       "提交研判前不展示系统动作",
       "调查证据已汇总，可以进入玩家研判",
     ]);
     expect(values.join(" ")).not.toContain("人工复核");
+    expect(values.join(" ")).not.toMatch(/仅分布异常|仅语义风险|双路正常|双路风险/);
   });
 
   it("uses explicit unavailable values without inventing evidence", () => {

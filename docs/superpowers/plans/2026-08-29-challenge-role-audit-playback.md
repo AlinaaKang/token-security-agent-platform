@@ -129,7 +129,7 @@ expect(buildRoleAuditLines(runResult, "cpd").map((line) => line.value)).toEqual(
 
 expect(buildRoleAuditLines(runResult, "agent").map((line) => line.value)).toEqual([
   "已收到语义与 CPD 两路公开证据",
-  "仅分布异常",
+  "两路证据存在分歧",
   "提交研判前不展示系统动作",
   "调查证据已汇总，可以进入玩家研判",
 ]);
