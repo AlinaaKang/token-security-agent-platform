@@ -62,6 +62,32 @@ describe("AuditableReasoningChain", () => {
     expect(screen.queryByText("任务闭环。")).not.toBeInTheDocument();
   });
 
+  it("exposes result states independently from the selected stage", () => {
+    render(<AuditableReasoningChain events={events.slice(0, 3)} playbackIntervalMs={0} />);
+
+    expect(screen.getByRole("button", { name: /观察证据.*已完成/ })).toHaveClass("is-succeeded");
+    expect(screen.getByRole("button", { name: /调整计划.*已完成/ })).toHaveClass("is-succeeded", "is-replan", "is-selected");
+    expect(screen.getByRole("button", { name: /执行动作.*等待证据/ })).toHaveClass("is-waiting");
+  });
+
+  it("keeps a selected failed stage marked as failed", () => {
+    const failed = events.map((item) => item.sequence === 4
+      ? { ...item, status: "failed" as const, summary: "内部网关执行失败。" }
+      : item).filter((item) => item.phase !== "complete");
+    render(<AuditableReasoningChain events={failed} playbackIntervalMs={0} />);
+
+    expect(screen.getByRole("button", { name: /执行动作.*失败/ })).toHaveClass("is-failed", "is-selected");
+  });
+
+  it("keeps an unreached replan in the waiting presentation state", () => {
+    render(<AuditableReasoningChain events={safeEvents} playbackIntervalMs={0} />);
+
+    expect(screen.getByRole("button", { name: /调整计划.*等待证据/ }))
+      .toHaveClass("is-waiting");
+    expect(screen.getByRole("button", { name: /调整计划.*等待证据/ }))
+      .not.toHaveClass("is-replan");
+  });
+
   it("restarts a full playback interval when events are replaced by the same number of events", async () => {
     vi.useFakeTimers();
     const { rerender } = render(<AuditableReasoningChain events={events} playbackIntervalMs={10} />);

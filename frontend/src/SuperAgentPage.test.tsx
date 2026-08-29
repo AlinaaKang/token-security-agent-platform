@@ -39,7 +39,7 @@ const blockMission = {
   events: [
     { sequence: 1, phase: "plan", actor: "coordinator", status: "succeeded", summary: "已建立有界调查计划。", evidence_codes: ["policy:bounded-react-v1"], tool_id: null },
     { sequence: 2, phase: "act", actor: "coordinator", status: "succeeded", summary: "基础检测与反事实检查已经完成。", evidence_codes: ["source:lab-run"], tool_id: null },
-    { sequence: 3, phase: "observe", actor: "semantic_analyst", status: "succeeded", summary: "语义证据已归一化为 unsafe。", evidence_codes: ["semantic:unsafe"], tool_id: null },
+    { sequence: 3, phase: "observe", actor: "semantic_analyst", status: "succeeded", summary: "语义证据已归一化为 unsafe。", evidence_codes: ["semantic:unsafe"], tool_id: null, private: { raw: PRIVATE_SENTINEL } },
     { sequence: 4, phase: "observe", actor: "token_analyst", status: "succeeded", summary: "Token 分布证据已完成，存在异常候选。", evidence_codes: ["cpd:token_anomaly_candidate", "onset:42"], tool_id: null },
     { sequence: 5, phase: "observe", actor: "knowledge_analyst", status: "succeeded", summary: "知识证据已核验并保留真实知识 ID。", evidence_codes: ["knowledge_id:owasp-llm01-prompt-injection"], tool_id: null },
     { sequence: 6, phase: "replan", actor: "coordinator", status: "succeeded", summary: "基础动作 block 保持不变，选择 3 个平台内部工具。", evidence_codes: ["base_action:block"], tool_id: null },
@@ -65,9 +65,14 @@ const safeMission = {
   final_status: "closed_safe",
   final_plan: [],
   executions: [],
-  events: blockMission.events.map((event) => event.sequence === 9
-    ? { ...event, summary: "任务闭环：证据支持安全放行。", evidence_codes: ["final_status:closed_safe"] }
-    : event).filter((event) => event.sequence < 7 || event.sequence > 7),
+  events: [
+    { sequence: 1, phase: "plan", actor: "coordinator", status: "succeeded", summary: "已建立有界安全检查计划。", evidence_codes: ["policy:bounded-react-v1"], tool_id: null },
+    { sequence: 2, phase: "act", actor: "coordinator", status: "succeeded", summary: "基础检测与反事实检查已经完成。", evidence_codes: ["source:lab-run"], tool_id: null },
+    { sequence: 3, phase: "observe", actor: "semantic_analyst", status: "succeeded", summary: "语义证据已归一化为 safe。", evidence_codes: ["semantic:safe"], tool_id: null },
+    { sequence: 4, phase: "observe", actor: "token_analyst", status: "succeeded", summary: "Token 分布未发现异常。", evidence_codes: ["detector:no_token_anomaly"], tool_id: null },
+    { sequence: 5, phase: "replan", actor: "coordinator", status: "succeeded", summary: "基础动作 allow 保持不变，无需平台内部工具。", evidence_codes: ["base_action:allow"], tool_id: null },
+    { sequence: 6, phase: "complete", actor: "coordinator", status: "succeeded", summary: "任务闭环：证据支持安全放行。", evidence_codes: ["final_status:closed_safe"], tool_id: null },
+  ],
 };
 
 function response(payload: unknown, ok = true, status = 200) {
@@ -148,6 +153,12 @@ describe("bounded SuperAgent workspace", () => {
       {},
       { timeout: 3000 },
     )).toBeInTheDocument();
+    const chain = screen.getByRole("region", { name: "可审计推理链" });
+    fireEvent.click(within(chain).getByRole("button", { name: /调整计划/ }));
+    expect(within(chain).queryByText(/选择 3 个平台内部工具/)).not.toBeInTheDocument();
+    fireEvent.click(within(chain).getByRole("button", { name: /验证结果/ }));
+    expect(within(chain).queryByText(/内部工具回执已核验/)).not.toBeInTheDocument();
+    expect(within(chain).queryByText("内部网关状态")).not.toBeInTheDocument();
     expect(screen.getByText("无需执行处置工具")).toBeInTheDocument();
     expect(screen.queryByText("内部网关状态")).not.toBeInTheDocument();
   });

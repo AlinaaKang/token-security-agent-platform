@@ -84,7 +84,7 @@ export function AuditableReasoningChain({ events, playbackIntervalMs = 220 }: Au
           <li key={stage.id}>
             <button
               type="button"
-              className={`superagent-reasoning-node${stage.id === "replan" ? " is-replan" : ""}${stage.state === "failed" ? " is-failed" : ""}`}
+              className={`superagent-reasoning-node is-${stage.state}${stage.id === "replan" && (stage.state === "planned" || stage.state === "succeeded") ? " is-replan" : ""}${activeStageId === stage.id ? " is-selected" : ""}`}
               disabled={stage.state === "waiting"}
               aria-pressed={activeStageId === stage.id}
               onClick={() => {

@@ -2117,10 +2117,16 @@ td:first-child { min-width: 128px; }
   font-weight: 800;
 }
 .superagent-reasoning-node > span:last-child { color: var(--muted); font-size: 9px; font-weight: 600; }
-.superagent-reasoning-node.is-replan { border-color: #d6ad6d; background: var(--review-soft); }
+.superagent-reasoning-node.is-waiting,
+.superagent-reasoning-node.is-skipped { border-color: var(--line); color: var(--muted); background: var(--surface-soft); }
+.superagent-reasoning-node.is-succeeded { border-color: #67a999; color: var(--trusted); background: var(--trusted-soft); }
+.superagent-reasoning-node.is-succeeded > span:last-child { color: var(--trusted); }
+.superagent-reasoning-node.is-replan { border-color: #d6ad6d; color: var(--review); background: var(--review-soft); }
+.superagent-reasoning-node.is-replan > span:last-child { color: var(--review); }
 .superagent-reasoning-node.is-failed { border-color: #d7a4a6; color: var(--blocked); background: var(--blocked-soft); }
-.superagent-reasoning-node[aria-pressed="true"] { outline: 2px solid var(--trusted); outline-offset: 2px; }
-.superagent-reasoning-node:disabled { color: var(--muted); background: var(--surface-soft); cursor: not-allowed; }
+.superagent-reasoning-node.is-failed > span:last-child { color: var(--blocked); }
+.superagent-reasoning-node.is-selected { outline: 2px solid var(--ink); outline-offset: 2px; }
+.superagent-reasoning-node:disabled { cursor: not-allowed; }
 .superagent-reasoning-detail { min-width: 0; border-top: 1px solid var(--line); padding: 14px 16px; }
 .superagent-reasoning-detail-grid {
   min-width: 0;
