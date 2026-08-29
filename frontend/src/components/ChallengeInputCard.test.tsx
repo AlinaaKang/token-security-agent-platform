@@ -35,6 +35,19 @@ describe("ChallengeInputCard", () => {
     expect(card).toHaveTextContent("[对抗攻击内容已隐藏]");
   });
 
+  it("uses the fixed protected notice when the input notice is null", () => {
+    render(<ChallengeInputCard publicInput={{
+      available: true,
+      disclosure: "redacted",
+      content: "这是经过审核的攻击家族级说明。",
+      intentSummary: "受保护攻击样本",
+      redactionNotice: null,
+    }} />);
+
+    expect(screen.getByRole("region", { name: "本关待检输入" }))
+      .toHaveTextContent("[对抗攻击内容已隐藏]");
+  });
+
   it("shows no fields when reviewed input is unavailable", () => {
     render(<ChallengeInputCard publicInput={{ available: false }} />);
 

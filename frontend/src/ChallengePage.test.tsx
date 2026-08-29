@@ -819,5 +819,12 @@ describe("token detective challenge setup", () => {
     expect(await screen.findByRole("region", { name: "本关待检输入" })).toHaveTextContent("公开材料暂不可用");
     fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
     expect(await screen.findByRole("region", { name: "本关线索" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
+    fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
+    const reveal = await screen.findByRole("region", { name: "本关揭晓" });
+    expect(reveal).toHaveTextContent("本关百分制分数");
+    expect(reveal).toHaveTextContent("100");
   });
 });

@@ -27,7 +27,7 @@ export function ChallengeInputCard({ publicInput }: ChallengeInputCardProps) {
           ) : (
             <div>
               <p>{publicInput.content}</p>
-              <p className="challenge-input-card__notice">{publicInput.redactionNotice}</p>
+              <p className="challenge-input-card__notice">[对抗攻击内容已隐藏]</p>
             </div>
           )}
         </div>
