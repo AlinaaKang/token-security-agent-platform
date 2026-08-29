@@ -10,8 +10,8 @@ import {
 import type { ChallengeAnswer, RoundScoreBreakdown } from "./types";
 
 const rounds: ResolvedChallengeRound[] = [
-  { roundId: "safe", scenarioId: "synthetic_safe", label: "普通无害", family: null },
-  { roundId: "autodan", scenarioId: "autodan_01", label: "AutoDAN", family: "autodan" },
+  { roundId: "safe", scenarioId: "synthetic_safe", label: "普通无害", family: null, publicInput: { available: false } },
+  { roundId: "autodan", scenarioId: "autodan_01", label: "AutoDAN", family: "autodan", publicInput: { available: false } },
 ];
 
 const answer: ChallengeAnswer = {
