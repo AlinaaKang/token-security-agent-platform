@@ -1,5 +1,5 @@
 import { Flag } from "lucide-react";
-import { useId, useRef } from "react";
+import { Fragment, useId, useRef } from "react";
 import type { KeyboardEvent } from "react";
 
 import type { LabPublicSignal } from "../types";
@@ -101,26 +101,33 @@ export function ChallengeSignalPicker({
             {signals.map((signal, position) => {
               const selected = signal.index === selectedIndex;
               const tooltipId = `${tooltipPrefix}-token-${signal.index}`;
+              const left = `${(xAtPosition(position, signals.length) / SIGNAL_CHART_WIDTH) * 100}%`;
 
               return (
-                <button
-                  type="button"
-                  className={selected ? "selected" : ""}
-                  style={{ left: `${(xAtPosition(position, signals.length) / SIGNAL_CHART_WIDTH) * 100}%` }}
-                  aria-label={`选择 Token ${signal.index}`}
-                  aria-describedby={selected ? tooltipId : undefined}
-                  key={signal.index}
-                  ref={(node) => { buttonRefs.current[position] = node; }}
-                  onClick={() => onSelect(signal.index)}
-                  onKeyDown={(event) => handleKeyDown(event, position)}
-                >
-                  <Flag size={13} aria-hidden="true" />
+                <Fragment key={signal.index}>
+                  <button
+                    type="button"
+                    className={selected ? "selected" : ""}
+                    style={{ left }}
+                    aria-label={`选择 Token ${signal.index}`}
+                    aria-describedby={selected ? tooltipId : undefined}
+                    ref={(node) => { buttonRefs.current[position] = node; }}
+                    onClick={() => onSelect(signal.index)}
+                    onKeyDown={(event) => handleKeyDown(event, position)}
+                  >
+                    <Flag size={13} aria-hidden="true" />
+                  </button>
                   {selected ? (
-                    <span className="challenge-signal-token-tooltip" id={tooltipId} role="tooltip">
+                    <span
+                      className="challenge-signal-token-tooltip"
+                      id={tooltipId}
+                      role="tooltip"
+                      style={{ left }}
+                    >
                       Token #{signal.index}
                     </span>
                   ) : null}
-                </button>
+                </Fragment>
               );
             })}
           </div>

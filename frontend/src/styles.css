@@ -540,7 +540,7 @@
 .challenge-signal-token-tooltip {
   position: absolute;
   left: 50%;
-  top: calc(100% + 5px);
+  top: 2px;
   width: max-content;
   max-width: 110px;
   padding: 4px 6px;
@@ -551,12 +551,13 @@
   font: 800 9px/1.3 Consolas, monospace;
   white-space: nowrap;
   pointer-events: none;
+  z-index: 2;
   opacity: 0;
   transform: translate(-50%, -3px);
   transition: opacity 120ms ease, transform 120ms ease;
 }
-.challenge-signal-targets button.selected:hover .challenge-signal-token-tooltip,
-.challenge-signal-targets button.selected:focus-visible .challenge-signal-token-tooltip {
+.challenge-signal-targets button.selected:hover + .challenge-signal-token-tooltip,
+.challenge-signal-targets button.selected:focus-visible + .challenge-signal-token-tooltip {
   opacity: 1;
   transform: translate(-50%, 0);
 }

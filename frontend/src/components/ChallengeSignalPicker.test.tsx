@@ -25,9 +25,20 @@ describe("ChallengeSignalPicker", () => {
     const unselected = screen.getByRole("button", { name: "选择 Token 10" });
     const tooltip = screen.getByRole("tooltip", { name: "Token #20" });
     expect(selected).toHaveAttribute("aria-describedby", tooltip.id);
-    expect(selected).toContainElement(tooltip);
     expect(unselected).not.toHaveAttribute("aria-describedby");
     expect(screen.queryByRole("tooltip", { name: "Token #10" })).not.toBeInTheDocument();
+  });
+
+  it("anchors the selected tooltip in the chart top padding without moving its flag", () => {
+    const { container } = render(
+      <ChallengeSignalPicker signals={signals} selectedIndex={20} onSelect={() => undefined} />,
+    );
+    const selected = screen.getByRole("button", { name: "选择 Token 20" });
+    const tooltip = screen.getByRole("tooltip", { name: "Token #20" });
+
+    expect(tooltip.parentElement).toBe(container.querySelector(".challenge-signal-targets"));
+    expect(selected).not.toContainElement(tooltip);
+    expect(tooltip).toHaveStyle({ left: "50%" });
   });
 
   it("moves by observation order with arrows and confirms the focused Token", () => {
