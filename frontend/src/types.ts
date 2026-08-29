@@ -89,6 +89,14 @@ export interface LabScenario {
   scenario_kind: "synthetic" | "protected";
   attack_family: string | null;
   ready: boolean;
+  public_input?: LabScenarioPublicInput;
+}
+
+export interface LabScenarioPublicInput {
+  disclosure: "full" | "redacted";
+  content: string;
+  intent_summary: string;
+  redaction_notice: string | null;
 }
 
 export interface LabStage {

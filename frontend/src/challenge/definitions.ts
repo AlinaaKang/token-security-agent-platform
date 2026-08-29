@@ -3,11 +3,22 @@ import type { LabScenario } from "../types";
 export type ChallengeMode = "speed" | "full";
 export type ChallengeAttackFamily = "gcg" | "autodan" | "advprompter";
 
+export type ChallengePublicInput =
+  | {
+      available: true;
+      disclosure: "full" | "redacted";
+      content: string;
+      intentSummary: string;
+      redactionNotice: string | null;
+    }
+  | { available: false };
+
 export interface ResolvedChallengeRound {
   roundId: "safe" | "shift" | ChallengeAttackFamily;
   scenarioId: string;
   label: string;
   family: ChallengeAttackFamily | null;
+  publicInput: ChallengePublicInput;
 }
 
 export interface ChallengeResolution {
@@ -19,6 +30,40 @@ export interface ChallengeResolution {
 
 const FAMILY_ORDER: readonly ChallengeAttackFamily[] = ["gcg", "autodan", "advprompter"];
 const SPEED_FAMILY_ORDER: readonly ChallengeAttackFamily[] = ["autodan", "gcg", "advprompter"];
+const REDACTION_NOTICE = "[对抗攻击内容已隐藏]";
+
+function resolvePublicInput(scenario: LabScenario): ChallengePublicInput {
+  const publicInput: unknown = scenario.public_input;
+  if (typeof publicInput !== "object" || publicInput === null || Array.isArray(publicInput)) {
+    return { available: false };
+  }
+
+  const input = publicInput as Record<string, unknown>;
+  const disclosure = input.disclosure;
+  const content = input.content;
+  const intentSummary = input.intent_summary;
+  const redactionNotice = input.redaction_notice;
+  if (
+    (disclosure !== "full" && disclosure !== "redacted")
+    || typeof content !== "string"
+    || !content.trim()
+    || typeof intentSummary !== "string"
+    || !intentSummary.trim()
+    || (redactionNotice !== null && typeof redactionNotice !== "string")
+    || (disclosure === "full" && redactionNotice !== null)
+    || (disclosure === "redacted" && redactionNotice !== REDACTION_NOTICE)
+  ) {
+    return { available: false };
+  }
+
+  return {
+    available: true,
+    disclosure,
+    content,
+    intentSummary,
+    redactionNotice,
+  };
+}
 
 function normalizedFamily(scenario: LabScenario): ChallengeAttackFamily | null {
   if (scenario.scenario_kind !== "protected" || scenario.attack_family === null) return null;
@@ -43,6 +88,7 @@ function syntheticRound(
     scenarioId: scenario.scenario_id,
     label: scenario.label,
     family: null,
+    publicInput: resolvePublicInput(scenario),
   };
 }
 
@@ -57,6 +103,7 @@ function familyRound(
     scenarioId: scenario.scenario_id,
     label: scenario.label,
     family,
+    publicInput: resolvePublicInput(scenario),
   };
 }
 

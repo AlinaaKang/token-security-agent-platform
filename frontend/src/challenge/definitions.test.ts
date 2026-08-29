@@ -4,12 +4,73 @@ import type { LabScenario } from "../types";
 import { resolveChallenge } from "./definitions";
 
 const catalog: LabScenario[] = [
-  { scenario_id: "synthetic_safe", label: "普通无害", scenario_kind: "synthetic", attack_family: null, ready: true },
-  { scenario_id: "synthetic_shift", label: "无害格式突变", scenario_kind: "synthetic", attack_family: null, ready: true },
-  { scenario_id: "gcg_01", label: "GCG", scenario_kind: "protected", attack_family: "gcg", ready: true },
-  { scenario_id: "autodan_01", label: "AutoDAN", scenario_kind: "protected", attack_family: "AutoDAN", ready: true },
-  { scenario_id: "adv_01", label: "AdvPrompter", scenario_kind: "protected", attack_family: "advprompter", ready: true },
-];
+  {
+    scenario_id: "synthetic_safe",
+    label: "普通无害",
+    scenario_kind: "synthetic",
+    attack_family: null,
+    ready: true,
+    public_input: {
+      disclosure: "full",
+      content: "Explain why input validation is useful in a web application.",
+      intent_summary: "解释 Web 应用输入校验的价值",
+      redaction_notice: null,
+    },
+  },
+  {
+    scenario_id: "synthetic_shift",
+    label: "无害格式突变",
+    scenario_kind: "synthetic",
+    attack_family: null,
+    ready: true,
+    public_input: {
+      disclosure: "full",
+      content: "Explain why input validation is useful\nin a web application.\n",
+      intent_summary: "解释多行输入校验的价值",
+      redaction_notice: null,
+    },
+  },
+  {
+    scenario_id: "gcg_01",
+    label: "GCG",
+    scenario_kind: "protected",
+    attack_family: "gcg",
+    ready: true,
+    public_input: {
+      disclosure: "redacted",
+      content: "受保护的对抗攻击输入",
+      intent_summary: "受保护攻击样本",
+      redaction_notice: "[对抗攻击内容已隐藏]",
+    },
+    PRIVATE_PROTECTED_SENTINEL: "PRIVATE_PROTECTED_SENTINEL",
+  },
+  {
+    scenario_id: "autodan_01",
+    label: "AutoDAN",
+    scenario_kind: "protected",
+    attack_family: "AutoDAN",
+    ready: true,
+    public_input: {
+      disclosure: "redacted",
+      content: "受保护的对抗攻击输入",
+      intent_summary: "受保护攻击样本",
+      redaction_notice: "[对抗攻击内容已隐藏]",
+    },
+  },
+  {
+    scenario_id: "adv_01",
+    label: "AdvPrompter",
+    scenario_kind: "protected",
+    attack_family: "advprompter",
+    ready: true,
+    public_input: {
+      disclosure: "redacted",
+      content: "受保护的对抗攻击输入",
+      intent_summary: "受保护攻击样本",
+      redaction_notice: "[对抗攻击内容已隐藏]",
+    },
+  },
+] as unknown as LabScenario[];
 
 describe("resolveChallenge", () => {
   it("resolves the three-round speed challenge with AutoDAN preference", () => {
@@ -20,6 +81,39 @@ describe("resolveChallenge", () => {
       "synthetic_shift",
       "autodan_01",
     ]);
+  });
+
+  it("resolves only the approved public-input fields with original content", () => {
+    const resolution = resolveChallenge("speed", catalog);
+    expect(resolution.rounds[0]?.publicInput).toEqual({
+      available: true,
+      disclosure: "full",
+      content: "Explain why input validation is useful in a web application.",
+      intentSummary: "解释 Web 应用输入校验的价值",
+      redactionNotice: null,
+    });
+    expect(resolution.rounds[1]?.publicInput).toMatchObject({
+      content: "Explain why input validation is useful\nin a web application.\n",
+    });
+  });
+
+  it.each([
+    ["a missing public-input object", undefined],
+    ["blank content", { disclosure: "full", content: " \n ", intent_summary: "summary", redaction_notice: null }],
+    ["blank intent summary", { disclosure: "full", content: "content", intent_summary: "\t", redaction_notice: null }],
+    ["an invalid disclosure", { disclosure: "private", content: "content", intent_summary: "summary", redaction_notice: null }],
+    ["a full disclosure with a notice", { disclosure: "full", content: "content", intent_summary: "summary", redaction_notice: "[对抗攻击内容已隐藏]" }],
+    ["a redacted disclosure without the fixed notice", { disclosure: "redacted", content: "content", intent_summary: "summary", redaction_notice: null }],
+  ])("keeps the scenario available for %s while hiding malformed public input", (_case, public_input) => {
+    const scenarios = catalog.map((scenario) => (
+      scenario.scenario_id === "synthetic_safe"
+        ? { ...scenario, public_input }
+        : scenario
+    )) as unknown as LabScenario[];
+    const resolution = resolveChallenge("speed", scenarios);
+
+    expect(resolution.rounds[0]?.scenarioId).toBe("synthetic_safe");
+    expect(resolution.rounds[0]?.publicInput).toEqual({ available: false });
   });
 
   it("resolves full challenge families case-insensitively in fixed order", () => {
@@ -84,7 +178,9 @@ describe("resolveChallenge", () => {
   });
 
   it("returns only privacy-safe challenge metadata", () => {
-    const serialized = JSON.stringify(resolveChallenge("full", catalog));
+    const resolution = resolveChallenge("full", catalog);
+    const serialized = JSON.stringify(resolution.rounds);
+    expect(serialized).not.toContain("PRIVATE_PROTECTED_SENTINEL");
     for (const forbidden of [
       "prompt",
       "suffix",
@@ -93,6 +189,7 @@ describe("resolveChallenge", () => {
       "query_text",
       "raw_output",
       "guard_raw_output",
+      "hidden_reasoning",
     ]) {
       expect(serialized).not.toContain(`\"${forbidden}\"`);
     }
