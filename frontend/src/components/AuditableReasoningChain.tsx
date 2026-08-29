@@ -56,7 +56,7 @@ export function AuditableReasoningChain({ events, playbackIntervalMs = 220 }: Au
       ),
     );
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [effectiveIntervalMs, orderedEvents.length, visibleCount]);
+  }, [effectiveIntervalMs, orderedEvents, visibleCount]);
 
   const visibleEvents = orderedEvents.slice(0, visibleCount);
   const stages = buildReasoningStages(visibleEvents);
