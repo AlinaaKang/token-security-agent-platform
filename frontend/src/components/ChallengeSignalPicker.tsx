@@ -1,5 +1,5 @@
 import { Flag } from "lucide-react";
-import { useRef } from "react";
+import { useId, useRef } from "react";
 import type { KeyboardEvent } from "react";
 
 import type { LabPublicSignal } from "../types";
@@ -33,6 +33,7 @@ export function ChallengeSignalPicker({
   readOnly = false,
 }: ChallengeSignalPickerProps) {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tooltipPrefix = useId();
 
   if (signals.length < 2) {
     return <div className="challenge-signal-empty">信号不足，至少需要两个 Token 观测点</div>;
@@ -97,21 +98,31 @@ export function ChallengeSignalPicker({
         </svg>
         {!readOnly ? (
           <div className="challenge-signal-targets">
-            {signals.map((signal, position) => (
-              <button
-                type="button"
-                className={signal.index === selectedIndex ? "selected" : ""}
-                style={{ left: `${(xAtPosition(position, signals.length) / SIGNAL_CHART_WIDTH) * 100}%` }}
-                aria-label={`选择 Token ${signal.index}`}
-                title={`选择 Token ${signal.index}`}
-                key={signal.index}
-                ref={(node) => { buttonRefs.current[position] = node; }}
-                onClick={() => onSelect(signal.index)}
-                onKeyDown={(event) => handleKeyDown(event, position)}
-              >
-                <Flag size={13} aria-hidden="true" />
-              </button>
-            ))}
+            {signals.map((signal, position) => {
+              const selected = signal.index === selectedIndex;
+              const tooltipId = `${tooltipPrefix}-token-${signal.index}`;
+
+              return (
+                <button
+                  type="button"
+                  className={selected ? "selected" : ""}
+                  style={{ left: `${(xAtPosition(position, signals.length) / SIGNAL_CHART_WIDTH) * 100}%` }}
+                  aria-label={`选择 Token ${signal.index}`}
+                  aria-describedby={selected ? tooltipId : undefined}
+                  key={signal.index}
+                  ref={(node) => { buttonRefs.current[position] = node; }}
+                  onClick={() => onSelect(signal.index)}
+                  onKeyDown={(event) => handleKeyDown(event, position)}
+                >
+                  <Flag size={13} aria-hidden="true" />
+                  {selected ? (
+                    <span className="challenge-signal-token-tooltip" id={tooltipId} role="tooltip">
+                      Token #{signal.index}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         ) : null}
       </div>

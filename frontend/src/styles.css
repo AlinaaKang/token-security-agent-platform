@@ -536,6 +536,33 @@
 }
 .challenge-signal-targets button:hover,
 .challenge-signal-targets button.selected { color: var(--blocked); border-color: #d7a4a6; background: rgba(251, 232, 232, .78); }
+.challenge-signal-targets button.selected { z-index: 2; }
+.challenge-signal-token-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 5px);
+  width: max-content;
+  max-width: 110px;
+  padding: 4px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--surface);
+  background: var(--ink);
+  font: 800 9px/1.3 Consolas, monospace;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.challenge-signal-targets button.selected:hover .challenge-signal-token-tooltip,
+.challenge-signal-targets button.selected:focus-visible .challenge-signal-token-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .challenge-signal-token-tooltip { transition: none; }
+}
 .challenge-signal-empty { min-height: 150px; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 
 .challenge-investigation-desk {

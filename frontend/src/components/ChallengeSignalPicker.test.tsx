@@ -19,6 +19,17 @@ describe("ChallengeSignalPicker", () => {
     expect(onSelect).toHaveBeenCalledWith(20);
   });
 
+  it("describes only the selected flag with its real Token position", () => {
+    render(<ChallengeSignalPicker signals={signals} selectedIndex={20} onSelect={() => undefined} />);
+    const selected = screen.getByRole("button", { name: "选择 Token 20" });
+    const unselected = screen.getByRole("button", { name: "选择 Token 10" });
+    const tooltip = screen.getByRole("tooltip", { name: "Token #20" });
+    expect(selected).toHaveAttribute("aria-describedby", tooltip.id);
+    expect(selected).toContainElement(tooltip);
+    expect(unselected).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByRole("tooltip", { name: "Token #10" })).not.toBeInTheDocument();
+  });
+
   it("moves by observation order with arrows and confirms the focused Token", () => {
     const onSelect = vi.fn();
     render(<ChallengeSignalPicker signals={signals} selectedIndex={10} onSelect={onSelect} />);
