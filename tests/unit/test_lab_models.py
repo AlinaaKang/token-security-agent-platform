@@ -5,14 +5,73 @@ from pydantic import ValidationError
 
 from app.lab.models import (
     FORBIDDEN_PUBLIC_KEYS,
+    REDACTED_INPUT_NOTICE,
+    LabPublicInput,
     LabPublicSignal,
     LabRunRequest,
+    LabScenario,
     LabToolId,
     ToolDryRunRequest,
     assert_public_payload,
     safer_action,
 )
 from app.schemas import TokenSignal
+
+
+def test_lab_public_input_enforces_disclosure_contract() -> None:
+    full = LabPublicInput(
+        disclosure="full",
+        content="Reviewed safe input",
+        intent_summary="解释安全输入",
+        redaction_notice=None,
+    )
+    redacted = LabPublicInput(
+        disclosure="redacted",
+        content="受保护对抗样本，具体内容已隐藏。",
+        intent_summary="识别受保护对抗请求",
+        redaction_notice=REDACTED_INPUT_NOTICE,
+    )
+
+    assert full.redaction_notice is None
+    assert redacted.redaction_notice == "[对抗攻击内容已隐藏]"
+    assert_public_payload(
+        LabScenario(
+            scenario_id="synthetic_safe",
+            label="普通无害",
+            scenario_kind="synthetic",
+            public_input=full,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "disclosure": "full",
+            "content": "Reviewed safe input",
+            "intent_summary": "解释安全输入",
+            "redaction_notice": "[对抗攻击内容已隐藏]",
+        },
+        {
+            "disclosure": "redacted",
+            "content": "受保护对抗样本，具体内容已隐藏。",
+            "intent_summary": "识别受保护对抗请求",
+            "redaction_notice": None,
+        },
+        {
+            "disclosure": "redacted",
+            "content": "受保护对抗样本，具体内容已隐藏。",
+            "intent_summary": "识别受保护对抗请求",
+            "redaction_notice": "其他遮罩",
+        },
+    ],
+)
+def test_lab_public_input_rejects_inconsistent_disclosure(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        LabPublicInput.model_validate(payload)
 
 
 def test_lab_run_request_requires_exactly_one_input_source() -> None:

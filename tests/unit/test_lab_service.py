@@ -12,11 +12,12 @@ from app.lab.executors import ExecutionBundle
 from app.lab.models import (
     CounterfactualResult,
     CounterfactualSnapshot,
+    FORBIDDEN_PUBLIC_KEYS,
     LabRunRequest,
     LabToolId,
     assert_public_payload,
 )
-from app.lab.service import LabRunCreationFailed, LabService
+from app.lab.service import LabRunCreationFailed, LabService, _protected_public_input
 from app.lab.store import LabRunStore
 from app.schemas import AnalysisResult, Decision, Provenance, TokenSignal
 from app.semantic.models import SemanticSeverity
@@ -172,10 +173,26 @@ class ProtectedDemoService:
 
     def list_samples(self, *, family: str | None, limit: int):
         samples = [
-            SimpleNamespace(sample_id="direct_01", family="direct_unsafe"),
-            SimpleNamespace(sample_id="gcg_01", family="gcg"),
-            SimpleNamespace(sample_id="autodan_01", family="autodan"),
-            SimpleNamespace(sample_id="adv_01", family="advprompter"),
+            SimpleNamespace(
+                sample_id="direct_01",
+                family="direct_unsafe",
+                source_text="PRIVATE_PROTECTED_SENTINEL",
+            ),
+            SimpleNamespace(
+                sample_id="gcg_01",
+                family="gcg",
+                source_text="PRIVATE_PROTECTED_SENTINEL",
+            ),
+            SimpleNamespace(
+                sample_id="autodan_01",
+                family="autodan",
+                source_text="PRIVATE_PROTECTED_SENTINEL",
+            ),
+            SimpleNamespace(
+                sample_id="adv_01",
+                family="advprompter",
+                source_text="PRIVATE_PROTECTED_SENTINEL",
+            ),
         ]
         if family is not None:
             samples = [item for item in samples if item.family == family]
@@ -198,13 +215,40 @@ class ProtectedDemoService:
         return family, _analysis(), _protected_counterfactual()
 
 
-def test_lab_lists_safe_synthetic_and_protected_id_scenarios_without_text() -> None:
+def test_lab_lists_reviewed_synthetic_and_redacted_protected_scenarios() -> None:
     service = LabService(
         workflow=RecordingWorkflow(), demo_service=ProtectedDemoService()
     )
 
-    scenarios = service.list_scenarios()
+    safe, shift, direct, gcg, autodan, adv = service.list_scenarios()
 
+    assert safe.public_input.model_dump() == {
+        "disclosure": "full",
+        "content": "Explain why input validation is useful in a web application.",
+        "intent_summary": "解释 Web 应用输入校验的价值",
+        "redaction_notice": None,
+    }
+    assert shift.public_input.disclosure == "full"
+    assert shift.public_input.content == (
+        "Summarize input validation:\n\n### CHECKLIST ###\n"
+        "1. Types\n2. Lengths\n3. Encoding"
+    )
+    assert shift.public_input.intent_summary == "总结输入校验并处理明显格式变化"
+    assert {
+        item.attack_family: item.public_input.content
+        for item in (direct, gcg, autodan, adv)
+    } == {
+        "direct_unsafe": "直接请求危险或违规内容，具体目标已隐藏。",
+        "gcg": "正常请求结构后附加了优化生成的对抗字符串。",
+        "autodan": "自然语言角色与指令包装试图改变模型安全边界。",
+        "advprompter": "自动化提示生成器构造了对抗性请求。",
+    }
+    assert all(
+        item.public_input.redaction_notice == "[对抗攻击内容已隐藏]"
+        for item in (direct, gcg, autodan, adv)
+    )
+
+    scenarios = (safe, shift, direct, gcg, autodan, adv)
     assert [item.scenario_id for item in scenarios] == [
         "synthetic_safe",
         "synthetic_shift",
@@ -214,9 +258,21 @@ def test_lab_lists_safe_synthetic_and_protected_id_scenarios_without_text() -> N
         "adv_01",
     ]
     assert all(item.ready for item in scenarios)
-    serialized = "".join(item.model_dump_json() for item in scenarios)
-    assert "PRIVATE" not in serialized
-    assert "custom_input" not in serialized
+    serialized = tuple(item.model_dump(mode="json") for item in scenarios)
+    assert "PRIVATE_PROTECTED_SENTINEL" not in str(serialized)
+    assert_public_payload(serialized)
+    assert all(
+        forbidden not in {key for scenario in serialized for key in scenario}
+        for forbidden in FORBIDDEN_PUBLIC_KEYS
+    )
+
+
+def test_protected_public_input_uses_fixed_fallback_for_unknown_family() -> None:
+    public_input = _protected_public_input("unknown_family")
+
+    assert public_input.content == "受保护对抗样本，具体内容已隐藏。"
+    assert public_input.intent_summary == "识别受保护的对抗请求"
+    assert public_input.redaction_notice == "[对抗攻击内容已隐藏]"
 
 
 def test_lab_lists_each_attack_family_when_one_family_exceeds_global_limit() -> None:
@@ -304,7 +360,7 @@ def test_frozen_run_delegates_by_id_without_receiving_protected_text() -> None:
     assert "PRIVATE" not in run.model_dump_json()
 
 
-def test_safe_synthetic_scenario_uses_internal_benign_text_without_returning_it() -> None:
+def test_safe_synthetic_scenario_uses_reviewed_benign_text_without_returning_it() -> None:
     workflow = RecordingWorkflow()
     service = LabService(workflow=workflow)
 
@@ -318,7 +374,8 @@ def test_safe_synthetic_scenario_uses_internal_benign_text_without_returning_it(
 
     assert len(workflow.calls) >= 1
     assert run.scenario_id == "synthetic_safe"
-    assert "Explain why" not in run.model_dump_json()
+    assert "public_input" not in run.model_dump(mode="json")
+    assert "Explain why input validation" not in run.model_dump_json()
 
 
 def test_knowledge_failure_keeps_the_base_result_and_deterministic_report() -> None:

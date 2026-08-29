@@ -102,6 +102,29 @@ class LabRunRequest(BaseModel):
         raise ValueError("scenario kind must match exactly one input source")
 
 
+REDACTED_INPUT_NOTICE = "[对抗攻击内容已隐藏]"
+
+
+class LabPublicInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    disclosure: Literal["full", "redacted"]
+    content: NonEmptyText
+    intent_summary: NonEmptyText
+    redaction_notice: NonEmptyText | None = None
+
+    @model_validator(mode="after")
+    def validate_disclosure(self) -> LabPublicInput:
+        if self.disclosure == "full" and self.redaction_notice is None:
+            return self
+        if (
+            self.disclosure == "redacted"
+            and self.redaction_notice == REDACTED_INPUT_NOTICE
+        ):
+            return self
+        raise ValueError("public input disclosure does not match redaction notice")
+
+
 class LabScenario(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -109,6 +132,7 @@ class LabScenario(BaseModel):
     label: NonEmptyText
     scenario_kind: Literal["synthetic", "protected"]
     attack_family: NonEmptyText | None = None
+    public_input: LabPublicInput
     ready: bool = True
 
 

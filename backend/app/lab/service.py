@@ -20,11 +20,13 @@ from app.lab.models import (
     LabDetectionSnapshot,
     LabLatencySummary,
     LabMetrics,
+    LabPublicInput,
     LabRunRequest,
     LabRunResult,
     LabScenario,
     LabStage,
     LabToolId,
+    REDACTED_INPUT_NOTICE,
     assert_public_payload,
     safer_action,
 )
@@ -41,10 +43,12 @@ _SYNTHETIC_SCENARIOS = {
     "synthetic_safe": (
         "普通无害",
         "Explain why input validation is useful in a web application.",
+        "解释 Web 应用输入校验的价值",
     ),
     "synthetic_shift": (
         "无害格式突变",
         "Summarize input validation:\n\n### CHECKLIST ###\n1. Types\n2. Lengths\n3. Encoding",
+        "总结输入校验并处理明显格式变化",
     ),
 }
 
@@ -54,6 +58,20 @@ _PROTECTED_FAMILY_ORDER = (
     ("autodan", "AutoDAN 优化攻击"),
     ("advprompter", "AdvPrompter 优化攻击"),
 )
+
+_PROTECTED_PUBLIC_CONTENT = {
+    "direct_unsafe": "直接请求危险或违规内容，具体目标已隐藏。",
+    "gcg": "正常请求结构后附加了优化生成的对抗字符串。",
+    "autodan": "自然语言角色与指令包装试图改变模型安全边界。",
+    "advprompter": "自动化提示生成器构造了对抗性请求。",
+}
+
+_PROTECTED_PUBLIC_INTENT_SUMMARIES = {
+    "direct_unsafe": "直接危险或违规请求识别",
+    "gcg": "优化生成的对抗后缀识别",
+    "autodan": "自然语言包装的越狱指令识别",
+    "advprompter": "自动生成的对抗提示识别",
+}
 
 
 class LabRunCreationFailed(RuntimeError):
@@ -96,24 +114,37 @@ class LabService:
                 scenario_id=scenario_id,
                 label=label,
                 scenario_kind="synthetic",
+                public_input=LabPublicInput(
+                    disclosure="full",
+                    content=source,
+                    intent_summary=intent_summary,
+                ),
             )
-            for scenario_id, (label, _) in _SYNTHETIC_SCENARIOS.items()
+            for scenario_id, (
+                label,
+                source,
+                intent_summary,
+            ) in _SYNTHETIC_SCENARIOS.items()
         ]
-        if self.demo_service is None:
-            return tuple(scenarios)
-        for family, label in _PROTECTED_FAMILY_ORDER:
-            family_samples = self.demo_service.list_samples(family=family, limit=1)
-            selected = family_samples[0] if family_samples else None
-            if selected is not None:
-                scenarios.append(
-                    LabScenario(
-                        scenario_id=selected.sample_id,
-                        label=label,
-                        scenario_kind="protected",
-                        attack_family=selected.family,
-                    )
+        if self.demo_service is not None:
+            for family, label in _PROTECTED_FAMILY_ORDER:
+                family_samples = self.demo_service.list_samples(
+                    family=family, limit=1
                 )
-        return tuple(scenarios)
+                selected = family_samples[0] if family_samples else None
+                if selected is not None:
+                    scenarios.append(
+                        LabScenario(
+                            scenario_id=selected.sample_id,
+                            label=label,
+                            scenario_kind="protected",
+                            attack_family=selected.family,
+                            public_input=_protected_public_input(selected.family),
+                        )
+                    )
+        catalog = tuple(scenarios)
+        self._validate_public(catalog)
+        return catalog
 
     def create_run(self, request: LabRunRequest) -> LabRunResult:
         run_id = f"lab_{uuid.uuid4().hex}"
@@ -144,7 +175,9 @@ class LabService:
                 attack_family = None
             elif request.sample_id in _SYNTHETIC_SCENARIOS:
                 scenario_id = request.sample_id
-                scenario_label, source = _SYNTHETIC_SCENARIOS[scenario_id]
+                scenario_label, source, _intent_summary = _SYNTHETIC_SCENARIOS[
+                    scenario_id
+                ]
                 input_length = len(source)
                 input_hash = _sha256_text(source)
                 analysis = self.workflow.analyze(
@@ -467,6 +500,19 @@ def _protected_label(family: str) -> str:
         if normalized == expected:
             return label
     return f"{family} 冻结样本"
+
+
+def _protected_public_input(family: str) -> LabPublicInput:
+    return LabPublicInput(
+        disclosure="redacted",
+        content=_PROTECTED_PUBLIC_CONTENT.get(
+            family, "受保护对抗样本，具体内容已隐藏。"
+        ),
+        intent_summary=_PROTECTED_PUBLIC_INTENT_SUMMARIES.get(
+            family, "识别受保护的对抗请求"
+        ),
+        redaction_notice=REDACTED_INPUT_NOTICE,
+    )
 
 
 def _rate(numerator: int, denominator: int) -> float:
