@@ -588,6 +588,77 @@
 }
 .challenge-investigation-desk > header { display: flex; align-items: center; gap: 8px; }
 .challenge-investigation-desk > header svg { color: var(--trusted); }
+.challenge-role-audit {
+  min-width: 0;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.challenge-role-audit > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.challenge-role-audit > header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.challenge-role-audit > header span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+.challenge-role-audit > header strong {
+  font-size: 13px;
+  line-height: 20px;
+}
+.challenge-role-audit ol {
+  display: grid;
+  min-width: 0;
+  min-height: 104px;
+  margin: 12px 0;
+  padding: 0;
+  border-block: 1px solid #e7ebe9;
+  list-style: none;
+}
+.challenge-role-audit li {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.42fr) minmax(0, 1fr);
+  min-width: 0;
+  gap: 12px;
+  padding: 9px 2px;
+  border-bottom: 1px solid #edf0ef;
+  animation: challenge-audit-line-enter 180ms ease-out both;
+}
+.challenge-role-audit li:last-child { border-bottom: 0; }
+.challenge-role-audit li span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+.challenge-role-audit li strong {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.challenge-role-audit > button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+.challenge-role-audit > p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+@keyframes challenge-audit-line-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .challenge-investigation-facts {
   margin-top: 14px;
   display: grid;
@@ -718,6 +789,8 @@
   .challenge-investigation-facts > div:first-child:nth-last-child(n + 3),
   .challenge-investigation-facts > div:nth-child(2):nth-last-child(n + 2) { border-bottom: 1px solid var(--line); }
   .challenge-investigation-desk { padding: 14px; }
+  .challenge-role-audit li { grid-template-columns: 1fr; gap: 2px; }
+  .challenge-role-audit > button { width: 100%; }
   .challenge-answer-grid { grid-template-columns: 1fr; }
   .challenge-action-options { grid-template-columns: 1fr; }
   .challenge-score-table { grid-template-columns: 1fr 1fr; }
@@ -741,6 +814,7 @@
   .challenge-mascot-control,
   .challenge-mascot-next-cue,
   .challenge-mascot-next-cue svg,
+  .challenge-role-audit li,
   .challenge-investigation-desk {
     animation: none !important;
     transition: none !important;

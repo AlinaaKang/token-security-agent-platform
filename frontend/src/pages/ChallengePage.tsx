@@ -15,6 +15,7 @@ import { api } from "../api";
 import type { ChallengeMode } from "../challenge/definitions";
 import { resolveChallenge } from "../challenge/definitions";
 import {
+  completeRolePresentation,
   createInvestigationState,
   inspectRole,
 } from "../challenge/investigation";
@@ -357,7 +358,15 @@ export function ChallengePage() {
             } : undefined}
           />
           {interactiveInvestigating && run && investigation.selectedRole ? (
-            <InvestigationDesk run={run} role={investigation.selectedRole} />
+            <InvestigationDesk
+              run={run}
+              role={investigation.selectedRole}
+              mode={investigation.selectionKind === "review" ? "review" : "first_visit"}
+              playbackKey={`${session.roundIndex}:${session.rounds[session.roundIndex]?.scenarioId}:${investigation.selectedRole}`}
+              onPresentationComplete={(role) => setInvestigation((current) => (
+                completeRolePresentation(current, role)
+              ))}
+            />
           ) : null}
         </>
       ) : null}

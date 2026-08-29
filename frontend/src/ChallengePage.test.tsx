@@ -160,6 +160,21 @@ function selectAutomaticPresentation() {
   fireEvent.click(screen.getByRole("button", { name: "自动演示" }));
 }
 
+async function completeInteractiveRole(roleName: string, nextRoleName?: string) {
+  fireEvent.click(await screen.findByRole("button", { name: roleName }));
+  fireEvent.click(screen.getByRole("button", { name: "立即显示完整汇报" }));
+  if (nextRoleName) {
+    await waitFor(() => expect(screen.getByRole("button", { name: nextRoleName })).toBeEnabled());
+  }
+}
+
+async function completeInteractiveInvestigation() {
+  await completeInteractiveRole("Guard 语义侦探", "CPD 曲线侦探");
+  await completeInteractiveRole("CPD 曲线侦探", "Agent 小队队长");
+  await completeInteractiveRole("Agent 小队队长");
+  return screen.findByRole("region", { name: "本关线索" });
+}
+
 describe("token detective challenge setup", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/challenge");
@@ -239,11 +254,28 @@ describe("token detective challenge setup", () => {
     const investigationDesk = screen.getByRole("region", { name: "中央证据台" });
     expect(investigationDesk).toBeInTheDocument();
     expect(investigationDesk).toHaveTextContent("语义侦探汇报");
+    expect(screen.getByRole("region", { name: "可审计决策过程" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CPD 曲线侦探" })).toBeDisabled();
+    expect(screen.queryByRole("region", { name: "本关线索" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "立即显示完整汇报" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "CPD 曲线侦探" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
     expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("曲线侦探汇报");
+    expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "立即显示完整汇报" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Guard 语义侦探" }));
+    expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("语义侦探汇报");
+    expect(screen.queryByRole("button", { name: "立即显示完整汇报" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeEnabled();
+
     fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
     expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("小队队长总结");
-    const clues = screen.getByRole("region", { name: "本关线索" });
+    expect(screen.queryByRole("region", { name: "本关线索" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "立即显示完整汇报" }));
+    const clues = await screen.findByRole("region", { name: "本关线索" });
     expect(screen.getAllByRole("figure")).toHaveLength(3);
     expect(investigationDesk).not.toContainElement(clues);
   });
@@ -252,9 +284,7 @@ describe("token detective challenge setup", () => {
     installFetch({ run: { ...runResult, detection: { ...runResult.detection, decision: "block" } } });
     render(<App />);
     await beginChallengeWhenReady();
-    fireEvent.click(await screen.findByRole("button", { name: /Guard 语义侦探/ }));
-    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
+    await completeInteractiveInvestigation();
     expect(screen.getByRole("region", { name: "中央证据台" })).not.toHaveTextContent("拦截");
   });
 
@@ -262,8 +292,8 @@ describe("token detective challenge setup", () => {
     installFetch();
     render(<App />);
     await beginChallengeWhenReady();
-    fireEvent.click(await screen.findByRole("button", { name: /Guard 语义侦探/ }));
-    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
+    await completeInteractiveRole("Guard 语义侦探", "CPD 曲线侦探");
+    await completeInteractiveRole("CPD 曲线侦探", "Agent 小队队长");
     fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
     expect(screen.getByRole("region", { name: "中央证据台" })).toHaveTextContent("语义侦探汇报");
     expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeEnabled();
@@ -274,10 +304,7 @@ describe("token detective challenge setup", () => {
     render(<App />);
     await beginChallengeWhenReady();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Guard 语义侦探" }));
-    fireEvent.click(screen.getByRole("button", { name: "CPD 曲线侦探" }));
-    fireEvent.click(screen.getByRole("button", { name: "Agent 小队队长" }));
-    const workspace = screen.getByRole("region", { name: "本关线索" });
+    const workspace = await completeInteractiveInvestigation();
     const guard = screen.getByRole("button", { name: "Guard 语义侦探" });
 
     fireEvent.click(guard);
@@ -287,7 +314,7 @@ describe("token detective challenge setup", () => {
     expect(guard).toHaveAttribute("aria-pressed", "true");
     const statusId = guard.getAttribute("aria-describedby");
     expect(statusId).toBe("mascot-role-status-guard");
-    expect(document.getElementById(statusId!)).toHaveTextContent("已汇报，可回看");
+    expect(document.getElementById(statusId!)).toHaveTextContent("正在回看");
   });
 
   it("lets unavailable evidence complete all three investigation steps", async () => {
@@ -306,10 +333,12 @@ describe("token detective challenge setup", () => {
     render(<App />);
     await beginChallengeWhenReady();
     fireEvent.click(await screen.findByRole("button", { name: /Guard 语义侦探/ }));
+    fireEvent.click(screen.getByRole("button", { name: "立即显示完整汇报" }));
     expect(screen.getByText("语义证据不可用")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
-    expect(screen.getByRole("region", { name: "本关线索" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "CPD 曲线侦探" })).toBeEnabled());
+    await completeInteractiveRole("CPD 曲线侦探", "Agent 小队队长");
+    await completeInteractiveRole("Agent 小队队长");
+    expect(await screen.findByRole("region", { name: "本关线索" })).toBeInTheDocument();
   });
 
   it("resets interactive progress on retry, next round, and exit", async () => {
@@ -327,9 +356,7 @@ describe("token detective challenge setup", () => {
     expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeDisabled();
 
     async function investigateAndAnswerRound() {
-      fireEvent.click(screen.getByRole("button", { name: /Guard 语义侦探/ }));
-      fireEvent.click(screen.getByRole("button", { name: /CPD 曲线侦探/ }));
-      fireEvent.click(screen.getByRole("button", { name: /Agent 小队队长/ }));
+      await completeInteractiveInvestigation();
       fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
       fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
       fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
@@ -462,25 +489,25 @@ describe("token detective challenge setup", () => {
     expect(liveStage).toHaveTextContent("语义等级已归一化。");
     expect(liveStage).toHaveTextContent("4 ms");
     expect(screen.getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
-      .toHaveAttribute("data-motion", "approach");
+      .toHaveAttribute("data-motion", "hop");
 
     await act(async () => { await vi.advanceTimersByTimeAsync(699); });
     expect(screen.getByRole("status")).toBe(liveStage);
     expect(liveStage).toHaveTextContent("语义等级已归一化。");
     expect(screen.getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
-      .toHaveAttribute("data-motion", "approach");
+      .toHaveAttribute("data-motion", "hop");
 
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(screen.getByRole("status")).toBe(liveStage);
     expect(liveStage).toHaveTextContent("Token 观测已完成。");
     expect(liveStage).toHaveTextContent("21 ms");
     expect(screen.getByRole("button", { name: "CPD 曲线侦探" }).closest("figure"))
-      .toHaveAttribute("data-motion", "approach");
+      .toHaveAttribute("data-motion", "hop");
 
     const expectedStages = [
-      ["CPD 候选已生成。", "服务端耗时不可用", "inspect"],
-      ["固定融合已完成。", "服务端耗时不可用", "approach"],
-      ["知识证据已附加。", "3 ms", "conclude"],
+      ["CPD 候选已生成。", "服务端耗时不可用", "hop"],
+      ["固定融合已完成。", "服务端耗时不可用", "hop"],
+      ["知识证据已附加。", "3 ms", "hop"],
     ] as const;
     for (const [summary, latency, motion] of expectedStages) {
       await act(async () => { await vi.advanceTimersByTimeAsync(700); });
@@ -522,7 +549,7 @@ describe("token detective challenge setup", () => {
     expect(await screen.findByRole("region", { name: "检测结果回放" })).toBeInTheDocument();
     expect(team).toHaveAttribute("data-stage", "semantic_guard");
     expect(within(team).getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
-      .toHaveAttribute("data-motion", "approach");
+      .toHaveAttribute("data-motion", "hop");
   });
 
   it("keeps evidence conflict hidden during replay and guessing", async () => {

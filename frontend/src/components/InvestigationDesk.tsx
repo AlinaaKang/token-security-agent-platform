@@ -10,9 +10,9 @@ import { RoleAuditPlayback } from "./RoleAuditPlayback";
 interface InvestigationDeskProps {
   run: LabRunResult;
   role: InvestigationRole;
-  mode?: "first_visit" | "review";
-  playbackKey?: string;
-  onPresentationComplete?: (role: InvestigationRole) => void;
+  mode: "first_visit" | "review";
+  playbackKey: string;
+  onPresentationComplete: (role: InvestigationRole) => void;
 }
 
 const ROLE_HEADERS = {
@@ -24,9 +24,9 @@ const ROLE_HEADERS = {
 export function InvestigationDesk({
   run,
   role,
-  mode = "review",
-  playbackKey = `${run.run_id}:${role}`,
-  onPresentationComplete = () => undefined,
+  mode,
+  playbackKey,
+  onPresentationComplete,
 }: InvestigationDeskProps) {
   const [reportComplete, setReportComplete] = useState(mode === "review");
   const { label, Icon } = ROLE_HEADERS[role];
