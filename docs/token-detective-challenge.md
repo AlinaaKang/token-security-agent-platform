@@ -95,3 +95,10 @@
 - 固定站位：桌面完整互动和回看过程中，三名公仔最大横向漂移为 `0px`；仅当前等待点击角色原地短跳。
 - 移动端：`390x844` 无全局横向溢出；减少动态效果下公仔、图像、提示和审计行的动画均为 `none`。
 - 隐私：逐行证据不包含 Prompt、攻击 suffix、Token 文本、词表 Token ID、原始模型输出或隐藏思维链；本地模型路径只显示末级公开模型名。
+
+## 2026-08-29 公开输入任务卡验证记录
+
+- 前端：`npm.cmd test -- --no-file-parallelism` 为 `19 passed` 测试文件、`199 passed` 测试；`npm.cmd run build` 成功，`1617 modules transformed`。
+- 仓库检查：`scripts/verify_lab_privacy.ps1` 返回 `privacy_verification=passed`，禁用字段命中、受保护跟踪路径、JSON 错误、SQLite 违规和 API 违规均为 0；`git diff --check` 无 whitespace error。
+- 后端全量命令在本工作树 `backend` 位于 `PYTHONPATH` 时运行至完整进度输出，但此终端未返回 pytest 的最终汇总；唯一已声明跳过项仍是未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的 GPU 集成测试。
+- 在线部署后，健康端点返回 200；服务随后报告 `lab.ready=false`、`lab.reason=disabled`，场景目录返回 503。因此未执行依赖场景目录的桌面 `1440x900`、移动 `390x844`、请求计数和未受影响路由浏览器验收。
