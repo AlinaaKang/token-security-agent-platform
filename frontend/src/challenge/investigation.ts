@@ -7,6 +7,7 @@ export type InvestigationRoleState = "locked" | "ready" | "presenting" | "visite
 export interface InvestigationState {
   step: InvestigationStep;
   selectedRole: InvestigationRole | null;
+  presentingRole: InvestigationRole | null;
   selectionKind: InvestigationSelectionKind;
   visitedRoles: ReadonlySet<InvestigationRole>;
 }
@@ -27,12 +28,14 @@ export function createInvestigationState(): InvestigationState {
   return {
     step: "semantic",
     selectedRole: null,
+    presentingRole: null,
     selectionKind: null,
     visitedRoles: new Set<InvestigationRole>(),
   };
 }
 
 export function canInspectRole(state: InvestigationState, role: InvestigationRole): boolean {
+  if (state.presentingRole !== null) return false;
   if (state.visitedRoles.has(role)) return true;
   return state.step !== "complete" && STEP_ROLE[state.step] === role;
 }
@@ -43,12 +46,27 @@ export function inspectRole(
 ): InvestigationState {
   if (!canInspectRole(state, role)) return state;
   const revisiting = state.visitedRoles.has(role);
+  return {
+    ...state,
+    selectedRole: role,
+    presentingRole: revisiting ? null : role,
+    selectionKind: revisiting ? "review" : "first_visit",
+  };
+}
+
+export function completeRolePresentation(
+  state: InvestigationState,
+  role: InvestigationRole,
+): InvestigationState {
+  if (state.presentingRole !== role || state.step === "complete" || STEP_ROLE[state.step] !== role) {
+    return state;
+  }
   const visitedRoles = new Set(state.visitedRoles);
   visitedRoles.add(role);
   return {
-    step: revisiting ? state.step : NEXT_STEP[role],
-    selectedRole: role,
-    selectionKind: revisiting ? "review" : "first_visit",
+    ...state,
+    step: NEXT_STEP[role],
+    presentingRole: null,
     visitedRoles,
   };
 }
@@ -57,7 +75,7 @@ export function roleStateFor(
   state: InvestigationState,
   role: InvestigationRole,
 ): InvestigationRoleState {
-  if (state.selectedRole === role && state.selectionKind === "first_visit") return "presenting";
+  if (state.presentingRole === role) return "presenting";
   if (state.visitedRoles.has(role)) return "visited";
   if (state.step !== "complete" && STEP_ROLE[state.step] === role) return "ready";
   return "locked";
