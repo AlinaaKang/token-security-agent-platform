@@ -192,7 +192,6 @@ Make `ProtectedDemoService.list_samples()` include the private sentinel attribut
 In the synthetic run test, assert:
 
 ```python
-assert set(run.model_fields) == set(LabRunResult.model_fields)
 assert "public_input" not in run.model_dump(mode="json")
 assert "Explain why input validation" not in run.model_dump_json()
 ```
