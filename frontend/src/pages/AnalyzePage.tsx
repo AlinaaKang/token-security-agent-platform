@@ -11,7 +11,7 @@ import {
   GitMerge,
   ScanSearch,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
@@ -247,6 +247,11 @@ function ResultPanel({
   loading: boolean;
   error: string | null;
 }) {
+  const decisionStages = useMemo(
+    () => result ? buildAnalyzeDecisionTrace(result) : [],
+    [result],
+  );
+
   return (
     <section className="decision-pane" aria-live="polite">
       <div className="pane-heading">
@@ -290,7 +295,7 @@ function ResultPanel({
           </div>
           <div className="analyze-decision-trace">
             <AnalyzeDecisionTrace
-              stages={buildAnalyzeDecisionTrace(result)}
+              stages={decisionStages}
               playbackKey={result.request_id}
             />
           </div>

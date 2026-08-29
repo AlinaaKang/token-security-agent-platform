@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("AnalyzeDecisionTrace", () => {
-  it("replays one returned stage at a time and lets the viewer inspect an earlier stage", async () => {
+  it("replays one stage at a time and resumes following after the viewer inspects an earlier stage", async () => {
     vi.useFakeTimers();
     render(<AnalyzeDecisionTrace stages={stages} playbackKey="request-1" intervalMs={20} />);
 
@@ -38,6 +38,35 @@ describe("AnalyzeDecisionTrace", () => {
     expect(screen.getByRole("button", { name: "脱敏接收" })).toHaveAttribute("aria-pressed", "true");
     expect(region).toHaveTextContent("请求已脱敏接收");
     expect(screen.queryByRole("button", { name: "Token 观测" })).not.toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    expect(screen.getByRole("button", { name: "Token 观测" })).toHaveAttribute("aria-pressed", "true");
+    expect(region).toHaveTextContent("已完成数值信号观测");
+    expect(region).toHaveTextContent("公开数值信号数量 3");
+    expect(region).not.toHaveTextContent("请求已脱敏接收");
+  });
+
+  it("preserves a pending interval when equivalent stages rerender with the same playback key", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <AnalyzeDecisionTrace stages={stages} playbackKey="request-1" intervalMs={20} />,
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+
+    rerender(
+      <AnalyzeDecisionTrace
+        stages={stages.map((stage) => ({ ...stage }))}
+        playbackKey="request-1"
+        intervalMs={20}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "语义检测" })).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(9); });
+    expect(screen.queryByRole("button", { name: "语义检测" })).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByRole("button", { name: "语义检测" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("restarts from the first stage and replaces the pending timer when the playback key changes", async () => {
@@ -73,7 +102,10 @@ describe("AnalyzeDecisionTrace", () => {
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
     render(<AnalyzeDecisionTrace stages={stages} playbackKey="request-1" intervalMs={20} />);
 
-    expect(screen.getByRole("button", { name: "处置决策" })).toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "可审计决策轨迹" });
+    expect(screen.getByRole("button", { name: "处置决策" })).toHaveAttribute("aria-pressed", "true");
+    expect(region).toHaveTextContent("最终处置：人工复核");
+    expect(region).toHaveTextContent("风险分数 0.820");
     expect(vi.getTimerCount()).toBe(0);
   });
 

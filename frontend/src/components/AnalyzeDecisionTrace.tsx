@@ -29,10 +29,11 @@ export function AnalyzeDecisionTrace({
   const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   const shouldAnimate = !prefersReducedMotion && intervalMs > 0 && stages.length > 0;
   const initialVisibleCount = shouldAnimate ? 1 : stages.length;
+  const initialSelectedStageId = stages[initialVisibleCount - 1]?.id ?? null;
   const [playback, setPlayback] = useState<PlaybackState>(() => ({
     key: playbackKey,
     visibleCount: initialVisibleCount,
-    selectedStageId: stages[0]?.id ?? null,
+    selectedStageId: initialSelectedStageId,
   }));
 
   const isCurrentPlayback = playback.key === playbackKey;
@@ -41,6 +42,7 @@ export function AnalyzeDecisionTrace({
     : initialVisibleCount;
   const visibleStages = useMemo(() => stages.slice(0, visibleCount), [stages, visibleCount]);
   const latestStage = visibleStages.at(-1);
+  const nextStageId = stages[visibleCount]?.id ?? null;
   const activeStageId = isCurrentPlayback ? playback.selectedStageId : latestStage?.id ?? null;
   const activeStage = visibleStages.find((stage) => stage.id === activeStageId) ?? latestStage;
 
@@ -48,9 +50,9 @@ export function AnalyzeDecisionTrace({
     setPlayback({
       key: playbackKey,
       visibleCount: initialVisibleCount,
-      selectedStageId: stages[0]?.id ?? null,
+      selectedStageId: initialSelectedStageId,
     });
-  }, [initialVisibleCount, playbackKey]);
+  }, [initialSelectedStageId, initialVisibleCount, playbackKey]);
 
   useEffect(() => {
     if (!isCurrentPlayback || !shouldAnimate || visibleCount >= stages.length) return;
@@ -63,13 +65,13 @@ export function AnalyzeDecisionTrace({
         return {
           ...current,
           visibleCount: nextVisibleCount,
-          selectedStageId: stages[nextVisibleCount - 1]?.id ?? current.selectedStageId,
+          selectedStageId: nextStageId ?? current.selectedStageId,
         };
       });
     }, intervalMs);
 
     return () => window.clearTimeout(timer);
-  }, [intervalMs, isCurrentPlayback, playbackKey, shouldAnimate, stages, visibleCount]);
+  }, [intervalMs, isCurrentPlayback, nextStageId, playbackKey, shouldAnimate, stages.length, visibleCount]);
 
   return (
     <section aria-label="可审计决策轨迹">
