@@ -102,3 +102,11 @@
 - 仓库检查：`scripts/verify_lab_privacy.ps1` 返回 `privacy_verification=passed`，禁用字段命中、受保护跟踪路径、JSON 错误、SQLite 违规和 API 违规均为 0；`git diff --check` 无 whitespace error。
 - 后端全量命令在本工作树 `backend` 位于 `PYTHONPATH` 时运行至完整进度输出，但此终端未返回 pytest 的最终汇总；唯一已声明跳过项仍是未配置 `TOKEN_SECURITY_GPU_TEST_MODEL` 的 GPU 集成测试。
 - 在线部署后，健康端点返回 200；服务随后报告 `lab.ready=false`、`lab.reason=disabled`，场景目录返回 503。因此未执行依赖场景目录的桌面 `1440x900`、移动 `390x844`、请求计数和未受影响路由浏览器验收。
+
+## 2026-08-29 公开输入任务卡复验
+
+- 生产 API：健康依赖均为 ready；场景目录返回 200 和 5 个场景。`scripts/verify_lab_privacy.ps1 -BaseUrl http://127.0.0.1:18000` 返回 `privacy_verification=passed`，共 13 个 API 请求，API 违规、禁用字段命中、JSON 错误和 SQLite 违规均为 0。
+- 浏览器桌面 `1440x900`：互动调查完成三关流程、关卡切换、退出后重入、受保护卡固定提示和自动演示首关卡验证；正常流程中无控制台、页面或资源错误。互动流程观察到 4 个 Lab Run 请求（含重入首关），任务卡交互本身未增加请求；自动演示首关为 1 个 Lab Run 请求。
+- 浏览器移动 `390x844`：文档根节点宽度等于视口宽度，任务卡不溢出，首位侦探控制可点击；正常流程无控制台、页面或资源错误。
+- 重试：用浏览器路由拦截模拟两次 500，任务卡在重试前后保持不变；两条控制台资源错误只来自该刻意拦截的失败响应，未计入正常流程错误。
+- 未受影响路由：`/analyze`、`/lab` 和 `/super-agent` 均加载至既有就绪状态，未产生新的浏览器错误。
