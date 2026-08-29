@@ -289,6 +289,34 @@ describe("competition security console", () => {
     expect(screen.queryByText(/Safety: Unsafe/)).not.toBeInTheDocument();
   });
 
+  it("renders the auditable analyze decision trace without changing the analysis request", async () => {
+    installFetch({
+      analysis: {
+        ...analysisResult,
+        semantic_model_id: "/root/autodl-tmp/models/Qwen3Guard-Gen-0.6B",
+      },
+    });
+    render(<App />);
+    await screen.findByText("检测服务已连接");
+    expect(screen.queryByRole("region", { name: "可审计决策轨迹" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "SAFE_TRACE_INPUT" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始检测" }));
+
+    expect(await screen.findByRole("region", { name: "可审计决策轨迹" })).toBeInTheDocument();
+    expect(screen.getByText("脱敏接收")).toBeInTheDocument();
+    expect(screen.getAllByText("结构化决策轨迹，不包含隐藏思维链").length).toBeGreaterThan(0);
+    expect(screen.getByText("Qwen3Guard-Gen-0.6B")).toBeInTheDocument();
+    expect(document.body.textContent ?? "").not.toContain("/root/");
+    expect(document.body.textContent ?? "").not.toContain("autodl-tmp");
+    expect(screen.getAllByText("拦截").length).toBeGreaterThan(0);
+    expect(screen.getByText("语义危险")).toBeInTheDocument();
+    expect(screen.getByText("未发现 Token 异常")).toBeInTheDocument();
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === "/api/v1/analyze"),
+    ).toHaveLength(1);
+  });
+
   it("sends off as the default knowledge mode", async () => {
     render(<App />);
     await screen.findByText("检测服务已连接");

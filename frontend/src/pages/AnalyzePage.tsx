@@ -15,6 +15,8 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
+import { buildAnalyzeDecisionTrace, publicModelName } from "../analyze/decisionTrace";
+import { AnalyzeDecisionTrace } from "../components/AnalyzeDecisionTrace";
 import type {
   AnalysisResult,
   DemoSample,
@@ -286,10 +288,16 @@ function ResultPanel({
               <small>固定策略 · 可审计</small>
             </article>
           </div>
+          <div className="analyze-decision-trace">
+            <AnalyzeDecisionTrace
+              stages={buildAnalyzeDecisionTrace(result)}
+              playbackKey={result.request_id}
+            />
+          </div>
           <dl className="result-grid">
             <div><dt>处置动作</dt><dd>{decisionLabels[result.decision]}</dd></div>
             <div><dt>原始检测分数</dt><dd>{result.detector_score.toFixed(3)}</dd></div>
-            <div><dt>语义模型</dt><dd>{result.semantic_model_id}</dd></div>
+            <div><dt>语义模型</dt><dd>{publicModelName(result.semantic_model_id)}</dd></div>
             <div><dt>语义延迟</dt><dd>{result.semantic_latency_ms.toFixed(1)} ms</dd></div>
             <div><dt>异常起点</dt><dd>{result.suspicious_span ? "Token " + result.suspicious_span.token_start : "--"}</dd></div>
             <div><dt>脱敏审计</dt><dd>{result.audit_persisted ? "已写入脱敏审计" : "未写入"}</dd></div>
