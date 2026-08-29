@@ -113,12 +113,19 @@ describe("bounded SuperAgent workspace", () => {
     fireEvent.change(scenario, { target: { value: "sample_gcg" } });
     fireEvent.click(screen.getByRole("button", { name: "启动自主任务" }));
 
-    expect(await screen.findByText("任务闭环：平台内部响应全部完成。")).toBeInTheDocument();
-    const timeline = screen.getByRole("region", { name: "自主任务轨迹" });
-    expect(within(timeline).getByText("PLAN")).toBeInTheDocument();
-    expect(within(timeline).getAllByText("OBSERVE").length).toBeGreaterThan(0);
-    expect(within(timeline).getByText("REPLAN")).toBeInTheDocument();
-    expect(within(timeline).getByText("COMPLETE")).toBeInTheDocument();
+    expect(await screen.findByText(
+      "任务闭环：平台内部响应全部完成。",
+      {},
+      { timeout: 3000 },
+    )).toBeInTheDocument();
+    const chain = screen.getByRole("region", { name: "可审计推理链" });
+    expect(within(chain).getByRole("button", { name: /观察证据/ })).toBeInTheDocument();
+    expect(within(chain).getByRole("button", { name: /应用规则/ })).toBeInTheDocument();
+    expect(within(chain).getByRole("button", { name: /调整计划/ })).toBeInTheDocument();
+    expect(within(chain).getByRole("button", { name: /执行动作/ })).toBeInTheDocument();
+    expect(within(chain).getByRole("button", { name: /验证结果/ })).toBeInTheDocument();
+    expect(within(chain).getByText("结构化审计轨迹，不包含隐藏思维链")).toBeInTheDocument();
+    fireEvent.click(within(chain).getByRole("button", { name: /观察证据/ }));
     expect(screen.getByText("内部网关状态")).toBeInTheDocument();
     expect(screen.getByText("receipt_gateway")).toBeInTheDocument();
     expect(screen.getByText("owasp-llm01-prompt-injection")).toBeInTheDocument();
@@ -136,7 +143,11 @@ describe("bounded SuperAgent workspace", () => {
     await screen.findByLabelText("任务场景");
     fireEvent.click(screen.getByRole("button", { name: "启动自主任务" }));
 
-    expect(await screen.findByText("任务闭环：证据支持安全放行。")).toBeInTheDocument();
+    expect(await screen.findByText(
+      "任务闭环：证据支持安全放行。",
+      {},
+      { timeout: 3000 },
+    )).toBeInTheDocument();
     expect(screen.getByText("无需执行处置工具")).toBeInTheDocument();
     expect(screen.queryByText("内部网关状态")).not.toBeInTheDocument();
   });
@@ -149,7 +160,11 @@ describe("bounded SuperAgent workspace", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("任务闭环：平台内部响应全部完成。")).toBeInTheDocument();
+    expect(await screen.findByText(
+      "任务闭环：平台内部响应全部完成。",
+      {},
+      { timeout: 3000 },
+    )).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       `/api/v1/superagent/missions/${blockMission.mission_id}`,
       undefined,

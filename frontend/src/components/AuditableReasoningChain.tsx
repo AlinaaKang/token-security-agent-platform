@@ -70,19 +70,21 @@ export function AuditableReasoningChain({ events, playbackIntervalMs = 220 }: Au
   const tools = activeEvents.flatMap((event) => event.tool_id ? [event.tool_id] : []);
 
   return (
-    <section className="auditable-reasoning-chain" aria-label="可审计推理链" aria-live="polite">
-      <header>
+    <section className="superagent-reasoning-chain" aria-label="可审计推理链" aria-live="polite">
+      <header className="superagent-reasoning-header">
         <strong>可审计推理链</strong>
+        <span>结构化审计轨迹，不包含隐藏思维链</span>
         <button type="button" disabled={following} onClick={() => setFollowing(true)}>
           跟随最新进度
         </button>
       </header>
 
-      <ol className="auditable-reasoning-stages">
+      <ol className="superagent-reasoning-overview">
         {stages.map((stage) => (
           <li key={stage.id}>
             <button
               type="button"
+              className={`superagent-reasoning-node${stage.id === "replan" ? " is-replan" : ""}${stage.state === "failed" ? " is-failed" : ""}`}
               disabled={stage.state === "waiting"}
               aria-pressed={activeStageId === stage.id}
               onClick={() => {
@@ -97,42 +99,44 @@ export function AuditableReasoningChain({ events, playbackIntervalMs = 220 }: Au
         ))}
       </ol>
 
-      <div className="auditable-reasoning-details">
-        <section>
-          <h3>执行角色</h3>
-          {activeEvents.length ? (
-            <ul>{activeEvents.map((event) => <li key={event.sequence}>{superAgentActorLabels[event.actor]}</li>)}</ul>
-          ) : <p>暂无可公开证据</p>}
-        </section>
-        <section>
-          <h3>观察证据</h3>
-          {evidence.observations.length ? (
-            <ul>{evidence.observations.map((code, index) => <li key={`${code}-${index}`}>{superAgentEvidenceLabel(code)}</li>)}</ul>
-          ) : <p>暂无可公开证据</p>}
-        </section>
-        <section>
-          <h3>适用规则</h3>
-          {evidence.rules.length ? (
-            <ul>{evidence.rules.map((code, index) => <li key={`${code}-${index}`}>{superAgentEvidenceLabel(code)}</li>)}</ul>
-          ) : <p>暂无可公开证据</p>}
-        </section>
-        <section>
-          <h3>结论或动作</h3>
-          {activeEvents.length ? (
-            <ul>{activeEvents.map((event) => (
-              <li key={event.sequence}>
-                <span>{superAgentPhaseLabels[event.phase]}</span>
-                <span>{event.summary}</span>
-              </li>
-            ))}</ul>
-          ) : <p>暂无可公开证据</p>}
-        </section>
-        <section>
-          <h3>工具与回执</h3>
-          {tools.length ? (
-            <ul>{tools.map((tool, index) => <li key={`${tool}-${index}`}>{superAgentToolLabels[tool]}</li>)}</ul>
-          ) : <p>无工具调用</p>}
-        </section>
+      <div className="superagent-reasoning-detail">
+        <div className="superagent-reasoning-detail-grid">
+          <section>
+            <h3>执行角色</h3>
+            {activeEvents.length ? (
+              <ul>{activeEvents.map((event) => <li key={event.sequence}>{superAgentActorLabels[event.actor]}</li>)}</ul>
+            ) : <p>暂无可公开证据</p>}
+          </section>
+          <section>
+            <h3>观察证据</h3>
+            {evidence.observations.length ? (
+              <ul>{evidence.observations.map((code, index) => <li key={`${code}-${index}`}>{superAgentEvidenceLabel(code)}</li>)}</ul>
+            ) : <p>暂无可公开证据</p>}
+          </section>
+          <section>
+            <h3>适用规则</h3>
+            {evidence.rules.length ? (
+              <ul>{evidence.rules.map((code, index) => <li key={`${code}-${index}`}>{superAgentEvidenceLabel(code)}</li>)}</ul>
+            ) : <p>暂无可公开证据</p>}
+          </section>
+          <section>
+            <h3>结论或动作</h3>
+            {activeEvents.length ? (
+              <ul>{activeEvents.map((event) => (
+                <li key={event.sequence}>
+                  <span>{superAgentPhaseLabels[event.phase]}</span>
+                  <span>{event.summary}</span>
+                </li>
+              ))}</ul>
+            ) : <p>暂无可公开证据</p>}
+          </section>
+          <section>
+            <h3>工具与回执</h3>
+            {tools.length ? (
+              <ul>{tools.map((tool, index) => <li key={`${tool}-${index}`}>{superAgentToolLabels[tool]}</li>)}</ul>
+            ) : <p>无工具调用</p>}
+          </section>
+        </div>
       </div>
     </section>
   );

@@ -1989,7 +1989,7 @@ td:first-child { min-width: 128px; }
   align-items: start;
 }
 .superagent-role-board,
-.superagent-trace,
+.superagent-reasoning-chain,
 .superagent-empty,
 .superagent-closure {
   min-width: 0;
@@ -2035,52 +2035,119 @@ td:first-child { min-width: 128px; }
 .superagent-role-list strong { font-size: 11px; }
 .superagent-role-list small { color: var(--muted); font-size: 9px; line-height: 1.45; }
 .superagent-role-state { color: var(--muted); font-size: 9px; white-space: nowrap; }
-.superagent-trace { border-top: 2px solid var(--ink); }
-.superagent-trace ol { margin: 0; padding: 8px 17px 12px; list-style: none; }
-.superagent-trace li {
+.superagent-reasoning-chain {
   min-width: 0;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 10px;
-  animation: superagent-event-enter 240ms ease-out both;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--ink);
+  background: var(--surface);
 }
-.superagent-trace li:nth-child(2) { animation-delay: 30ms; }
-.superagent-trace li:nth-child(3) { animation-delay: 60ms; }
-.superagent-trace li:nth-child(4) { animation-delay: 90ms; }
-.superagent-trace li:nth-child(5) { animation-delay: 120ms; }
-@keyframes superagent-event-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-.superagent-track-marker { position: relative; display: grid; justify-items: center; }
-.superagent-track-marker::after { content: ""; width: 1px; height: 100%; background: var(--line-strong); }
-.superagent-trace li:last-child .superagent-track-marker::after { display: none; }
-.superagent-track-marker span {
-  z-index: 1;
-  width: 24px;
-  height: 24px;
+.superagent-reasoning-header {
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 14px;
+}
+.superagent-reasoning-header strong { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.superagent-reasoning-header > span { min-width: 0; color: var(--muted); font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.superagent-reasoning-header button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 32px;
+  padding: 0 10px;
   border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  color: var(--muted);
+  border-radius: 3px;
+  color: var(--trusted);
+  background: var(--surface);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.superagent-reasoning-header button:disabled { color: var(--muted); background: var(--surface-soft); cursor: default; }
+.superagent-reasoning-overview {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 16px;
+  list-style: none;
+}
+.superagent-reasoning-overview > li { position: relative; min-width: 0; }
+.superagent-reasoning-overview > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  right: -14px;
+  width: 14px;
+  height: 1px;
+  background: var(--line-strong);
+  transform-origin: left;
+  animation: superagent-reasoning-connector-enter 220ms ease-out both;
+}
+.superagent-reasoning-node {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 78px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--ink);
   background: var(--surface);
   display: grid;
-  place-items: center;
-  font-size: 9px;
+  align-content: center;
+  gap: 6px;
+  text-align: left;
+  cursor: pointer;
+  animation: superagent-reasoning-node-enter 240ms ease-out both;
+}
+.superagent-reasoning-overview > li:nth-child(2) .superagent-reasoning-node { animation-delay: 30ms; }
+.superagent-reasoning-overview > li:nth-child(3) .superagent-reasoning-node { animation-delay: 60ms; }
+.superagent-reasoning-overview > li:nth-child(4) .superagent-reasoning-node { animation-delay: 90ms; }
+.superagent-reasoning-overview > li:nth-child(5) .superagent-reasoning-node { animation-delay: 120ms; }
+.superagent-reasoning-node > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
   font-weight: 800;
 }
-.superagent-trace .phase-replan .superagent-track-marker span { border-color: #d6ad6d; color: var(--review); background: var(--review-soft); }
-.superagent-trace .phase-complete .superagent-track-marker span { border-color: #67a999; color: var(--trusted); background: var(--trusted-soft); }
-.superagent-event-body { min-width: 0; padding: 1px 0 15px; }
-.superagent-event-meta { display: flex; align-items: center; gap: 9px; }
-.superagent-event-meta strong { color: var(--trusted); font: 800 10px/1.3 Consolas, monospace; }
-.superagent-event-meta span { color: var(--muted); font-size: 10px; }
-.superagent-event-body p { margin: 5px 0 7px; font-size: 11px; line-height: 1.55; }
-.superagent-evidence-codes { display: flex; flex-wrap: wrap; gap: 5px; }
-.superagent-evidence-codes code {
-  max-width: 100%;
-  padding: 2px 5px;
-  overflow-wrap: anywhere;
-  color: #4f625d;
-  background: var(--surface-soft);
-  font-size: 9px;
+.superagent-reasoning-node > span:last-child { color: var(--muted); font-size: 9px; font-weight: 600; }
+.superagent-reasoning-node.is-replan { border-color: #d6ad6d; background: var(--review-soft); }
+.superagent-reasoning-node.is-failed { border-color: #d7a4a6; color: var(--blocked); background: var(--blocked-soft); }
+.superagent-reasoning-node[aria-pressed="true"] { outline: 2px solid var(--trusted); outline-offset: 2px; }
+.superagent-reasoning-node:disabled { color: var(--muted); background: var(--surface-soft); cursor: not-allowed; }
+.superagent-reasoning-detail { min-width: 0; border-top: 1px solid var(--line); padding: 14px 16px; }
+.superagent-reasoning-detail-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
 }
+.superagent-reasoning-detail-grid section {
+  min-width: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--line-strong);
+  background: var(--surface-soft);
+}
+.superagent-reasoning-detail-grid h3 { min-width: 0; margin: 0 0 7px; font-size: 10px; overflow-wrap: anywhere; }
+.superagent-reasoning-detail-grid p,
+.superagent-reasoning-detail-grid ul,
+.superagent-reasoning-detail-grid li,
+.superagent-reasoning-detail-grid span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.superagent-reasoning-detail-grid p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.superagent-reasoning-detail-grid ul { margin: 0; padding-left: 16px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.superagent-reasoning-detail-grid li > span { display: block; }
+.superagent-reasoning-detail-grid li > span:first-child { color: var(--trusted); font: 800 9px/1.45 Consolas, monospace; }
+@keyframes superagent-reasoning-node-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes superagent-reasoning-connector-enter { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .superagent-empty {
   min-height: 390px;
   border-top: 2px solid var(--ink);
@@ -2137,6 +2204,18 @@ td:first-child { min-width: 128px; }
   .superagent-workspace { grid-template-columns: 1fr; }
   .superagent-role-list { grid-template-columns: 1fr; }
   .superagent-role-list article { min-height: 62px; }
+  .superagent-reasoning-overview { grid-template-columns: 1fr; }
+  .superagent-reasoning-overview > li:not(:last-child)::after {
+    top: auto;
+    right: auto;
+    bottom: -14px;
+    left: 28px;
+    width: 1px;
+    height: 14px;
+    transform-origin: top;
+    animation-name: superagent-reasoning-connector-enter-vertical;
+  }
+  .superagent-reasoning-detail-grid { grid-template-columns: 1fr; }
   .superagent-closure-summary { grid-template-columns: 1fr; }
   .superagent-closure-summary > div { border-right: 0; border-bottom: 1px solid var(--line); }
   .superagent-closure-summary > div:last-child { border-bottom: 0; }
@@ -2146,5 +2225,8 @@ td:first-child { min-width: 128px; }
 
 @media (prefers-reduced-motion: reduce) {
   .superagent-spinner,
-  .superagent-trace li { animation: none; }
+  .superagent-reasoning-node,
+  .superagent-reasoning-overview > li::after { animation: none; }
 }
+
+@keyframes superagent-reasoning-connector-enter-vertical { from { transform: scaleY(0); } to { transform: scaleY(1); } }

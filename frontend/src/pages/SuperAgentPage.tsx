@@ -15,26 +15,22 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
+import { AuditableReasoningChain } from "../components/AuditableReasoningChain";
+import {
+  superAgentActorLabels,
+  superAgentPhaseLabels,
+  superAgentToolLabels,
+} from "../superagent/labels";
 import type {
   Decision,
   LabScenario,
-  LabToolId,
   Mode,
   SuperAgentActor,
   SuperAgentCapabilities,
   SuperAgentFinalStatus,
   SuperAgentMissionResult,
   SuperAgentTraceEvent,
-  SuperAgentTracePhase,
 } from "../types";
-
-const actorLabels: Record<SuperAgentActor, string> = {
-  coordinator: "任务协调员",
-  semantic_analyst: "语义分析员",
-  token_analyst: "曲线分析员",
-  knowledge_analyst: "知识分析员",
-  response_operator: "响应执行员",
-};
 
 const actorIcons = {
   coordinator: Workflow,
@@ -43,14 +39,6 @@ const actorIcons = {
   knowledge_analyst: FileCheck2,
   response_operator: UserRoundCog,
 } as const;
-
-const phaseLabels: Record<SuperAgentTracePhase, string> = {
-  plan: "PLAN",
-  act: "ACT",
-  observe: "OBSERVE",
-  replan: "REPLAN",
-  complete: "COMPLETE",
-};
 
 const statusLabels: Record<SuperAgentFinalStatus, string> = {
   closed_safe: "安全闭环",
@@ -64,12 +52,6 @@ const actionLabels: Record<Decision, string> = {
   review: "人工复核",
   block: "拦截",
   sanitize_recheck: "净化后复检",
-};
-
-const toolLabels: Record<LabToolId, string> = {
-  gateway_enforcement: "内部网关状态",
-  security_case: "脱敏安全案件",
-  evidence_bundle: "证据归档包",
 };
 
 const lastMissionStorageKey = "token-security-superagent-mission-id";
@@ -91,12 +73,6 @@ function rememberLastMissionId(missionId: string | null) {
   }
 }
 
-function evidenceLabel(code: string) {
-  const knowledgePrefix = "knowledge_id:";
-  if (code.startsWith(knowledgePrefix)) return code.slice(knowledgePrefix.length);
-  return code;
-}
-
 function latestEventFor(actor: SuperAgentActor, events: SuperAgentTraceEvent[]) {
   return [...events].reverse().find((event) => event.actor === actor);
 }
@@ -116,44 +92,14 @@ function RoleBoard({ mission, capabilities }: { mission: SuperAgentMissionResult
             <article key={actor} className={event ? `is-${event.status}` : "is-waiting"}>
               <span className="superagent-role-icon"><Icon size={18} /></span>
               <div>
-                <strong>{actorLabels[actor]}</strong>
-                <small>{event ? `最近回报 · ${phaseLabels[event.phase]}` : "等待任务"}</small>
+                <strong>{superAgentActorLabels[actor]}</strong>
+                <small>{event ? `最近回报 · ${superAgentPhaseLabels[event.phase]}` : "等待任务"}</small>
               </div>
               <span className="superagent-role-state">{event ? "已回报" : "待命"}</span>
             </article>
           );
         })}
       </div>
-    </section>
-  );
-}
-
-function MissionTrace({ mission }: { mission: SuperAgentMissionResult }) {
-  return (
-    <section className="superagent-trace" aria-label="自主任务轨迹">
-      <div className="superagent-section-heading">
-        <div><Activity size={17} /><strong>命令轨道</strong></div>
-        <span>{mission.events.length} / 12 条公开审计事件</span>
-      </div>
-      <ol>
-        {mission.events.map((event) => (
-          <li key={event.sequence} className={`phase-${event.phase} status-${event.status}`}>
-            <div className="superagent-track-marker"><span>{event.sequence}</span></div>
-            <div className="superagent-event-body">
-              <div className="superagent-event-meta">
-                <strong>{phaseLabels[event.phase]}</strong>
-                <span>{actorLabels[event.actor]}</span>
-              </div>
-              <p>{event.summary}</p>
-              {event.evidence_codes.length ? (
-                <div className="superagent-evidence-codes">
-                  {event.evidence_codes.map((code) => <code key={code}>{evidenceLabel(code)}</code>)}
-                </div>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ol>
     </section>
   );
 }
@@ -179,7 +125,7 @@ function ClosurePanel({ mission }: { mission: SuperAgentMissionResult }) {
         {mission.executions.length ? mission.executions.map((execution) => (
           <article key={execution.execution_id} className={`is-${execution.status}`}>
             {execution.status === "succeeded" ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}
-            <div><strong>{toolLabels[execution.tool_id]}</strong><small>{actionLabels[execution.effective_action]} · {execution.status === "succeeded" ? "执行成功" : "执行失败"}</small></div>
+            <div><strong>{superAgentToolLabels[execution.tool_id]}</strong><small>{actionLabels[execution.effective_action]} · {execution.status === "succeeded" ? "执行成功" : "执行失败"}</small></div>
             <code>{execution.receipt_id ?? execution.execution_id}</code>
           </article>
         )) : <p className="superagent-no-tools">无需执行处置工具</p>}
@@ -295,11 +241,11 @@ export function SuperAgentPage() {
       {capabilities ? (
         <div className="superagent-workspace">
           <RoleBoard mission={mission} capabilities={capabilities} />
-          {mission ? <MissionTrace mission={mission} /> : (
+          {mission ? <AuditableReasoningChain events={mission.events} /> : (
             <section className="superagent-empty">
               <Workflow size={30} />
-              <strong>命令轨道等待任务</strong>
-              <span>选择冻结场景后启动，系统将展示公开审计事件，不展示隐藏思维链。</span>
+              <strong>可审计推理链等待任务</strong>
+              <span>启动冻结场景后展示结构化审计轨迹，不包含隐藏思维链。</span>
             </section>
           )}
         </div>
