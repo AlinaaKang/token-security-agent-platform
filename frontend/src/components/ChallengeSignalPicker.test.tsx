@@ -41,6 +41,20 @@ describe("ChallengeSignalPicker", () => {
     expect(tooltip).toHaveStyle({ left: "50%" });
   });
 
+  it("maps HTML flags and SVG selection lines through the full responsive canvas", () => {
+    const { container } = render(
+      <ChallengeSignalPicker signals={signals} selectedIndex={20} onSelect={() => undefined} />,
+    );
+    const chart = screen.getByRole("img", { name: "Token 挑战信号曲线" });
+    const selected = screen.getByRole("button", { name: "选择 Token 20" });
+    const selection = container.querySelector(".challenge-signal-selection");
+
+    expect(chart).toHaveAttribute("preserveAspectRatio", "none");
+    expect(selected).toHaveStyle({ left: "50%" });
+    expect(selection).toHaveAttribute("x1", "460");
+    expect(selection).toHaveAttribute("x2", "460");
+  });
+
   it("moves by observation order with arrows and confirms the focused Token", () => {
     const onSelect = vi.fn();
     render(<ChallengeSignalPicker signals={signals} selectedIndex={10} onSelect={onSelect} />);

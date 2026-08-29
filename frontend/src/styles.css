@@ -2260,7 +2260,7 @@ td:first-child { min-width: 128px; }
 @media (prefers-reduced-motion: reduce) {
   .superagent-spinner,
   .superagent-reasoning-node,
-  .superagent-reasoning-overview > li::after { animation: none; }
+  .superagent-reasoning-overview > li:not(:last-child)::after { animation: none; }
 }
 
 @keyframes superagent-reasoning-connector-enter-vertical { from { transform: scaleY(0); } to { transform: scaleY(1); } }

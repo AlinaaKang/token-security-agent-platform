@@ -68,6 +68,7 @@ export function ChallengeSignalPicker({
       <div className="challenge-signal-canvas" style={{ minWidth: canvasMinWidth }}>
         <svg
           viewBox={`0 0 ${SIGNAL_CHART_WIDTH} ${SIGNAL_CHART_HEIGHT}`}
+          preserveAspectRatio="none"
           role="img"
           aria-label="Token 挑战信号曲线"
         >
