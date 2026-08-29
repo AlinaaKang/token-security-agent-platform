@@ -15,6 +15,10 @@ const SEMANTIC_LABELS: Record<SemanticSeverity, string> = {
   unavailable: "语义证据不可用",
 };
 
+function publicModelName(modelId: string): string {
+  return modelId.split(/[\\/]/).filter(Boolean).at(-1) ?? "语义 Guard";
+}
+
 function guardLines(run: LabRunResult): RoleAuditLine[] {
   const detection = run.detection;
   return [
@@ -28,7 +32,7 @@ function guardLines(run: LabRunResult): RoleAuditLine[] {
     {
       id: "semantic-model",
       label: "模型与耗时",
-      value: `${detection.semantic_model_id} / ${detection.semantic_model_version} · ${detection.semantic_latency_ms.toFixed(1)} ms`,
+      value: `${publicModelName(detection.semantic_model_id)} / ${detection.semantic_model_version} · ${detection.semantic_latency_ms.toFixed(1)} ms`,
     },
   ];
 }

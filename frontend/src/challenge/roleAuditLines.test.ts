@@ -87,6 +87,16 @@ describe("challenge role audit lines", () => {
     ]);
   });
 
+  it("reduces a local semantic model path to its public model name", () => {
+    const localModel = withDetection({
+      semantic_model_id: "/root/autodl-tmp/models/Qwen3Guard-Gen-0.6B",
+    });
+    const serialized = JSON.stringify(buildRoleAuditLines(localModel, "guard"));
+    expect(serialized).toContain("Qwen3Guard-Gen-0.6B");
+    expect(serialized).not.toContain("/root/");
+    expect(serialized).not.toContain("autodl-tmp");
+  });
+
   it("builds a deterministic CPD report and preserves the candidate caveat", () => {
     expect(buildRoleAuditLines(run, "cpd").map((line) => line.value)).toEqual([
       "Token 观测已完成",
