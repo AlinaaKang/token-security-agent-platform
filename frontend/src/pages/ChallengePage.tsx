@@ -37,6 +37,7 @@ import type {
   EvidenceRelation,
   PlayerDecision,
 } from "../challenge/types";
+import { ChallengeInputCard } from "../components/ChallengeInputCard";
 import { ChallengeSignalPicker } from "../components/ChallengeSignalPicker";
 import { InvestigationDesk } from "../components/InvestigationDesk";
 import { LabModeSwitch } from "../components/LabModeSwitch";
@@ -240,6 +241,7 @@ export function ChallengePage() {
   }
 
   const run = session.currentRun;
+  const currentRound = session.rounds[session.roundIndex];
   const autoReplaying = presentationMode === "auto"
     && session.phase === "guessing"
     && run !== null
@@ -348,6 +350,7 @@ export function ChallengePage() {
             <div><span>连击</span><strong>{session.combo}</strong></div>
             <div><span>当前总分</span><strong>{session.totalScore}</strong></div>
           </section>
+          {currentRound ? <ChallengeInputCard publicInput={currentRound.publicInput} /> : null}
           <MascotTeam
             phase={autoReplaying ? "investigating" : session.phase}
             replayStageId={mascotReplayStageId}

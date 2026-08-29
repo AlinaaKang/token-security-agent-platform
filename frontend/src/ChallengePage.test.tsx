@@ -12,11 +12,28 @@ const health = {
 };
 
 const scenarios = [
-  { scenario_id: "synthetic_safe", label: "普通无害", scenario_kind: "synthetic", attack_family: null, ready: true },
-  { scenario_id: "synthetic_shift", label: "无害格式突变", scenario_kind: "synthetic", attack_family: null, ready: true },
-  { scenario_id: "gcg_01", label: "GCG", scenario_kind: "protected", attack_family: "gcg", ready: true },
-  { scenario_id: "autodan_01", label: "AutoDAN", scenario_kind: "protected", attack_family: "autodan", ready: true },
-  { scenario_id: "adv_01", label: "AdvPrompter", scenario_kind: "protected", attack_family: "advprompter", ready: true },
+  {
+    scenario_id: "synthetic_safe", label: "普通无害", scenario_kind: "synthetic", attack_family: null, ready: true,
+    public_input: { disclosure: "full", content: "请总结这份公开会议记录。", intent_summary: "测试正常的公开文本总结", redaction_notice: null },
+  },
+  {
+    scenario_id: "synthetic_shift", label: "无害格式突变", scenario_kind: "synthetic", attack_family: null, ready: true,
+    public_input: { disclosure: "full", content: "日期：2026-08-29\n地点：实验室\n事项：整理已公开材料", intent_summary: "测试无害格式突变", redaction_notice: null },
+  },
+  {
+    scenario_id: "gcg_01", label: "GCG", scenario_kind: "protected", attack_family: "gcg", ready: true,
+    public_input: { disclosure: "redacted", content: "这是经过审核的 GCG 攻击家族级说明。", intent_summary: "受保护优化攻击样本", redaction_notice: "[对抗攻击内容已隐藏]" },
+    prompt: "PRIVATE_GCG_SENTINEL", suffix: "PRIVATE_GCG_SUFFIX", token_text: "PRIVATE_GCG_TOKEN", token_id: 999, query_text: "PRIVATE_GCG_QUERY", raw_output: "PRIVATE_GCG_OUTPUT", guard_raw_output: "PRIVATE_GCG_GUARD",
+  },
+  {
+    scenario_id: "autodan_01", label: "AutoDAN", scenario_kind: "protected", attack_family: "autodan", ready: true,
+    public_input: { disclosure: "redacted", content: "这是经过审核的 AutoDAN 攻击家族级说明。", intent_summary: "受保护优化攻击样本", redaction_notice: "[对抗攻击内容已隐藏]" },
+    prompt: "PRIVATE_AUTODAN_SENTINEL", suffix: "PRIVATE_AUTODAN_SUFFIX", token_text: "PRIVATE_AUTODAN_TOKEN", token_id: 998, query_text: "PRIVATE_AUTODAN_QUERY", raw_output: "PRIVATE_AUTODAN_OUTPUT", guard_raw_output: "PRIVATE_AUTODAN_GUARD",
+  },
+  {
+    scenario_id: "adv_01", label: "AdvPrompter", scenario_kind: "protected", attack_family: "advprompter", ready: true,
+    public_input: { disclosure: "redacted", content: "这是经过审核的 AdvPrompter 攻击家族级说明。", intent_summary: "受保护优化攻击样本", redaction_notice: "[对抗攻击内容已隐藏]" },
+  },
 ];
 
 const runResult = {
@@ -173,6 +190,16 @@ async function completeInteractiveInvestigation() {
   await completeInteractiveRole("CPD 曲线侦探", "Agent 小队队长");
   await completeInteractiveRole("Agent 小队队长");
   return screen.findByRole("region", { name: "本关线索" });
+}
+
+async function completeAutomaticRound() {
+  fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
+  await screen.findByRole("region", { name: "本关线索" });
+  fireEvent.click(screen.getByRole("button", { name: "仅分布异常" }));
+  fireEvent.click(screen.getByRole("button", { name: "人工复核" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择 Token 2" }));
+  fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
+  await screen.findByRole("region", { name: "本关揭晓" });
 }
 
 describe("token detective challenge setup", () => {
@@ -690,5 +717,107 @@ describe("token detective challenge setup", () => {
     expect(screen.getByRole("button", { name: "提交研判" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "提交研判" }));
     expect(screen.getByRole("region", { name: "本关揭晓" })).toBeInTheDocument();
+  });
+
+  it("shows the first reviewed input while the first Lab Run is pending", async () => {
+    const pendingRun = deferred<typeof runResult>();
+    const requests = installFetch({ pendingRun: pendingRun.promise });
+    render(<App />);
+
+    await beginChallengeWhenReady();
+
+    const card = screen.getByRole("region", { name: "本关待检输入" });
+    expect(card).toHaveTextContent("公开安全样本");
+    expect(card).toHaveTextContent("测试正常的公开文本总结");
+    expect(requests.map((request) => request.url).sort()).toEqual([
+      "/api/v1/lab/runs",
+      "/api/v1/lab/scenarios",
+      "/health",
+    ]);
+  });
+
+  it("changes the card to the reviewed shift input on the next round", async () => {
+    installFetch();
+    render(<App />);
+
+    selectAutomaticPresentation();
+    await beginChallengeWhenReady();
+    await completeAutomaticRound();
+    fireEvent.click(screen.getByRole("button", { name: "下一关" }));
+
+    const card = await screen.findByRole("region", { name: "本关待检输入" });
+    expect(card).toHaveTextContent("测试无害格式突变");
+    expect(card).toHaveTextContent("日期：2026-08-29 地点：实验室 事项：整理已公开材料");
+  });
+
+  it("shows only reviewed static copy for protected rounds", async () => {
+    installFetch();
+    render(<App />);
+
+    selectAutomaticPresentation();
+    await beginChallengeWhenReady();
+    await completeAutomaticRound();
+    fireEvent.click(screen.getByRole("button", { name: "下一关" }));
+    await completeAutomaticRound();
+    fireEvent.click(screen.getByRole("button", { name: "下一关" }));
+
+    const card = await screen.findByRole("region", { name: "本关待检输入" });
+    expect(card).toHaveTextContent("受保护样本");
+    expect(card).toHaveTextContent("这是经过审核的 AutoDAN 攻击家族级说明。");
+    expect(card).toHaveTextContent("[对抗攻击内容已隐藏]");
+    const bodyText = document.body.textContent ?? "";
+    for (const forbidden of [
+      "PRIVATE_AUTODAN_SENTINEL", "prompt", "suffix", "token_text", "token_id",
+      "query_text", "raw_output", "guard_raw_output",
+    ]) {
+      expect(bodyText).not.toContain(forbidden);
+    }
+  });
+
+  it("keeps the same reviewed input when retrying a failed round", async () => {
+    const requests = installFetch({ failRunAttempts: 1 });
+    render(<App />);
+
+    selectAutomaticPresentation();
+    await beginChallengeWhenReady();
+    const firstCard = await screen.findByRole("region", { name: "本关待检输入" });
+    expect(firstCard).toHaveTextContent("请总结这份公开会议记录。");
+    await screen.findByText("本关调查失败");
+    fireEvent.click(screen.getByRole("button", { name: "重试本关" }));
+
+    await waitFor(() => expect(requests.filter((request) => request.url === "/api/v1/lab/runs")).toHaveLength(2));
+    expect(screen.getByRole("region", { name: "本关待检输入" })).toHaveTextContent("请总结这份公开会议记录。");
+  });
+
+  it("returns to the first reviewed input after exiting and starting again", async () => {
+    installFetch();
+    render(<App />);
+
+    selectAutomaticPresentation();
+    await beginChallengeWhenReady();
+    await completeAutomaticRound();
+    fireEvent.click(screen.getByRole("button", { name: "下一关" }));
+    await completeAutomaticRound();
+    fireEvent.click(screen.getByRole("button", { name: "下一关" }));
+    await completeAutomaticRound();
+    fireEvent.click(screen.getByRole("button", { name: "查看总分" }));
+    fireEvent.click(screen.getByRole("button", { name: "退出挑战" }));
+    await beginChallengeWhenReady();
+
+    const card = await screen.findByRole("region", { name: "本关待检输入" });
+    expect(card).toHaveTextContent("请总结这份公开会议记录。");
+    expect(card).not.toHaveTextContent("这是经过审核的 AutoDAN 攻击家族级说明。");
+  });
+
+  it("keeps scoring available when a scenario has no reviewed public input", async () => {
+    const missingPublicInput = scenarios.map(({ public_input: _, ...scenario }) => scenario);
+    installFetch({ scenarios: missingPublicInput });
+    render(<App />);
+
+    selectAutomaticPresentation();
+    await beginChallengeWhenReady();
+    expect(await screen.findByRole("region", { name: "本关待检输入" })).toHaveTextContent("公开材料暂不可用");
+    fireEvent.click(await screen.findByRole("button", { name: "跳过回放" }));
+    expect(await screen.findByRole("region", { name: "本关线索" })).toBeInTheDocument();
   });
 });
