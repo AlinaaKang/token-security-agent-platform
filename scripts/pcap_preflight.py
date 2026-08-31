@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
+import re
 import subprocess
 import tempfile
 from collections import Counter
@@ -9,6 +11,9 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Thread
+from time import monotonic
 from typing import Protocol
 
 
@@ -83,6 +88,12 @@ _VISIBILITY_KEYS = frozenset(
     }
 )
 _TOOL_VERSION_KEYS = frozenset({"tshark"})
+_ENCAP_LINK_TYPE_PATTERN = re.compile(r"encap_[0-9]+\Z")
+_TSHARK_VERSION_PATTERN = re.compile(
+    r"(?:tshark|TShark [0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\Z"
+)
+_STDERR_LIMIT_BYTES = 8192
+_TSHARK_TIMEOUT_SECONDS = 120.0
 
 
 class PreflightError(ValueError):
@@ -114,6 +125,54 @@ class TsharkRunner(Protocol):
     def iter_rows(self, path: Path) -> Iterable[str]: ...
 
 
+class _BoundedStderrSink:
+    """Drains child stderr without retaining more than the fixed limit."""
+
+    def __init__(self) -> None:
+        self._read_fd, write_fd = os.pipe()
+        self._writer = os.fdopen(write_fd, "wb", buffering=0)
+        self._temporary = tempfile.TemporaryFile(mode="w+b", dir="/tmp")
+        self._stored_bytes = 0
+        self._reader = Thread(target=self._drain, daemon=True)
+
+    @property
+    def stored_bytes(self) -> int:
+        return self._stored_bytes
+
+    def __enter__(self) -> _BoundedStderrSink:
+        return self
+
+    def __exit__(self, *arguments: object) -> None:
+        del arguments
+        self.close_writer()
+        self.join()
+        self._temporary.close()
+
+    def fileno(self) -> int:
+        return self._writer.fileno()
+
+    def start(self) -> None:
+        self._reader.start()
+
+    def close_writer(self) -> None:
+        if not self._writer.closed:
+            self._writer.close()
+
+    def join(self) -> None:
+        self._reader.join()
+
+    def _drain(self) -> None:
+        try:
+            while chunk := os.read(self._read_fd, _STDERR_LIMIT_BYTES):
+                remaining = _STDERR_LIMIT_BYTES - self._stored_bytes
+                if remaining > 0:
+                    retained = chunk[:remaining]
+                    self._temporary.write(retained)
+                    self._stored_bytes += len(retained)
+        finally:
+            os.close(self._read_fd)
+
+
 class _SystemTsharkRunner:
     """Runs the fixed metadata-only TShark field extraction command."""
 
@@ -143,13 +202,8 @@ class _SystemTsharkRunner:
             "frame.protocols",
         ]
         try:
-            with tempfile.SpooledTemporaryFile(
-                max_size=8192,
-                mode="w+t",
-                encoding="utf-8",
-                errors="replace",
-                dir="/tmp",
-            ) as error_stream:
+            with _BoundedStderrSink() as error_stream:
+                error_stream.start()
                 process = subprocess.Popen(
                     command,
                     stdin=subprocess.DEVNULL,
@@ -159,24 +213,21 @@ class _SystemTsharkRunner:
                     encoding="utf-8",
                     errors="replace",
                 )
+                error_stream.close_writer()
                 try:
                     if process.stdout is None:
                         raise PreflightError("tshark_failed")
-                    for line in process.stdout:
+                    deadline = monotonic() + _TSHARK_TIMEOUT_SECONDS
+                    for line in _read_stdout_until_deadline(process, deadline):
                         yield line
-                    process.wait(timeout=120)
+                    process.wait(timeout=_remaining_time(deadline))
                 except subprocess.TimeoutExpired as error:
-                    process.kill()
-                    process.wait()
+                    _terminate_process(process)
                     raise PreflightError("tshark_timeout") from error
                 finally:
-                    if process.poll() is None:
-                        process.kill()
-                        process.wait()
+                    _terminate_process(process)
                     if process.stdout is not None:
                         process.stdout.close()
-                error_stream.seek(0)
-                error_stream.read(8192)
                 if process.returncode != 0:
                     raise PreflightError("tshark_failed")
         except FileNotFoundError as error:
@@ -215,10 +266,9 @@ def parse_tshark_rows(lines: Iterable[str]) -> ProtocolObservation:
         last_epoch = epoch if last_epoch is None else max(last_epoch, epoch)
 
         link_type = fields[1]
-        if link_type.isascii() and link_type.isdigit():
-            link_type = f"encap_{link_type}"
-        if link_type:
-            link_types.add(link_type)
+        if not (link_type.isascii() and link_type.isdecimal()):
+            raise PreflightError("invalid_tshark_output")
+        link_types.add(f"encap_{link_type}")
         for protocol in fields[2].split(":"):
             if protocol in _ALLOWED_PROTOCOL_SET:
                 protocol_counts[protocol] += 1
@@ -280,6 +330,8 @@ def validate_report(value: Mapping[str, object]) -> dict[str, object]:
     link_types = value["link_types"]
     if not _is_sorted_unique_strings(link_types):
         _invalid_schema()
+    if not all(_is_encap_link_type(link_type) for link_type in link_types):
+        _invalid_schema()
     protocol_counts = value["protocol_counts"]
     if not isinstance(protocol_counts, Mapping):
         _invalid_schema()
@@ -317,7 +369,7 @@ def validate_report(value: Mapping[str, object]) -> dict[str, object]:
     if not isinstance(tool_versions, Mapping) or set(tool_versions) != _TOOL_VERSION_KEYS:
         _invalid_schema()
     tshark_version = tool_versions["tshark"]
-    if not isinstance(tshark_version, str) or not tshark_version.strip():
+    if not _is_tshark_version(tshark_version):
         _invalid_schema()
 
     return dict(value)
@@ -361,7 +413,7 @@ def _validate_observation(observation: CaptureObservation) -> None:
         _invalid_observation()
     if observation.capture_format not in _CAPTURE_FORMATS:
         _invalid_observation()
-    if not isinstance(observation.tshark_version, str) or not observation.tshark_version.strip():
+    if not _is_tshark_version(observation.tshark_version):
         _invalid_observation()
 
     protocols = observation.protocols
@@ -372,7 +424,7 @@ def _validate_observation(observation: CaptureObservation) -> None:
     for epoch in (protocols.first_epoch, protocols.last_epoch):
         if epoch is not None and (not isinstance(epoch, Decimal) or not epoch.is_finite()):
             _invalid_observation()
-    if not all(isinstance(link_type, str) and link_type for link_type in protocols.link_types):
+    if not all(_is_encap_link_type(link_type) for link_type in protocols.link_types):
         _invalid_observation()
     for name, count in protocols.protocol_counts.items():
         if name not in _ALLOWED_PROTOCOL_SET or not _is_bounded_integer(count):
@@ -441,6 +493,58 @@ def _is_sorted_unique_strings(value: object) -> bool:
         and value == sorted(value)
         and len(value) == len(set(value))
     )
+
+
+def _is_encap_link_type(value: object) -> bool:
+    return isinstance(value, str) and _ENCAP_LINK_TYPE_PATTERN.fullmatch(value) is not None
+
+
+def _is_tshark_version(value: object) -> bool:
+    return isinstance(value, str) and _TSHARK_VERSION_PATTERN.fullmatch(value) is not None
+
+
+def _read_stdout_until_deadline(process: subprocess.Popen[str], deadline: float) -> Iterator[str]:
+    if process.stdout is None:
+        raise PreflightError("tshark_failed")
+    messages: Queue[tuple[str, str | None]] = Queue()
+
+    def drain_stdout() -> None:
+        try:
+            for line in process.stdout:
+                messages.put(("line", line))
+        except OSError:
+            messages.put(("error", None))
+        finally:
+            messages.put(("done", None))
+
+    reader = Thread(target=drain_stdout, daemon=True)
+    reader.start()
+    while True:
+        try:
+            kind, line = messages.get(timeout=_remaining_time(deadline))
+        except Empty as error:
+            _terminate_process(process)
+            raise PreflightError("tshark_timeout") from error
+        if kind == "line":
+            assert line is not None
+            yield line
+        elif kind == "error":
+            raise PreflightError("tshark_failed")
+        else:
+            return
+
+
+def _remaining_time(deadline: float) -> float:
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise PreflightError("tshark_timeout")
+    return remaining
+
+
+def _terminate_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is None:
+        process.kill()
+        process.wait()
 
 
 def _invalid_schema() -> None:
