@@ -97,6 +97,17 @@ def _run_launcher(path: Path, root: Path, fake_docker: Path) -> subprocess.Compl
     )
 
 
+def _make_directory_junction(link: Path, target: Path) -> None:
+    result = subprocess.run(
+        [os.environ["ComSpec"], "/d", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        pytest.skip("directory junction creation is unavailable for this Windows test user")
+
+
 def test_launcher_uses_exact_sandbox_arguments(tmp_path: Path) -> None:
     root, capture = _make_quarantine_capture(tmp_path)
     fake = _write_fake_docker(tmp_path, _valid_report(capture))
@@ -216,6 +227,62 @@ def test_launcher_rejects_reparse_point_input_when_symlinks_are_available(
 
     assert result.returncode != 0
     assert "pcap_preflight_error=input_reparse_point" in result.stdout
+
+
+def test_launcher_rejects_junction_input_root(tmp_path: Path) -> None:
+    root = tmp_path / "quarantine"
+    root.mkdir()
+    outside = tmp_path / "outside-input"
+    outside.mkdir()
+    capture = outside / "capture.pcap"
+    capture.write_bytes(PCAP_HEADER)
+    junction = root / "input"
+    _make_directory_junction(junction, outside)
+
+    try:
+        result = _run_launcher(path=junction / capture.name, root=root, fake_docker=tmp_path / "unused.cmd")
+    finally:
+        junction.rmdir()
+
+    assert result.returncode != 0
+    assert "pcap_preflight_error=input_reparse_point" in result.stdout
+
+
+def test_launcher_rejects_junction_in_input_path(tmp_path: Path) -> None:
+    root = tmp_path / "quarantine"
+    input_root = root / "input"
+    input_root.mkdir(parents=True)
+    outside = tmp_path / "outside-nested"
+    outside.mkdir()
+    capture = outside / "capture.pcap"
+    capture.write_bytes(PCAP_HEADER)
+    junction = input_root / "nested"
+    _make_directory_junction(junction, outside)
+
+    try:
+        result = _run_launcher(path=junction / capture.name, root=root, fake_docker=tmp_path / "unused.cmd")
+    finally:
+        junction.rmdir()
+
+    assert result.returncode != 0
+    assert "pcap_preflight_error=input_reparse_point" in result.stdout
+
+
+def test_launcher_rejects_junction_output_directory(tmp_path: Path) -> None:
+    root, capture = _make_quarantine_capture(tmp_path)
+    outside = tmp_path / "outside-output"
+    outside.mkdir()
+    junction = root / "output"
+    _make_directory_junction(junction, outside)
+
+    try:
+        result = _run_launcher(capture, root, _write_fake_docker(tmp_path, _valid_report(capture)))
+    finally:
+        junction.rmdir()
+
+    assert result.returncode != 0
+    assert "pcap_preflight_error=output_reparse_point" in result.stdout
+    assert list(outside.iterdir()) == []
 
 
 def test_launcher_runs_under_windows_powershell_5_1(tmp_path: Path) -> None:

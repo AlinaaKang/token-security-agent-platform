@@ -26,7 +26,7 @@ PCAP、RAG、ReAct、BEAST 和 AutoDAN-HGA 不进入基础任务算法与冻结 
 
 ## 当前验证
 
-- 后端：614 passed；1 个本机真实 GPU 集成测试因未配置模型而 skipped，1 个 Windows 重解析点测试因当前账户无符号链接权限而 skipped。
+- 后端：617 passed；1 个本机真实 GPU 集成测试因未配置模型而 skipped，1 个 Windows 符号链接测试因当前账户无相应权限而 skipped；无需该权限的目录 junction 边界测试已通过。
 - 前端：199 个自动化测试，TypeScript 与 Vite 生产构建通过。
 - AutoDL：RTX 4090 D 24GB，Qwen2.5-7B-Instruct + Qwen3Guard-Gen-0.6B；模型、检测器、语义 Guard、知识库、审计、评测、样本服务、实验舱和 SuperAgent 全部 ready，部署校准一致。
 - 原始 CPD/NLL 基准：冻结测试 663 条，其中攻击 460、无害 203。

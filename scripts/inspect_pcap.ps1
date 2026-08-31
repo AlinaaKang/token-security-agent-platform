@@ -18,6 +18,7 @@ $script:PublicErrorCodes = @(
     'input_outside_quarantine',
     'input_reparse_point',
     'invalid_report_schema',
+    'output_reparse_point',
     'unexpected_failure',
     'unsupported_capture_extension'
 )
@@ -115,6 +116,35 @@ function Get-Sha256Hex {
     finally {
         $algorithm.Dispose()
         $stream.Dispose()
+    }
+}
+
+function Assert-NoReparsePoints {
+    param(
+        [Parameter(Mandatory = $true)][string]$LiteralPath,
+        [Parameter(Mandatory = $true)][string]$Code
+    )
+
+    $current = [System.IO.Path]::GetFullPath($LiteralPath)
+    $pathRoot = [System.IO.Path]::GetPathRoot($current).TrimEnd([char]'\', [char]'/')
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath $current) {
+            try {
+                $attributes = [System.IO.File]::GetAttributes($current)
+            }
+            catch {
+                Fail-Preflight $Code
+            }
+            if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                Fail-Preflight $Code
+            }
+        }
+
+        $trimmed = $current.TrimEnd([char]'\', [char]'/')
+        if ($trimmed.Equals($pathRoot, [System.StringComparison]::OrdinalIgnoreCase)) { break }
+        $parent = [System.IO.Directory]::GetParent($trimmed)
+        if ($null -eq $parent) { break }
+        $current = $parent.FullName
     }
 }
 
@@ -273,6 +303,7 @@ try {
     if (-not $fullPath.StartsWith($inputPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         Fail-Preflight 'input_outside_quarantine'
     }
+    Assert-NoReparsePoints $fullPath 'input_reparse_point'
     try {
         $attributes = [System.IO.File]::GetAttributes($fullPath)
     }
@@ -362,8 +393,11 @@ try {
     if ($postRunHash -ne $report.sha256) { Fail-Preflight 'input_changed' }
 
     $outputDirectory = [System.IO.Path]::Combine($fullRoot, 'output')
+    Assert-NoReparsePoints $outputDirectory 'output_reparse_point'
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+    Assert-NoReparsePoints $outputDirectory 'output_reparse_point'
     $reportPath = [System.IO.Path]::Combine($outputDirectory, ('pcap-preflight-{0}.json' -f $report.sha256.Substring(0, 16)))
+    Assert-NoReparsePoints $reportPath 'output_reparse_point'
     Save-Report $report $reportPath
     exit 0
 }

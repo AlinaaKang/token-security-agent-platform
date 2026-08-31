@@ -100,11 +100,12 @@ E:\Codex\pcap-quarantine\output\pcap-preflight-<SHA-256前16位>.json
 
 启动器失败时只返回固定分类，例如：
 
-- `docker_unavailable`：Docker Desktop 未启动或未找到；启动 Docker 后重试。
+- `docker_unavailable`：没有找到 Docker 可执行文件；安装或修复 Docker Desktop 后重试。
 - `input_outside_quarantine`：文件不在固定 `input` 目录；移动到正确目录后重试。
 - `input_not_regular_file` / `input_reparse_point`：输入不是普通文件或是链接；改用明确的本地普通文件。
+- `output_reparse_point`：输出目录、报告路径或其父目录包含链接；移除链接并使用本地普通目录。
 - `unsupported_capture_extension`：扩展名不是 `.pcap` 或 `.pcapng`。
-- `docker_failed` / `docker_timeout`：容器失败或超过 150 秒；停止预检并检查 Docker，不回退到宿主机 TShark。
+- `docker_failed` / `docker_timeout`：Docker 引擎未启动、容器失败或超过 150 秒；启动或检查 Docker Desktop，不回退到宿主机 TShark。
 - `invalid_report_schema`：容器报告不符合严格白名单；拒绝保存。
 - `input_changed`：运行后摘要与容器报告不一致；隔离该文件并重新取得可信副本。
 
@@ -120,8 +121,8 @@ E:\Codex\pcap-quarantine\output\pcap-preflight-<SHA-256前16位>.json
 
 ## 8. 2026-08-31 验证证据
 
-- PCAP 核心聚焦测试：92 passed，1 skipped；验证器原生 stderr 失败路径测试：1 passed。跳过项是当前 Windows 账户无创建符号链接权限时的重解析点用例。
-- 全量后端：614 passed，2 skipped。另一跳过项是未配置本机真实 GPU 测试模型。
+- PCAP 核心聚焦测试：95 passed，1 skipped；验证器原生 stderr 失败路径测试：1 passed。跳过项是当前 Windows 账户无创建符号链接权限时的叶符号链接用例；无需该权限的 input/output 目录 junction 用例已通过。
+- 全量后端：617 passed，2 skipped。另一跳过项是未配置本机真实 GPU 测试模型。
 - 全量前端：199 passed；TypeScript 与 Vite 生产构建通过。
 - Docker：客户端/引擎 29.7.2，Docker Desktop 4.88.1；镜像配置用户为 `65532:65532`。
 - 机械隔离：`network_none=1`、`readonly_root=1`、`non_root=1`、`cap_drop_all=1`、`no_new_privileges=1`、`resource_limits=1`、`payload_leaks=0`、`residual_containers=0`。
