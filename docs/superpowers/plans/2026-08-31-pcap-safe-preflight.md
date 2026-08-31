@@ -261,7 +261,7 @@ Use the reachable Microsoft Container Registry Linux/AMD64 manifest exactly as f
 
 ```dockerfile
 # mcr.microsoft.com/dotnet/runtime-deps:8.0-noble, linux/amd64 manifest resolved 2026-08-31
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-noble@sha256:5aa56f5fdf83434f14a7b877912999ee8daa69a43fa1d6106753c4adbe21dc9
+FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-noble@sha256:5aa56f5fdf83434f14a7b877912999ee8daa69a43fa1d6106753c4adbe21dc9b
 ```
 
 Install only `python3`, `tshark`, and `ca-certificates` with noninteractive package configuration, remove apt lists, create fixed user/group `pcap` UID/GID `65532`, copy the policy and CLI to `/opt/pcap`, set ownership at build time, and use:
