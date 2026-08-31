@@ -5,6 +5,7 @@ import io
 import os
 import queue
 import threading
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -449,6 +450,67 @@ def test_system_runner_times_out_while_stdout_remains_open(
     assert isinstance(error, PreflightError)
     assert str(error) == "tshark_timeout"
     assert process.killed is True
+
+
+class _RapidStdout:
+    def __init__(self, line_count: int = 128) -> None:
+        self.line_count = line_count
+        self.produced = 0
+        self.saturated = threading.Event()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> str:
+        if self.produced == self.line_count:
+            raise StopIteration
+        self.produced += 1
+        if self.produced == 3:
+            self.saturated.set()
+        return f"{self.produced}.0\t1\ttcp\n"
+
+    def close(self) -> None:
+        return None
+
+
+class _ProcessWithRapidStdout:
+    def __init__(self) -> None:
+        self.stdout = _RapidStdout()
+        self.returncode: int | None = None
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    def wait(self, timeout: float | None = None) -> int:
+        del timeout
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
+
+
+def test_system_runner_backs_up_saturated_stdout_and_still_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = _ProcessWithRapidStdout()
+    monkeypatch.setattr(preflight, "_STDOUT_QUEUE_MAXSIZE", 1, raising=False)
+    monkeypatch.setattr(preflight, "_TSHARK_TIMEOUT_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(preflight.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    rows = preflight._SystemTsharkRunner().iter_rows(Path("ignored"))
+    assert next(rows) == "1.0\t1\ttcp\n"
+    assert process.stdout.saturated.wait(timeout=0.1)
+    time.sleep(0.02)
+
+    with pytest.raises(PreflightError, match="tshark_timeout"):
+        next(rows)
+
+    assert process.killed is True
+    assert process.stdout.produced <= 3
 
 
 def test_bounded_stderr_sink_discards_output_after_eight_kib() -> None:

@@ -11,8 +11,8 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from queue import Empty, Queue
-from threading import Thread
+from queue import Empty, Full, Queue
+from threading import Event, Thread
 from time import monotonic
 from typing import Protocol
 
@@ -94,6 +94,8 @@ _TSHARK_VERSION_PATTERN = re.compile(
 )
 _STDERR_LIMIT_BYTES = 8192
 _TSHARK_TIMEOUT_SECONDS = 120.0
+_STDOUT_QUEUE_MAXSIZE = 64
+_STDOUT_HANDOFF_POLL_SECONDS = 0.01
 
 
 class PreflightError(ValueError):
@@ -506,32 +508,55 @@ def _is_tshark_version(value: object) -> bool:
 def _read_stdout_until_deadline(process: subprocess.Popen[str], deadline: float) -> Iterator[str]:
     if process.stdout is None:
         raise PreflightError("tshark_failed")
-    messages: Queue[tuple[str, str | None]] = Queue()
+    messages: Queue[str] = Queue(maxsize=_STDOUT_QUEUE_MAXSIZE)
+    cancelled = Event()
+    reader_done = Event()
+    reader_failed = Event()
+
+    def handoff(line: str) -> bool:
+        while not cancelled.is_set():
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                return False
+            try:
+                messages.put(
+                    line,
+                    timeout=min(remaining, _STDOUT_HANDOFF_POLL_SECONDS),
+                )
+                return True
+            except Full:
+                continue
+        return False
 
     def drain_stdout() -> None:
         try:
             for line in process.stdout:
-                messages.put(("line", line))
+                if not handoff(line):
+                    return
         except OSError:
-            messages.put(("error", None))
+            reader_failed.set()
         finally:
-            messages.put(("done", None))
+            reader_done.set()
 
     reader = Thread(target=drain_stdout, daemon=True)
     reader.start()
-    while True:
-        try:
-            kind, line = messages.get(timeout=_remaining_time(deadline))
-        except Empty as error:
-            _terminate_process(process)
-            raise PreflightError("tshark_timeout") from error
-        if kind == "line":
-            assert line is not None
+    try:
+        while True:
+            try:
+                line = messages.get(
+                    timeout=min(
+                        _remaining_time(deadline), _STDOUT_HANDOFF_POLL_SECONDS
+                    )
+                )
+            except Empty:
+                if reader_failed.is_set():
+                    raise PreflightError("tshark_failed")
+                if reader_done.is_set():
+                    return
+                continue
             yield line
-        elif kind == "error":
-            raise PreflightError("tshark_failed")
-        else:
-            return
+    finally:
+        cancelled.set()
 
 
 def _remaining_time(deadline: float) -> float:
