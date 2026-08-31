@@ -96,10 +96,28 @@ _STDERR_LIMIT_BYTES = 8192
 _TSHARK_TIMEOUT_SECONDS = 120.0
 _STDOUT_QUEUE_MAXSIZE = 64
 _STDOUT_HANDOFF_POLL_SECONDS = 0.01
+_PREFLIGHT_ERROR_CODES = frozenset(
+    {
+        "capture_read_failed",
+        "invalid_observation",
+        "invalid_report_schema",
+        "invalid_tshark_output",
+        "tshark_failed",
+        "tshark_timeout",
+        "tshark_unavailable",
+        "unsupported_capture_format",
+    }
+)
 
 
 class PreflightError(ValueError):
     """A fixed public error code emitted by the capture preflight."""
+
+    def __init__(self, code: str) -> None:
+        if not isinstance(code, str) or code not in _PREFLIGHT_ERROR_CODES:
+            raise ValueError("invalid_preflight_error_code")
+        self.code = code
+        super().__init__(code)
 
 
 @dataclass(frozen=True)

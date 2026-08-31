@@ -526,3 +526,40 @@ def test_bounded_stderr_sink_discards_output_after_eight_kib() -> None:
         sink.join()
 
     assert sink.stored_bytes == 8192
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "capture_read_failed",
+        "invalid_observation",
+        "invalid_report_schema",
+        "invalid_tshark_output",
+        "tshark_failed",
+        "tshark_timeout",
+        "tshark_unavailable",
+        "unsupported_capture_format",
+    ],
+)
+def test_preflight_error_exposes_each_existing_fixed_code(code: str) -> None:
+    error = PreflightError(code)
+
+    assert error.code == code
+    assert str(error) == code
+
+
+def test_preflight_error_rejects_unknown_codes_without_echoing_input() -> None:
+    unknown_code = "PRIVATE_UNKNOWN_ERROR_CODE"
+
+    with pytest.raises(ValueError, match="invalid_preflight_error_code") as caught:
+        PreflightError(unknown_code)
+
+    assert unknown_code not in str(caught.value)
+
+
+def test_real_preflight_error_path_exposes_code_attribute() -> None:
+    with pytest.raises(PreflightError) as caught:
+        detect_capture_format(b"not a capture")
+
+    assert caught.value.code == "unsupported_capture_format"
+    assert str(caught.value) == "unsupported_capture_format"
