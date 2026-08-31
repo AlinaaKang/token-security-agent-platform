@@ -26,3 +26,8 @@ tmp/
 .secrets/
 .worktrees/
 .superpowers/
+pcap-quarantine/
+**/pcap-quarantine/
+**/pcap-preflight-*.json
+*.pcap
+*.pcapng
