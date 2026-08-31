@@ -16,12 +16,18 @@
 - 可选进阶层：离线官方知识快照、FTS5 Top-3 检索和有引用研判报告；知识证据在基础结论生成后附加，不能改写动作、分数或异常起点。
 - 挑战任务：有界 SuperAgent 复用实验舱脱敏结果，按固定权限完成规划、观察、一次重规划、零到三次内部工具调用和结构化收口；不展示隐藏思维链，不声称外部安全设备联动。
 
-PCAP、RAG、ReAct、BEAST 和 AutoDAN-HGA 不进入基础任务算法与冻结 CPD 指标。当前进阶任务单独实现了离线 RAG 证据层；PCAP 属于网络协议层证据，不能替代当前模型内部 Token 证据。
+PCAP、RAG、ReAct、BEAST 和 AutoDAN-HGA 不进入基础任务算法与冻结 CPD 指标。当前进阶任务单独实现了离线 RAG 证据层。PCAP 安全预检是独立的证据可用性鉴定器，不进入基础或进阶冻结指标，不恢复 Prompt，不运行 Entropy-CPD，也不改变任何既有动作；完整 PCAP 到 Prompt/Token 的关联尚未实现。
+
+## 可选 PCAP 证据预检
+
+本机 Docker 预检只接收仓库外隔离目录中的一个 `.pcap` 或 `.pcapng` 文件，并在无网络、非 root、只读、能力全丢弃和资源受限的容器中生成固定字段报告。`token_eligible` 只表示观察到可申请第二阶段的明文协议，不表示已经识别大模型 API 或定位异常 Token。
+
+构建、机械隔离验证、文件放置、三档结论和固定失败处理见 [PCAP 安全预检操作指南](docs/pcap-safe-preflight.md)。
 
 ## 当前验证
 
-- 后端：515 passed，1 个本机真实 GPU 集成测试因未配置模型而 skipped。
-- 前端：138 个自动化测试，TypeScript 与 Vite 生产构建通过。
+- 后端：614 passed；1 个本机真实 GPU 集成测试因未配置模型而 skipped，1 个 Windows 重解析点测试因当前账户无符号链接权限而 skipped。
+- 前端：199 个自动化测试，TypeScript 与 Vite 生产构建通过。
 - AutoDL：RTX 4090 D 24GB，Qwen2.5-7B-Instruct + Qwen3Guard-Gen-0.6B；模型、检测器、语义 Guard、知识库、审计、评测、样本服务、实验舱和 SuperAgent 全部 ready，部署校准一致。
 - 原始 CPD/NLL 基准：冻结测试 663 条，其中攻击 460、无害 203。
 - 受保护融合验收：3 条直接危险、1 条普通安全、1 条争议上下文、1 条无害格式突变，语义与动作 6/6 符合预期。
@@ -92,3 +98,4 @@ CPD 算法和首批数据唯一参考为 CPDonline，固定 commit：
 - [AI 安全攻防实验舱](docs/security-lab.md)
 - [Token 侦探挑战](docs/token-detective-challenge.md)
 - [挑战任务：有界 SuperAgent](docs/challenge-task.md)
+- [PCAP 安全预检操作指南](docs/pcap-safe-preflight.md)
