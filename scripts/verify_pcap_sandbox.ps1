@@ -12,6 +12,8 @@ $tempRoot = [System.IO.Path]::Combine($tempBase, 'pcap-sandbox-verification-' + 
 $containerName = 'pcap-sandbox-probe-' + $runId
 $script:FailureCode = 'unexpected_failure'
 $residualContainers = 0
+$verificationPassed = $false
+$containerCleanupRequired = $false
 
 function Fail-Verification {
     param([Parameter(Mandatory = $true)][string]$Code)
@@ -69,6 +71,24 @@ function Test-ExactKeys {
     return $true
 }
 
+function Invoke-QuietNative {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Action,
+        [Parameter(Mandatory = $true)][string]$ErrorPath
+    )
+
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $Action 2> $ErrorPath)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
+}
+
 try {
     $docker = Resolve-Docker $DockerExecutable
     $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
@@ -80,17 +100,18 @@ try {
     $quarantineRoot = Join-Path $tempRoot 'quarantine'
     $inputDirectory = Join-Path $quarantineRoot 'input'
     $fixture = Join-Path $inputDirectory ('safe-' + $runId + '.pcap')
+    $nativeError = Join-Path $tempRoot 'native-command.err'
 
     New-Item -ItemType Directory -Path $inputDirectory -Force | Out-Null
-    & $pythonCommand.Source $generator --output $fixture | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail-Verification 'fixture_generation_failed' }
+    $nativeResult = Invoke-QuietNative { & $pythonCommand.Source $generator --output $fixture } $nativeError
+    if ($nativeResult.ExitCode -ne 0) { Fail-Verification 'fixture_generation_failed' }
 
-    $buildError = Join-Path $tempRoot 'docker-build.err'
-    & $docker build --quiet -f (Join-Path $repositoryRoot 'pcap-inspector\Dockerfile') -t $image $repositoryRoot 2> $buildError | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail-Verification 'image_build_failed' }
+    $nativeResult = Invoke-QuietNative { & $docker build --quiet -f (Join-Path $repositoryRoot 'pcap-inspector\Dockerfile') -t $image $repositoryRoot } $nativeError
+    if ($nativeResult.ExitCode -ne 0) { Fail-Verification 'image_build_failed' }
 
-    $launcherOutput = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $launcher -Path $fixture -QuarantineRoot $quarantineRoot -DockerExecutable $docker
-    if ($LASTEXITCODE -ne 0) { Fail-Verification 'launcher_failed' }
+    $nativeResult = Invoke-QuietNative { & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $launcher -Path $fixture -QuarantineRoot $quarantineRoot -DockerExecutable $docker } $nativeError
+    if ($nativeResult.ExitCode -ne 0) { Fail-Verification 'launcher_failed' }
+    $launcherOutput = $nativeResult.Output
 
     $reports = @(Get-ChildItem -LiteralPath (Join-Path $quarantineRoot 'output') -Filter 'pcap-preflight-*.json' -File)
     Assert-True ($reports.Count -eq 1) 'report_count_invalid'
@@ -134,10 +155,14 @@ printf 'cpu_max=%s_%s\n' $cpu_quota $cpu_period
         '--entrypoint', '/bin/sh',
         $image, '-c', $probeCommand
     )
-    & $docker @createArguments | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail-Verification 'probe_create_failed' }
+    $containerCleanupRequired = $true
+    $nativeResult = Invoke-QuietNative { & $docker @createArguments } $nativeError
+    if ($nativeResult.ExitCode -ne 0) { Fail-Verification 'probe_create_failed' }
 
-    $inspection = (& $docker inspect $containerName | ConvertFrom-Json)[0]
+    $nativeResult = Invoke-QuietNative { & $docker inspect $containerName } $nativeError
+    if ($nativeResult.ExitCode -ne 0) { Fail-Verification 'probe_inspect_failed' }
+    $inspectionText = $nativeResult.Output
+    $inspection = ($inspectionText | ConvertFrom-Json)[0]
     Assert-True ($inspection.Config.User -eq '65532:65532') 'non_root_config_failed'
     Assert-True ($inspection.HostConfig.NetworkMode -eq 'none') 'network_none_failed'
     Assert-True ([bool]$inspection.HostConfig.ReadonlyRootfs) 'readonly_root_config_failed'
@@ -151,8 +176,9 @@ printf 'cpu_max=%s_%s\n' $cpu_quota $cpu_period
     $tmpfsProperty = $inspection.HostConfig.Tmpfs.PSObject.Properties['/tmp']
     Assert-True ($null -ne $tmpfsProperty -and $tmpfsProperty.Value -match 'noexec' -and $tmpfsProperty.Value -match 'nosuid' -and $tmpfsProperty.Value -match 'nodev' -and $tmpfsProperty.Value -match 'size=16m') 'tmpfs_policy_invalid'
 
-    $probeText = (& $docker start -a $containerName 2>$null) -join "`n"
-    if ($LASTEXITCODE -ne 0) { Fail-Verification 'probe_run_failed' }
+    $nativeResult = Invoke-QuietNative { & $docker start -a $containerName } $nativeError
+    if ($nativeResult.ExitCode -ne 0) { Fail-Verification 'probe_run_failed' }
+    $probeText = $nativeResult.Output -join "`n"
     $probe = [ordered]@{}
     foreach ($line in ($probeText -split "`r?`n")) {
         if ($line -notmatch '^([a-z_]+)=(.*)$') { Fail-Verification 'probe_output_invalid' }
@@ -167,23 +193,40 @@ printf 'cpu_max=%s_%s\n' $cpu_quota $cpu_period
     Assert-True ($probe.pids_max -eq '64') 'pids_limit_runtime_failed'
     Assert-True ($probe.cpu_max -match '^([0-9]+)_\1$') 'cpu_limit_runtime_failed'
 
-    $remaining = @(& $docker ps -aq --filter ('label=' + $runLabel))
+    $nativeResult = Invoke-QuietNative { & $docker ps -aq --filter ('label=' + $runLabel) } $nativeError
+    if ($nativeResult.ExitCode -ne 0) { Fail-Verification 'residual_container_check_failed' }
+    $remaining = $nativeResult.Output
     $remaining = @($remaining | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     $residualContainers = $remaining.Count
     Assert-True ($residualContainers -eq 0) 'residual_container_failed'
 
-    Write-Output 'pcap_sandbox_verification=passed network_none=1 readonly_root=1 non_root=1 cap_drop_all=1 no_new_privileges=1 resource_limits=1 payload_leaks=0 residual_containers=0'
-    exit 0
+    $verificationPassed = $true
 }
 catch {
-    Write-Output ('pcap_sandbox_verification=failed code={0} network_none=0 readonly_root=0 non_root=0 cap_drop_all=0 no_new_privileges=0 resource_limits=0 payload_leaks=0 residual_containers={1}' -f $script:FailureCode, $residualContainers)
-    exit 2
 }
 finally {
-    if ($null -ne $docker) {
-        $containerIds = @(& $docker ps -aq --filter ('label=' + $runLabel) 2>$null)
+    if ($null -ne $docker -and $containerCleanupRequired) {
+        $cleanupResult = Invoke-QuietNative { & $docker ps -aq --filter ('label=' + $runLabel) } $nativeError
+        $containerIds = $cleanupResult.Output
         foreach ($containerId in $containerIds) {
-            if ($containerId -match '^[0-9a-f]{12,64}$') { & $docker rm -f $containerId 2>$null | Out-Null }
+            if ($containerId -match '^[0-9a-f]{12,64}$') {
+                $null = Invoke-QuietNative { & $docker rm -f $containerId } $nativeError
+            }
+        }
+        $cleanupResult = Invoke-QuietNative { & $docker ps -aq --filter ('label=' + $runLabel) } $nativeError
+        $postCleanupIds = $cleanupResult.Output
+        if ($cleanupResult.ExitCode -ne 0) {
+            $residualContainers = 1
+            $verificationPassed = $false
+            $script:FailureCode = 'cleanup_verification_failed'
+        }
+        else {
+            $postCleanupIds = @($postCleanupIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $residualContainers = $postCleanupIds.Count
+            if ($residualContainers -ne 0) {
+                $verificationPassed = $false
+                $script:FailureCode = 'cleanup_failed'
+            }
         }
     }
     $resolvedTempRoot = [System.IO.Path]::GetFullPath($tempRoot)
@@ -192,3 +235,11 @@ finally {
         Remove-Item -LiteralPath $resolvedTempRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
+if ($verificationPassed -and $residualContainers -eq 0) {
+    Write-Output 'pcap_sandbox_verification=passed network_none=1 readonly_root=1 non_root=1 cap_drop_all=1 no_new_privileges=1 resource_limits=1 payload_leaks=0 residual_containers=0'
+    exit 0
+}
+
+Write-Output ('pcap_sandbox_verification=failed code={0} network_none=0 readonly_root=0 non_root=0 cap_drop_all=0 no_new_privileges=0 resource_limits=0 payload_leaks=0 residual_containers={1}' -f $script:FailureCode, $residualContainers)
+exit 2
