@@ -117,3 +117,13 @@ E:\Codex\pcap-quarantine\output\pcap-preflight-<SHA-256前16位>.json
 > 平台在模型内部 Token 安全链路之外，增加了一个网络证据可用性预检智能体。它在无网络、非 root、只读和资源受限的容器中，对单个 PCAP 做固定字段协议鉴定，输出 `token_eligible`、`traffic_only` 或 `insufficient_evidence`。该模块不进入基础或进阶冻结指标，不恢复 Prompt，不运行 Entropy-CPD，也不改变任何既有动作。完整 PCAP 到 Prompt/Token 的关联尚未实现。
 
 不能表述为“PCAP 已定位异常 Token”“加密流量已恢复 Prompt”或“网络流量使用 Entropy-CPD 检测”。
+
+## 8. 2026-08-31 验证证据
+
+- PCAP 聚焦测试：93 passed，1 skipped。跳过项是当前 Windows 账户无创建符号链接权限时的重解析点用例。
+- 全量后端：614 passed，2 skipped。另一跳过项是未配置本机真实 GPU 测试模型。
+- 全量前端：199 passed；TypeScript 与 Vite 生产构建通过。
+- Docker：客户端/引擎 29.7.2，Docker Desktop 4.88.1；镜像配置用户为 `65532:65532`。
+- 机械隔离：`network_none=1`、`readonly_root=1`、`non_root=1`、`cap_drop_all=1`、`no_new_privileges=1`、`resource_limits=1`、`payload_leaks=0`、`residual_containers=0`。
+- 本轮只使用代码生成的无害合成 PCAP，没有读取用户真实 PCAP。
+- 已知限制：完整 PCAP 到 Prompt/Token 的关联、加密载荷恢复和 PCAP 上的 Entropy-CPD 均未实现；`token_eligible` 仍需单独授权第二阶段。
