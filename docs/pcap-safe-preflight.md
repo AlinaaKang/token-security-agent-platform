@@ -91,7 +91,7 @@ E:\Codex\pcap-quarantine\output\pcap-preflight-<SHA-256前16位>.json
 | capability | 含义 | 下一步 |
 | --- | --- | --- |
 | `token_eligible` | 观察到 HTTP、HTTP/2 或 WebSocket 等明文应用协议 | 只表示可以申请第二阶段；尚未证明是大模型 API，也未运行 Token 分析 |
-| `traffic_only` | 只观察到 TLS/QUIC 等加密传输，或只有网络层协议 | 仅作为流量侧辅助证据，不能定位异常 Token |
+| `traffic_only` | 观察到受支持的流量，但没有 HTTP、HTTP/2 或 WebSocket 明文候选；包括 TLS/QUIC、DNS 及网络层协议 | 仅作为流量侧辅助证据，不能定位异常 Token |
 | `insufficient_evidence` | 无包或没有受支持协议 | 记录证据不足，不做本机解密、原生解析或自动上传 |
 
 即使得到 `token_eligible`，本阶段仍不读取 HTTP body，不恢复 Prompt，不调用 Qwen，不运行 Entropy-CPD。第二阶段需要重新评估数据授权、脱敏方式和比赛必要性后再单独设计。
@@ -120,7 +120,7 @@ E:\Codex\pcap-quarantine\output\pcap-preflight-<SHA-256前16位>.json
 
 ## 8. 2026-08-31 验证证据
 
-- PCAP 聚焦测试：93 passed，1 skipped。跳过项是当前 Windows 账户无创建符号链接权限时的重解析点用例。
+- PCAP 核心聚焦测试：92 passed，1 skipped；验证器原生 stderr 失败路径测试：1 passed。跳过项是当前 Windows 账户无创建符号链接权限时的重解析点用例。
 - 全量后端：614 passed，2 skipped。另一跳过项是未配置本机真实 GPU 测试模型。
 - 全量前端：199 passed；TypeScript 与 Vite 生产构建通过。
 - Docker：客户端/引擎 29.7.2，Docker Desktop 4.88.1；镜像配置用户为 `65532:65532`。
