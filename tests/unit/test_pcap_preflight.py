@@ -37,6 +37,7 @@ def _run_inspector(
     report: dict[str, object] | None = None,
     error_code: str | None = None,
     unexpected_exception: bool = False,
+    import_error: bool = False,
 ) -> tuple[int, str, str]:
     module = types.ModuleType("pcap_preflight")
 
@@ -53,8 +54,14 @@ def _run_inspector(
         assert report is not None
         return report
 
-    module.PreflightError = FakePreflightError
-    module.inspect_capture = fake_inspect_capture
+    if import_error:
+        def fail_policy_import(name: str) -> object:
+            raise RuntimeError(f"PRIVATE_SENTINEL_{name}")
+
+        module.__getattr__ = fail_policy_import
+    else:
+        module.PreflightError = FakePreflightError
+        module.inspect_capture = fake_inspect_capture
     monkeypatch.setitem(sys.modules, "pcap_preflight", module)
 
     try:
@@ -124,6 +131,29 @@ def test_container_cli_hides_unexpected_exception_details(
     assert stdout == ""
     assert stderr == "pcap_preflight_error=unexpected_failure\n"
     assert "PRIVATE_SENTINEL" not in stderr
+
+
+def test_container_cli_hides_policy_import_exception_details(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, stdout, stderr = _run_inspector(monkeypatch, capsys, import_error=True)
+
+    assert code == 2
+    assert stdout == ""
+    assert stderr == "pcap_preflight_error=unexpected_failure\n"
+    assert "PRIVATE_SENTINEL" not in stderr
+
+
+def test_container_cli_hides_json_serialization_exception_details(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, stdout, stderr = _run_inspector(
+        monkeypatch, capsys, report={"unserializable": object()}
+    )
+
+    assert code == 2
+    assert stdout == ""
+    assert stderr == "pcap_preflight_error=unexpected_failure\n"
 
 
 def test_container_cli_does_not_shadow_stdlib_inspect_when_colocated(
