@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import queue
+import runpy
+import shutil
+import subprocess
+import sys
 import threading
 import time
+import types
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,6 +28,142 @@ from scripts.pcap_preflight import (
     parse_tshark_rows,
     validate_report,
 )
+
+
+def _run_inspector(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    report: dict[str, object] | None = None,
+    error_code: str | None = None,
+    unexpected_exception: bool = False,
+) -> tuple[int, str, str]:
+    module = types.ModuleType("pcap_preflight")
+
+    class FakePreflightError(Exception):
+        def __init__(self, code: str) -> None:
+            self.code = code
+
+    def fake_inspect_capture(path: Path) -> dict[str, object]:
+        assert path == Path("/input/capture")
+        if unexpected_exception:
+            raise RuntimeError("PRIVATE_SENTINEL")
+        if error_code is not None:
+            raise FakePreflightError(error_code)
+        assert report is not None
+        return report
+
+    module.PreflightError = FakePreflightError
+    module.inspect_capture = fake_inspect_capture
+    monkeypatch.setitem(sys.modules, "pcap_preflight", module)
+
+    try:
+        runpy.run_path("pcap-inspector/inspect.py", run_name="__main__")
+    except SystemExit as exc:
+        exit_code = exc.code
+    else:
+        exit_code = 0
+    captured = capsys.readouterr()
+    return exit_code, captured.out, captured.err
+
+
+def test_container_cli_prints_one_ascii_json_document(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    report = {"schema_version": 1, "capability": "traffic_only"}
+    code, stdout, stderr = _run_inspector(
+        monkeypatch, capsys, report=report, error_code=None
+    )
+
+    assert code == 0
+    assert json.loads(stdout) == report
+    assert stdout.count("\n") == 1
+    assert stderr == ""
+
+
+def test_container_cli_reports_only_fixed_error_code(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, stdout, stderr = _run_inspector(
+        monkeypatch, capsys, report=None, error_code="tool_failed"
+    )
+
+    assert code == 2
+    assert stdout == ""
+    assert stderr == "pcap_preflight_error=tool_failed\n"
+    assert "PRIVATE_SENTINEL" not in stderr
+
+
+def test_container_cli_reports_the_real_task_one_error_code(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def failing_inspect_capture(path: Path) -> dict[str, object]:
+        assert path == Path("/input/capture")
+        raise PreflightError("tshark_failed")
+
+    monkeypatch.setattr(preflight, "inspect_capture", failing_inspect_capture)
+    monkeypatch.setitem(sys.modules, "pcap_preflight", preflight)
+
+    with pytest.raises(SystemExit) as caught:
+        runpy.run_path("pcap-inspector/inspect.py", run_name="__main__")
+
+    captured = capsys.readouterr()
+    assert caught.value.code == 2
+    assert captured.out == ""
+    assert captured.err == "pcap_preflight_error=tshark_failed\n"
+
+
+def test_container_cli_hides_unexpected_exception_details(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, stdout, stderr = _run_inspector(
+        monkeypatch, capsys, unexpected_exception=True
+    )
+
+    assert code == 2
+    assert stdout == ""
+    assert stderr == "pcap_preflight_error=unexpected_failure\n"
+    assert "PRIVATE_SENTINEL" not in stderr
+
+
+def test_container_cli_does_not_shadow_stdlib_inspect_when_colocated(
+    tmp_path: Path,
+) -> None:
+    inspector = tmp_path / "inspect.py"
+    shutil.copyfile("pcap-inspector/inspect.py", inspector)
+    (tmp_path / "pcap_preflight.py").write_text(
+        """
+from dataclasses import dataclass
+
+
+class PreflightError(Exception):
+    def __init__(self, code: str) -> None:
+        self.code = code
+
+
+@dataclass
+class Observation:
+    value: int = 1
+
+
+def inspect_capture(path):
+    raise PreflightError("capture_read_failed")
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(inspector)],
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+        env=os.environ | {"PYTHONDONTWRITEBYTECODE": "1"},
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == "pcap_preflight_error=capture_read_failed\n"
 
 
 EXPECTED_KEYS = {

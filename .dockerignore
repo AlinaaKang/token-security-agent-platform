@@ -11,3 +11,8 @@ data/processed
 data/splits
 knowledge/index
 reports
+pcap-quarantine
+**/pcap-quarantine
+**/*.pcap
+**/*.pcapng
+**/pcap-preflight-*.json
