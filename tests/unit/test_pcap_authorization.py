@@ -60,6 +60,17 @@ def test_authorization_rejects_an_unknown_opaque_id() -> None:
         PcapAuthorizationStore().consume("pcap_auth_" + "a" * 32)
 
 
+@pytest.mark.parametrize(
+    "authorization_id",
+    [None, [], "pcap_auth_" + "A" * 32, "pcap_auth_" + "a" * 31],
+)
+def test_authorization_rejects_malformed_ids_with_the_fixed_domain_error(
+    authorization_id: object,
+) -> None:
+    with pytest.raises(PcapAuthorizationUnknown, match="pcap_authorization_required"):
+        PcapAuthorizationStore().consume(authorization_id)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("ttl_seconds", [math.nan, math.inf, -math.inf])
 def test_authorization_rejects_non_finite_ttls(ttl_seconds: float) -> None:
     with pytest.raises(ValueError, match="ttl_seconds"):

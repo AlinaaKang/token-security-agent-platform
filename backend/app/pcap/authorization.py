@@ -4,6 +4,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from math import isfinite
+import re
 from secrets import token_hex
 from threading import RLock
 from time import monotonic
@@ -11,6 +12,7 @@ from time import monotonic
 
 _MAX_FILES = 20
 _DEFAULT_STORE_CAPACITY = 256
+_AUTHORIZATION_ID = re.compile(r"^pcap_auth_[0-9a-f]{32}$")
 
 
 class PcapAuthorizationUnknown(RuntimeError):
@@ -78,6 +80,11 @@ class PcapAuthorizationStore:
         )
 
     def consume(self, authorization_id: str) -> ConsumedPcapAuthorization:
+        if (
+            type(authorization_id) is not str
+            or _AUTHORIZATION_ID.fullmatch(authorization_id) is None
+        ):
+            raise PcapAuthorizationUnknown("pcap_authorization_required")
         with self._lock:
             authorization = self._authorizations.get(authorization_id)
             if authorization is None:

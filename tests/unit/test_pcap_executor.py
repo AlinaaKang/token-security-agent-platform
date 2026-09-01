@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+import app.pcap.executor as executor_module
 from app.pcap.config import PcapConfig
 from app.pcap.executor import PcapBatchExecutor, PcapToolFailed
 
@@ -74,6 +75,17 @@ class RecordingRunner:
         self.command = command
         self.kwargs = kwargs
         return self
+
+
+def make_directory_junction(link: Path, target: Path) -> None:
+    result = subprocess.run(
+        [os.environ["ComSpec"], "/d", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        pytest.skip("directory junction creation is unavailable")
 
 
 def write_public_summary(root: Path, payload: dict[str, object]) -> None:
@@ -179,6 +191,99 @@ def test_executor_rejects_missing_malformed_mismatched_or_private_reports(
         ).execute(batch_id(), 1)
 
     assert "PRIVATE_SENTINEL" not in str(failure.value)
+
+
+def test_executor_rejects_a_valid_summary_larger_than_its_invocation_bound(
+    tmp_path: Path,
+) -> None:
+    config = config_fixture(tmp_path)
+    capture = public_summary_payload()["captures"][0]
+    payload = public_summary_payload() | {
+        "selected_count": 2,
+        "succeeded_count": 2,
+        "captures": [capture, capture],
+    }
+    write_public_summary(config.quarantine_root, payload)
+
+    with pytest.raises(PcapToolFailed, match="pcap_batch_failed"):
+        PcapBatchExecutor(
+            config=config, runner=RecordingRunner(stdout="pcap_batch_result=" + batch_id())
+        ).execute(batch_id(), 1)
+
+
+def test_executor_rejects_a_preexisting_output_junction(tmp_path: Path) -> None:
+    config = config_fixture(tmp_path)
+    outside = tmp_path / "outside-output"
+    outside.mkdir()
+    (outside / f"pcap-batch-{batch_id()}.json").write_text(
+        json.dumps(public_summary_payload()), encoding="utf-8"
+    )
+    output = config.quarantine_root / "output"
+    make_directory_junction(output, outside)
+    try:
+        with pytest.raises(PcapToolFailed, match="pcap_batch_failed"):
+            PcapBatchExecutor(
+                config=config,
+                runner=RecordingRunner(stdout="pcap_batch_result=" + batch_id()),
+            ).execute(batch_id(), 1)
+    finally:
+        output.rmdir()
+
+
+def test_executor_rejects_an_output_junction_swapped_after_process_completion(
+    tmp_path: Path,
+) -> None:
+    config = config_fixture(tmp_path)
+    write_public_summary(config.quarantine_root, public_summary_payload())
+    output = config.quarantine_root / "output"
+    outside = tmp_path / "outside-output"
+    outside.mkdir()
+    (outside / f"pcap-batch-{batch_id()}.json").write_text(
+        json.dumps(public_summary_payload()), encoding="utf-8"
+    )
+
+    class SwappingRunner(RecordingRunner):
+        def __call__(self, command: list[str], **kwargs: Any) -> RecordingRunner:
+            result = super().__call__(command, **kwargs)
+            for report in output.iterdir():
+                report.unlink()
+            output.rmdir()
+            make_directory_junction(output, outside)
+            return result
+
+    try:
+        with pytest.raises(PcapToolFailed, match="pcap_batch_failed"):
+            PcapBatchExecutor(
+                config=config, runner=SwappingRunner(stdout="pcap_batch_result=" + batch_id())
+            ).execute(batch_id(), 1)
+    finally:
+        output.rmdir()
+
+
+def test_cancellation_keeps_the_original_root_after_an_ancestor_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = config_fixture(tmp_path)
+    root = config.quarantine_root
+    original_root = tmp_path / "quarantine-original"
+    outside = tmp_path / "outside-root"
+    outside.mkdir()
+
+    def swap_after_open(path: Path) -> object:
+        handle = original_open(path)
+        root.rename(original_root)
+        make_directory_junction(root, outside)
+        return handle
+
+    original_open = executor_module._open_quarantine_root
+    monkeypatch.setattr(executor_module, "_open_quarantine_root", swap_after_open)
+    try:
+        PcapBatchExecutor(config=config, runner=RecordingRunner()).request_cancel(batch_id())
+    finally:
+        root.rmdir()
+
+    assert (original_root / "state" / f"{batch_id()}.cancel").is_file()
+    assert not (outside / "state" / f"{batch_id()}.cancel").exists()
 
 
 def test_executor_creates_cancellation_marker_only_inside_configured_state(
