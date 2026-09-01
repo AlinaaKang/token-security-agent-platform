@@ -6,7 +6,8 @@ from collections.abc import Callable
 from threading import RLock
 
 from app.lab.models import assert_public_payload
-from app.superagent.models import SuperAgentMissionResult
+from app.pcap.models import PcapMissionResult, PcapMissionStatus
+from app.superagent.models import SuperAgentStoredMission
 
 
 class SuperAgentMissionNotFound(LookupError):
@@ -33,13 +34,13 @@ class SuperAgentMissionStore:
         self.ttl_seconds = ttl_seconds
         self._clock = clock
         self._missions: OrderedDict[
-            str, tuple[float, SuperAgentMissionResult]
+            str, tuple[float, SuperAgentStoredMission]
         ] = OrderedDict()
         self._expired_order: deque[str] = deque(maxlen=capacity * 4)
         self._expired_ids: set[str] = set()
         self._lock = RLock()
 
-    def put(self, mission: SuperAgentMissionResult) -> None:
+    def put(self, mission: SuperAgentStoredMission) -> None:
         assert_public_payload(mission)
         with self._lock:
             now = self._clock()
@@ -48,9 +49,22 @@ class SuperAgentMissionStore:
             self._forget_expired(mission.mission_id)
             self._missions[mission.mission_id] = (now, mission)
             while len(self._missions) > self.capacity:
-                self._missions.popitem(last=False)
+                eviction_id = next(
+                    (
+                        mission_id
+                        for mission_id, (_, candidate) in self._missions.items()
+                        if not _is_active_pcap_mission(candidate)
+                    ),
+                    None,
+                )
+                if eviction_id is None or eviction_id == mission.mission_id:
+                    self._missions.pop(mission.mission_id, None)
+                    raise ValueError(
+                        "mission store capacity is occupied by active PCAP missions"
+                    )
+                self._missions.pop(eviction_id)
 
-    def get(self, mission_id: str) -> SuperAgentMissionResult:
+    def get(self, mission_id: str) -> SuperAgentStoredMission:
         with self._lock:
             self._purge_expired(self._clock())
             stored = self._missions.get(mission_id)
@@ -60,7 +74,7 @@ class SuperAgentMissionStore:
                 raise SuperAgentMissionExpired(mission_id)
             raise SuperAgentMissionNotFound(mission_id)
 
-    def snapshot(self) -> tuple[SuperAgentMissionResult, ...]:
+    def snapshot(self) -> tuple[SuperAgentStoredMission, ...]:
         with self._lock:
             self._purge_expired(self._clock())
             return tuple(item for _, item in self._missions.values())
@@ -68,8 +82,9 @@ class SuperAgentMissionStore:
     def _purge_expired(self, now: float) -> None:
         expired = [
             mission_id
-            for mission_id, (completed_at, _) in self._missions.items()
+            for mission_id, (completed_at, mission) in self._missions.items()
             if now - completed_at >= self.ttl_seconds
+            and not _is_active_pcap_mission(mission)
         ]
         for mission_id in expired:
             self._missions.pop(mission_id, None)
@@ -90,3 +105,10 @@ class SuperAgentMissionStore:
             (value for value in self._expired_order if value != mission_id),
             maxlen=self.capacity * 4,
         )
+
+
+def _is_active_pcap_mission(mission: SuperAgentStoredMission) -> bool:
+    return isinstance(mission, PcapMissionResult) and mission.status in {
+        PcapMissionStatus.QUEUED,
+        PcapMissionStatus.RUNNING,
+    }

@@ -13,8 +13,10 @@ from app.lab.execution_models import (
 )
 from app.lab.models import LabToolId, assert_public_payload
 from app.lab.service import LabToolStorageUnavailable
+from app.pcap.models import PcapMissionResult
 from app.schemas import Decision
 from app.superagent.models import (
+    PcapTriageMissionRequest,
     SuperAgentFinalStatus,
     SuperAgentMissionRequest,
     SuperAgentTracePhase,
@@ -76,6 +78,23 @@ class FakeLabService:
                 created_at=datetime(2026, 8, 29, 2, 0, tzinfo=UTC),
             ),
             True,
+        )
+
+
+class FakePcapCoordinator:
+    def __init__(self) -> None:
+        self.started = 0
+
+    def start(self, request: PcapTriageMissionRequest) -> PcapMissionResult:
+        self.started += 1
+        return PcapMissionResult(
+            mission_id="mission_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            status="queued",
+            batch_id="batch_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            events=(),
+            report={},
+            limitations=("no_packet_payload_retained",),
+            created_at="2026-09-01T00:00:00Z",
         )
 
 
@@ -147,6 +166,37 @@ def test_allow_mission_closes_without_tools() -> None:
     assert len(result.events) <= 12
     assert service.get_mission(result.mission_id) == result
     assert_public_payload(result)
+
+
+def test_pcap_objective_delegates_only_to_pcap_coordinator() -> None:
+    lab = FakeLabService(decision=Decision.BLOCK)
+    pcap = FakePcapCoordinator()
+    service = SuperAgentService(lab_service=lab, pcap_coordinator=pcap)
+
+    result = service.create_mission(
+        PcapTriageMissionRequest(
+            objective="triage_pcap_evidence",
+            authorization_id="pcap_auth_" + "a" * 32,
+        )
+    )
+
+    assert result.objective == "triage_pcap_evidence"
+    assert pcap.started == 1
+    assert lab.requests == []
+    assert lab.executed == []
+
+
+def test_existing_prompt_objective_never_calls_pcap_coordinator() -> None:
+    pcap = FakePcapCoordinator()
+    service = SuperAgentService(
+        lab_service=FakeLabService(decision=Decision.ALLOW),
+        pcap_coordinator=pcap,
+    )
+
+    result = service.create_mission(_request())
+
+    assert result.final_status is SuperAgentFinalStatus.CLOSED_SAFE
+    assert pcap.started == 0
 
 
 def test_block_mission_executes_each_internal_tool_once_in_policy_order() -> None:

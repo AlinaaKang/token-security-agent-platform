@@ -10,15 +10,19 @@ from app.lab.service import (
     LabExecutionInvariantViolation,
     LabToolStorageUnavailable,
 )
+from app.pcap.models import PcapMissionResult
 from app.superagent.models import (
+    PcapTriageMissionRequest,
     SuperAgentActor,
     SuperAgentCapabilities,
+    SuperAgentCreateMissionRequest,
     SuperAgentExecutionReference,
     SuperAgentMissionRequest,
     SuperAgentMissionResult,
     SuperAgentPlanStep,
     SuperAgentTraceEvent,
     SuperAgentTracePhase,
+    SuperAgentStoredMission,
 )
 from app.superagent.policy import final_status_for, response_tools_for
 from app.superagent.store import SuperAgentMissionStore
@@ -40,19 +44,36 @@ class SuperAgentService:
         *,
         lab_service: Any,
         mission_store: SuperAgentMissionStore | None = None,
+        pcap_coordinator: Any | None = None,
     ) -> None:
         self.lab_service = lab_service
-        self.mission_store = mission_store or SuperAgentMissionStore()
+        self.pcap_coordinator = pcap_coordinator
+        coordinator_store = getattr(pcap_coordinator, "mission_store", None)
+        if (
+            mission_store is not None
+            and coordinator_store is not None
+            and mission_store is not coordinator_store
+        ):
+            raise ValueError("pcap coordinator must use the common mission store")
+        self.mission_store = (
+            mission_store
+            if mission_store is not None
+            else coordinator_store or SuperAgentMissionStore()
+        )
 
     def capabilities(self) -> SuperAgentCapabilities:
         return SuperAgentCapabilities()
 
-    def get_mission(self, mission_id: str) -> SuperAgentMissionResult:
+    def get_mission(self, mission_id: str) -> SuperAgentStoredMission:
         return self.mission_store.get(mission_id)
 
     def create_mission(
-        self, request: SuperAgentMissionRequest
-    ) -> SuperAgentMissionResult:
+        self, request: SuperAgentCreateMissionRequest
+    ) -> SuperAgentMissionResult | PcapMissionResult:
+        if isinstance(request, PcapTriageMissionRequest):
+            if self.pcap_coordinator is None:
+                raise SuperAgentMissionFailed("pcap_triage_unavailable")
+            return self.pcap_coordinator.start(request)
         try:
             return self._create_mission(request)
         except SuperAgentMissionFailed:

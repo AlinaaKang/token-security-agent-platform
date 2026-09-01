@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.lab.models import LabToolId, assert_public_payload, safer_action
+from app.pcap.models import PcapMissionResult
 from app.schemas import Decision, NonEmptyText
 
 
 class SuperAgentObjective(StrEnum):
     INVESTIGATE_AND_RESPOND = "investigate_and_respond"
+    TRIAGE_PCAP_EVIDENCE = "triage_pcap_evidence"
 
 
 class SuperAgentFinalStatus(StrEnum):
@@ -56,6 +58,19 @@ class SuperAgentMissionRequest(BaseModel):
     mode: Literal["analysis", "gateway"] = "analysis"
 
 
+class PcapTriageMissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    objective: Literal[SuperAgentObjective.TRIAGE_PCAP_EVIDENCE]
+    authorization_id: str = Field(pattern=r"^pcap_auth_[0-9a-f]{32}$")
+
+
+SuperAgentCreateMissionRequest = Annotated[
+    SuperAgentMissionRequest | PcapTriageMissionRequest,
+    Field(discriminator="objective"),
+]
+
+
 class SuperAgentPlanStep(_FrozenPublicModel):
     sequence: int = Field(ge=1, le=6)
     actor: SuperAgentActor
@@ -99,7 +114,7 @@ class SuperAgentExecutionReference(_FrozenPublicModel):
 class SuperAgentMissionResult(_FrozenPublicModel):
     mission_id: str = Field(pattern=r"^mission_[0-9a-f]{32}$")
     run_id: str = Field(pattern=r"^lab_[0-9a-f]{32}$")
-    objective: SuperAgentObjective
+    objective: Literal[SuperAgentObjective.INVESTIGATE_AND_RESPOND]
     scenario_id: NonEmptyText
     scenario_label: NonEmptyText
     attack_family: NonEmptyText | None = None
@@ -125,3 +140,5 @@ class SuperAgentCapabilities(_FrozenPublicModel):
     max_trace_events: Literal[12] = 12
     replanning_limit: Literal[1] = 1
 
+
+SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult
