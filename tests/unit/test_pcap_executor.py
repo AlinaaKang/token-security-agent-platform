@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import msvcrt
 import os
 from pathlib import Path
 import subprocess
@@ -86,6 +87,17 @@ def make_directory_junction(link: Path, target: Path) -> None:
     )
     if result.returncode != 0:
         pytest.skip("directory junction creation is unavailable")
+
+
+def make_file_symbolic_link(link: Path, target: Path) -> None:
+    result = subprocess.run(
+        [os.environ["ComSpec"], "/d", "/c", "mklink", str(link), str(target)],
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        pytest.skip("file symbolic-link creation is unavailable")
 
 
 def write_public_summary(root: Path, payload: dict[str, object]) -> None:
@@ -258,6 +270,77 @@ def test_executor_rejects_an_output_junction_swapped_after_process_completion(
             ).execute(batch_id(), 1)
     finally:
         output.rmdir()
+
+
+def test_executor_rejects_a_report_file_reparse_point(tmp_path: Path) -> None:
+    config = config_fixture(tmp_path)
+    output = config.quarantine_root / "output"
+    output.mkdir()
+    outside_report = tmp_path / "outside-summary.json"
+    outside_report.write_text(json.dumps(public_summary_payload()), encoding="utf-8")
+    report = output / f"pcap-batch-{batch_id()}.json"
+    make_file_symbolic_link(report, outside_report)
+    try:
+        with pytest.raises(PcapToolFailed, match="pcap_batch_failed"):
+            PcapBatchExecutor(
+                config=config,
+                runner=RecordingRunner(stdout="pcap_batch_result=" + batch_id()),
+            ).execute(batch_id(), 1)
+    finally:
+        report.unlink()
+
+
+def test_executor_rejects_a_directory_reparse_point_at_the_report_path(
+    tmp_path: Path,
+) -> None:
+    config = config_fixture(tmp_path)
+    output = config.quarantine_root / "output"
+    output.mkdir()
+    outside = tmp_path / "outside-report"
+    outside.mkdir()
+    report = output / f"pcap-batch-{batch_id()}.json"
+    make_directory_junction(report, outside)
+    try:
+        with pytest.raises(PcapToolFailed, match="pcap_batch_failed"):
+            PcapBatchExecutor(
+                config=config,
+                runner=RecordingRunner(stdout="pcap_batch_result=" + batch_id()),
+            ).execute(batch_id(), 1)
+    finally:
+        report.rmdir()
+
+
+def test_executor_reads_the_held_report_handle_after_path_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = config_fixture(tmp_path)
+    original_payload = public_summary_payload()
+    write_public_summary(config.quarantine_root, original_payload)
+    report = config.quarantine_root / "output" / f"pcap-batch-{batch_id()}.json"
+    displaced_report = tmp_path / "displaced-summary.json"
+    replacement = public_summary_payload()
+    replacement["captures"] = [
+        {
+            **replacement["captures"][0],
+            "packet_count": 99,
+        }
+    ]
+    original_open = msvcrt.open_osfhandle
+
+    def replace_after_handle_acquired(handle: int, flags: int) -> int:
+        report.rename(displaced_report)
+        report.write_text(json.dumps(replacement), encoding="utf-8")
+        return original_open(handle, flags)
+
+    monkeypatch.setattr(msvcrt, "open_osfhandle", replace_after_handle_acquired)
+
+    summary = PcapBatchExecutor(
+        config=config,
+        runner=RecordingRunner(stdout="pcap_batch_result=" + batch_id()),
+    ).execute(batch_id(), 1)
+
+    assert summary.captures[0].packet_count == 4
+    assert json.loads(report.read_text(encoding="utf-8"))["captures"][0]["packet_count"] == 99
 
 
 def test_cancellation_keeps_the_original_root_after_an_ancestor_swap(
