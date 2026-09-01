@@ -31,3 +31,6 @@ pcap-quarantine/
 **/pcap-preflight-*.json
 *.pcap
 *.pcapng
+**/pcap-batch-*.json
+**/pcap-batch-private.json
+**/*.cancel
