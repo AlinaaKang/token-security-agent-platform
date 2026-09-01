@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+import app.superagent.pcap_coordinator as coordinator_module
 from app.pcap.authorization import (
     PcapAuthorizationAlreadyUsed,
     PcapAuthorizationStore,
@@ -84,6 +85,14 @@ class BlockingExecutor:
         self.release.set()
 
 
+class InvalidThenValidExecutor(BlockingExecutor):
+    def execute(self, batch_id: str, max_files: int) -> object:
+        summary = super().execute(batch_id, max_files)
+        if len(self.executions) == 1:
+            return object()
+        return summary
+
+
 def _request(authorization_id: str) -> PcapTriageMissionRequest:
     return PcapTriageMissionRequest(
         objective="triage_pcap_evidence",
@@ -159,14 +168,46 @@ def test_completed_events_are_deterministic_bounded_and_role_ordered() -> None:
         executor.release.set()
         coordinator.close()
 
-    assert [event.sequence for event in completed.events] == [1, 2, 3, 4, 5, 6]
-    assert [event.actor.value for event in completed.events] == [
-        "coordinator",
-        "coordinator",
-        "network_evidence_analyst",
-        "knowledge_analyst",
-        "response_operator",
-        "coordinator",
+    assert [
+        (
+            event.sequence,
+            event.actor.value,
+            event.status,
+            event.summary.value,
+            event.tool_id.value if event.tool_id is not None else None,
+        )
+        for event in completed.events
+    ] == [
+        (1, "coordinator", "succeeded", "coordinator_plan", None),
+        (
+            2,
+            "coordinator",
+            "succeeded",
+            "tool_authorization_accepted",
+            "pcap_batch_triage",
+        ),
+        (
+            3,
+            "network_evidence_analyst",
+            "succeeded",
+            "traffic_only_evidence",
+            None,
+        ),
+        (
+            4,
+            "knowledge_analyst",
+            "succeeded",
+            "evidence_level_validated",
+            None,
+        ),
+        (
+            5,
+            "response_operator",
+            "succeeded",
+            "deterministic_response_ready",
+            None,
+        ),
+        (6, "coordinator", "succeeded", "batch_triage_completed", None),
     ]
     assert len(completed.events) <= 12
 
@@ -187,13 +228,16 @@ def test_token_eligible_stays_a_plaintext_candidate_without_token_claims() -> No
         coordinator.close()
 
     assert completed.report.candidates == (
-        "plaintext_application_protocol_observed",
+        "plaintext_application_protocol_candidate_not_proven_llm_traffic",
     )
-    assert completed.report.unknowns == ("insufficient_evidence",)
+    assert completed.report.unknowns == (
+        "cpd_evidence_unavailable",
+        "token_evidence_unavailable",
+    )
     public_json = json.dumps(completed.model_dump(mode="json"), ensure_ascii=False)
     assert "jailbreak" not in public_json.lower()
-    assert "cpd" not in public_json.lower()
     assert "token_anomaly" not in public_json.lower()
+    assert "token_text" not in public_json.lower()
 
 
 def test_tool_failure_degrades_to_the_fixed_public_report() -> None:
@@ -215,7 +259,11 @@ def test_tool_failure_degrades_to_the_fixed_public_report() -> None:
     assert degraded.report.model_dump(mode="json") == {
         "confirmed": [],
         "candidates": [],
-        "unknowns": ["insufficient_evidence"],
+        "unknowns": [
+            "insufficient_evidence",
+            "cpd_evidence_unavailable",
+            "token_evidence_unavailable",
+        ],
         "recommended_action": ["retain_public_metadata"],
     }
     assert degraded.events[-1].actor.value == "coordinator"
@@ -345,7 +393,7 @@ def test_service_uses_the_coordinators_common_store_for_pcap_polling() -> None:
 def test_coordinator_applies_capacity_backpressure_before_authorization_use() -> None:
     executor = BlockingExecutor()
     authorizations = PcapAuthorizationStore()
-    store = SuperAgentMissionStore(capacity=1)
+    store = SuperAgentMissionStore(capacity=2)
     coordinator = PcapMissionCoordinator(
         authorization_store=authorizations,
         executor=executor,
@@ -372,6 +420,90 @@ def test_coordinator_applies_capacity_backpressure_before_authorization_use() ->
         (first.batch_id, 1),
         (second.batch_id, 1),
     ]
+
+
+def test_invalid_executor_result_degrades_and_releases_admission_slot() -> None:
+    executor = InvalidThenValidExecutor()
+    authorizations = PcapAuthorizationStore()
+    store = SuperAgentMissionStore(capacity=2)
+    coordinator = PcapMissionCoordinator(
+        authorization_store=authorizations,
+        executor=executor,
+        mission_store=store,
+    )
+    first_receipt = authorizations.issue(max_files=1)
+    second_receipt = authorizations.issue(max_files=1)
+    try:
+        first = coordinator.start(_request(first_receipt.authorization_id))
+        assert executor.started.wait(timeout=3)
+        executor.release.set()
+        degraded = _wait_for_status(
+            store, first.mission_id, PcapMissionStatus.DEGRADED
+        )
+
+        second = coordinator.start(_request(second_receipt.authorization_id))
+        completed = _wait_for_status(
+            store, second.mission_id, PcapMissionStatus.COMPLETED
+        )
+    finally:
+        executor.release.set()
+        coordinator.close()
+
+    assert degraded.summary is None
+    assert completed.summary is not None
+
+
+def test_event_transformation_failure_uses_prevalidated_terminal_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = BlockingExecutor()
+    authorizations = PcapAuthorizationStore()
+    store = SuperAgentMissionStore(capacity=2)
+    coordinator = PcapMissionCoordinator(
+        authorization_store=authorizations,
+        executor=executor,
+        mission_store=store,
+    )
+    first_receipt = authorizations.issue(max_files=1)
+    second_receipt = authorizations.issue(max_files=1)
+    original_terminal_events = coordinator_module._terminal_events
+
+    def fail_event_transformation(**kwargs: object) -> object:
+        raise ValueError("synthetic_event_transformation_failed")
+
+    try:
+        monkeypatch.setattr(
+            coordinator_module,
+            "_terminal_events",
+            fail_event_transformation,
+        )
+        first = coordinator.start(_request(first_receipt.authorization_id))
+        assert executor.started.wait(timeout=3)
+        executor.release.set()
+        degraded = _wait_for_status(
+            store, first.mission_id, PcapMissionStatus.DEGRADED
+        )
+
+        monkeypatch.setattr(
+            coordinator_module,
+            "_terminal_events",
+            original_terminal_events,
+        )
+        second = coordinator.start(_request(second_receipt.authorization_id))
+        completed = _wait_for_status(
+            store, second.mission_id, PcapMissionStatus.COMPLETED
+        )
+    finally:
+        monkeypatch.setattr(
+            coordinator_module,
+            "_terminal_events",
+            original_terminal_events,
+        )
+        executor.release.set()
+        coordinator.close()
+
+    assert degraded.events[-1].status == "failed"
+    assert completed.status is PcapMissionStatus.COMPLETED
 
 
 def test_authorization_is_consumed_before_any_executor_access() -> None:

@@ -26,8 +26,15 @@ _LIMITATIONS = (
     PcapPublicNarrative.INSUFFICIENT_EVIDENCE,
 )
 _FALLBACK_REPORT = PcapMissionReport(
-    unknowns=(PcapPublicNarrative.INSUFFICIENT_EVIDENCE,),
+    unknowns=(
+        PcapPublicNarrative.INSUFFICIENT_EVIDENCE,
+        PcapPublicNarrative.CPD_EVIDENCE_UNAVAILABLE,
+        PcapPublicNarrative.TOKEN_EVIDENCE_UNAVAILABLE,
+    ),
     recommended_action=(PcapPublicNarrative.RETAIN_PUBLIC_METADATA,),
+)
+_PLAINTEXT_CANDIDATE = (
+    PcapPublicNarrative.PLAINTEXT_APPLICATION_PROTOCOL_CANDIDATE_NOT_PROVEN_LLM_TRAFFIC
 )
 _TERMINAL_STATUSES = frozenset(
     {
@@ -65,7 +72,8 @@ class PcapMissionCoordinator:
         with self._lock:
             if self._closed:
                 raise RuntimeError("pcap_coordinator_closed")
-            if len(self._active_mission_ids) >= self._mission_store.capacity:
+            pcap_capacity = max(self._mission_store.capacity - 1, 0)
+            if len(self._active_mission_ids) >= pcap_capacity:
                 raise RuntimeError("pcap_mission_capacity_reached")
             authorization = self._authorization_store.consume(
                 request.authorization_id
@@ -105,7 +113,7 @@ class PcapMissionCoordinator:
                     mission_id=current.mission_id,
                     batch_id=current.batch_id,
                     status=PcapMissionStatus.DEGRADED,
-                    events=_terminal_events(succeeded=False),
+                    events=_DEGRADED_EVENTS,
                     report=_FALLBACK_REPORT,
                     created_at=current.created_at,
                 )
@@ -141,6 +149,33 @@ class PcapMissionCoordinator:
         max_files: int,
         created_at: str,
     ) -> None:
+        try:
+            self._run_mission(mission_id, batch_id, max_files, created_at)
+        except Exception:
+            try:
+                self._finish(
+                    mission_id=mission_id,
+                    batch_id=batch_id,
+                    status=PcapMissionStatus.DEGRADED,
+                    events=_DEGRADED_EVENTS,
+                    report=_FALLBACK_REPORT,
+                    summary=None,
+                    created_at=created_at,
+                )
+            except Exception:
+                # Active-slot cleanup still runs if the bounded store itself fails.
+                pass
+        finally:
+            with self._lock:
+                self._active_mission_ids.discard(mission_id)
+
+    def _run_mission(
+        self,
+        mission_id: str,
+        batch_id: str,
+        max_files: int,
+        created_at: str,
+    ) -> None:
         with self._lock:
             current = self._mission_store.get(mission_id)
             if (
@@ -160,19 +195,9 @@ class PcapMissionCoordinator:
                 )
             )
 
-        try:
-            summary = self._executor.execute(batch_id, max_files)
-        except Exception:
-            self._finish(
-                mission_id=mission_id,
-                batch_id=batch_id,
-                status=PcapMissionStatus.DEGRADED,
-                events=_terminal_events(succeeded=False),
-                report=_FALLBACK_REPORT,
-                summary=None,
-                created_at=created_at,
-            )
-            return
+        summary = self._executor.execute(batch_id, max_files)
+        if not isinstance(summary, PcapBatchSummary):
+            raise ValueError("pcap_executor_result_invalid")
 
         self._finish(
             mission_id=mission_id,
@@ -245,7 +270,7 @@ def _queued_events() -> tuple[PcapTraceEvent, ...]:
             1,
             actor=PcapActor.COORDINATOR,
             status="queued",
-            summary=PcapPublicNarrative.INSUFFICIENT_EVIDENCE,
+            summary=PcapPublicNarrative.COORDINATOR_PLAN,
         ),
     )
 
@@ -256,13 +281,13 @@ def _running_events() -> tuple[PcapTraceEvent, ...]:
             1,
             actor=PcapActor.COORDINATOR,
             status="succeeded",
-            summary=PcapPublicNarrative.INSUFFICIENT_EVIDENCE,
+            summary=PcapPublicNarrative.COORDINATOR_PLAN,
         ),
         _event(
             2,
             actor=PcapActor.COORDINATOR,
             status="running",
-            summary=PcapPublicNarrative.RETAIN_PUBLIC_METADATA,
+            summary=PcapPublicNarrative.TOOL_AUTHORIZATION_ACCEPTED,
             tool_id=PcapToolId.PCAP_BATCH_TRIAGE,
         ),
     )
@@ -283,13 +308,13 @@ def _terminal_events(
             1,
             actor=PcapActor.COORDINATOR,
             status="succeeded",
-            summary=PcapPublicNarrative.INSUFFICIENT_EVIDENCE,
+            summary=PcapPublicNarrative.COORDINATOR_PLAN,
         ),
         _event(
             2,
             actor=PcapActor.COORDINATOR,
             status="succeeded",
-            summary=PcapPublicNarrative.RETAIN_PUBLIC_METADATA,
+            summary=PcapPublicNarrative.TOOL_AUTHORIZATION_ACCEPTED,
             tool_id=PcapToolId.PCAP_BATCH_TRIAGE,
         ),
         _event(
@@ -302,13 +327,13 @@ def _terminal_events(
             4,
             actor=PcapActor.KNOWLEDGE_ANALYST,
             status="succeeded" if succeeded else "skipped",
-            summary=PcapPublicNarrative.INSUFFICIENT_EVIDENCE,
+            summary=PcapPublicNarrative.EVIDENCE_LEVEL_VALIDATED,
         ),
         _event(
             5,
             actor=PcapActor.RESPONSE_OPERATOR,
             status="succeeded",
-            summary=PcapPublicNarrative.RETAIN_PUBLIC_METADATA,
+            summary=PcapPublicNarrative.DETERMINISTIC_RESPONSE_READY,
         ),
         _event(
             6,
@@ -324,7 +349,7 @@ def _terminal_events(
 
 
 def _cancelled_events() -> tuple[PcapTraceEvent, ...]:
-    events = list(_terminal_events(succeeded=False))
+    events = list(_DEGRADED_EVENTS)
     events[2] = events[2].model_copy(update={"status": "skipped"})
     events[5] = events[5].model_copy(update={"status": "skipped"})
     return tuple(events)
@@ -347,10 +372,13 @@ def _event(
     )
 
 
+_DEGRADED_EVENTS = _terminal_events(succeeded=False)
+
+
 def _observation_for(summary: PcapBatchSummary) -> PcapPublicNarrative:
     capabilities = {capture.capability for capture in summary.captures}
     if PcapCapability.TOKEN_ELIGIBLE in capabilities:
-        return PcapPublicNarrative.PLAINTEXT_APPLICATION_PROTOCOL_OBSERVED
+        return _PLAINTEXT_CANDIDATE
     if PcapCapability.TRAFFIC_ONLY in capabilities:
         return PcapPublicNarrative.TRAFFIC_ONLY_EVIDENCE
     return PcapPublicNarrative.INSUFFICIENT_EVIDENCE
@@ -367,14 +395,17 @@ def _report_for(summary: PcapBatchSummary) -> PcapMissionReport:
     if PcapCapability.TRAFFIC_ONLY in capabilities:
         confirmed.append(PcapPublicNarrative.TRAFFIC_ONLY_EVIDENCE)
     candidates = (
-        (PcapPublicNarrative.PLAINTEXT_APPLICATION_PROTOCOL_OBSERVED,)
+        (_PLAINTEXT_CANDIDATE,)
         if PcapCapability.TOKEN_ELIGIBLE in capabilities
         else ()
     )
     return PcapMissionReport(
         confirmed=tuple(confirmed),
         candidates=candidates,
-        unknowns=(PcapPublicNarrative.INSUFFICIENT_EVIDENCE,),
+        unknowns=(
+            PcapPublicNarrative.CPD_EVIDENCE_UNAVAILABLE,
+            PcapPublicNarrative.TOKEN_EVIDENCE_UNAVAILABLE,
+        ),
         recommended_action=(PcapPublicNarrative.RETAIN_PUBLIC_METADATA,),
     )
 

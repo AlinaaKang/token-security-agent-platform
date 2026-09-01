@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from threading import Event
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -13,7 +14,8 @@ from app.lab.execution_models import (
 )
 from app.lab.models import LabToolId, assert_public_payload
 from app.lab.service import LabToolStorageUnavailable
-from app.pcap.models import PcapMissionResult
+from app.pcap.authorization import PcapAuthorizationStore
+from app.pcap.models import PcapBatchSummary, PcapMissionResult
 from app.schemas import Decision
 from app.superagent.models import (
     PcapTriageMissionRequest,
@@ -21,7 +23,9 @@ from app.superagent.models import (
     SuperAgentMissionRequest,
     SuperAgentTracePhase,
 )
+from app.superagent.pcap_coordinator import PcapMissionCoordinator
 from app.superagent.service import SuperAgentService
+from app.superagent.store import SuperAgentMissionStore
 
 
 class FakeLabService:
@@ -96,6 +100,27 @@ class FakePcapCoordinator:
             limitations=("no_packet_payload_retained",),
             created_at="2026-09-01T00:00:00Z",
         )
+
+
+class BlockingPcapExecutor:
+    def __init__(self) -> None:
+        self.started = Event()
+        self.release = Event()
+
+    def execute(self, batch_id: str, max_files: int) -> PcapBatchSummary:
+        self.started.set()
+        assert self.release.wait(timeout=3)
+        return PcapBatchSummary(
+            batch_id=batch_id,
+            selected_count=0,
+            succeeded_count=0,
+            failed_count=0,
+            skipped_count=0,
+            captures=(),
+        )
+
+    def request_cancel(self, batch_id: str) -> None:
+        self.release.set()
 
 
 def _run(decision: Decision) -> SimpleNamespace:
@@ -197,6 +222,41 @@ def test_existing_prompt_objective_never_calls_pcap_coordinator() -> None:
 
     assert result.final_status is SuperAgentFinalStatus.CLOSED_SAFE
     assert pcap.started == 0
+
+
+def test_prompt_mission_remains_stored_and_executes_under_pcap_load() -> None:
+    store = SuperAgentMissionStore(capacity=2)
+    authorizations = PcapAuthorizationStore()
+    executor = BlockingPcapExecutor()
+    coordinator = PcapMissionCoordinator(
+        authorization_store=authorizations,
+        executor=executor,
+        mission_store=store,
+    )
+    lab = FakeLabService(decision=Decision.BLOCK)
+    service = SuperAgentService(
+        lab_service=lab,
+        mission_store=store,
+        pcap_coordinator=coordinator,
+    )
+    receipt = authorizations.issue(max_files=1)
+    try:
+        pcap = service.create_mission(
+            PcapTriageMissionRequest(
+                objective="triage_pcap_evidence",
+                authorization_id=receipt.authorization_id,
+            )
+        )
+        assert executor.started.wait(timeout=3)
+        prompt = service.create_mission(_request())
+    finally:
+        executor.release.set()
+        coordinator.close()
+
+    assert service.get_mission(pcap.mission_id).mission_id == pcap.mission_id
+    assert service.get_mission(prompt.mission_id) == prompt
+    assert prompt.final_status is SuperAgentFinalStatus.CONTAINED
+    assert len(lab.executed) == 3
 
 
 def test_block_mission_executes_each_internal_tool_once_in_policy_order() -> None:

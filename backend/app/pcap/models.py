@@ -48,11 +48,20 @@ class PcapActor(StrEnum):
 
 class PcapPublicNarrative(StrEnum):
     BATCH_TRIAGE_COMPLETED = "batch_triage_completed"
+    COORDINATOR_PLAN = "coordinator_plan"
+    CPD_EVIDENCE_UNAVAILABLE = "cpd_evidence_unavailable"
+    DETERMINISTIC_RESPONSE_READY = "deterministic_response_ready"
     ENCRYPTED_TRANSPORT_OBSERVED = "encrypted_transport_observed"
+    EVIDENCE_LEVEL_VALIDATED = "evidence_level_validated"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     NO_PACKET_PAYLOAD_RETAINED = "no_packet_payload_retained"
     PLAINTEXT_APPLICATION_PROTOCOL_OBSERVED = "plaintext_application_protocol_observed"
+    PLAINTEXT_APPLICATION_PROTOCOL_CANDIDATE_NOT_PROVEN_LLM_TRAFFIC = (
+        "plaintext_application_protocol_candidate_not_proven_llm_traffic"
+    )
     RETAIN_PUBLIC_METADATA = "retain_public_metadata"
+    TOKEN_EVIDENCE_UNAVAILABLE = "token_evidence_unavailable"
+    TOOL_AUTHORIZATION_ACCEPTED = "tool_authorization_accepted"
     TRAFFIC_ONLY_EVIDENCE = "traffic_only_evidence"
 
 
