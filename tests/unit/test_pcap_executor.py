@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import inspect
 import json
 import msvcrt
@@ -308,6 +309,45 @@ def test_executor_rejects_a_directory_reparse_point_at_the_report_path(
             ).execute(batch_id(), 1)
     finally:
         report.rmdir()
+
+
+def test_executor_rejects_a_reparse_marked_public_report_handle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = config_fixture(tmp_path)
+    write_public_summary(config.quarantine_root, public_summary_payload())
+    original_get_file_information = (
+        executor_module.ctypes.windll.kernel32.GetFileInformationByHandle
+    )
+    inspected_handles = 0
+
+    def report_handle_looks_like_a_reparse_point(
+        handle: object, information: object
+    ) -> int:
+        nonlocal inspected_handles
+        inspected_handles += 1
+        result = original_get_file_information(handle, information)
+        if inspected_handles == 3:
+            contents = ctypes.cast(
+                information,
+                ctypes.POINTER(executor_module._ByHandleFileInformation),
+            ).contents
+            contents.file_attributes |= executor_module._FILE_ATTRIBUTE_REPARSE_POINT
+        return result
+
+    monkeypatch.setattr(
+        executor_module.ctypes.windll.kernel32,
+        "GetFileInformationByHandle",
+        report_handle_looks_like_a_reparse_point,
+    )
+
+    with pytest.raises(PcapToolFailed, match="pcap_batch_failed"):
+        PcapBatchExecutor(
+            config=config,
+            runner=RecordingRunner(stdout="pcap_batch_result=" + batch_id()),
+        ).execute(batch_id(), 1)
+
+    assert inspected_handles == 3
 
 
 def test_executor_reads_the_held_report_handle_after_path_replacement(
