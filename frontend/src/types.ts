@@ -308,6 +308,101 @@ export interface SuperAgentMissionResult {
   created_at: string;
 }
 
+export type PcapActor =
+  | "coordinator"
+  | "network_evidence_analyst"
+  | "knowledge_analyst"
+  | "response_operator";
+export type PcapMissionStatus = "queued" | "running" | "completed" | "cancelled" | "degraded";
+export type PcapCapability = "token_eligible" | "traffic_only" | "insufficient_evidence";
+export type PcapEventStatus = "queued" | "running" | "succeeded" | "failed" | "skipped";
+export type PcapPublicNarrative =
+  | "batch_triage_completed"
+  | "coordinator_plan"
+  | "cpd_evidence_unavailable"
+  | "deterministic_response_ready"
+  | "encrypted_transport_observed"
+  | "evidence_level_validated"
+  | "insufficient_evidence"
+  | "no_packet_payload_retained"
+  | "plaintext_application_protocol_observed"
+  | "plaintext_application_protocol_candidate_not_proven_llm_traffic"
+  | "retain_public_metadata"
+  | "token_evidence_unavailable"
+  | "tool_authorization_accepted"
+  | "traffic_only_evidence";
+
+export interface PcapOverview {
+  enabled: boolean;
+  tool_id: "pcap_batch_triage";
+  max_batch_size: 20;
+  max_trace_events: 12;
+  actors: PcapActor[];
+}
+
+export interface PcapAuthorizationRequest { confirmed: true; max_files: number; }
+export interface PcapAuthorizationReceipt { authorization_id: string; max_files: number; }
+export interface PcapMissionRequest {
+  objective: "triage_pcap_evidence";
+  authorization_id: string;
+}
+
+export interface PcapVisibility {
+  plaintext_application_protocol_observed: boolean;
+  encrypted_transport_observed: boolean;
+  tls_observed: boolean;
+  quic_observed: boolean;
+}
+
+export interface PcapCaptureEvidence {
+  capture_id: string;
+  status: "succeeded" | "failed" | "skipped";
+  packet_count: number;
+  protocol_counts: Record<string, number>;
+  visibility: PcapVisibility;
+  capability: PcapCapability | null;
+  error_code: string | null;
+}
+
+export interface PcapBatchSummary {
+  schema_version: 1;
+  batch_id: string;
+  selected_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  skipped_count: number;
+  captures: PcapCaptureEvidence[];
+}
+
+export interface PcapTraceEvent {
+  sequence: number;
+  actor: PcapActor;
+  status: PcapEventStatus;
+  summary: PcapPublicNarrative;
+  tool_id: "pcap_batch_triage" | null;
+}
+
+export interface PcapMissionReport {
+  confirmed: PcapPublicNarrative[];
+  candidates: PcapPublicNarrative[];
+  unknowns: PcapPublicNarrative[];
+  recommended_action: PcapPublicNarrative[];
+}
+
+export interface PcapMissionResult {
+  mission_id: string;
+  objective: "triage_pcap_evidence";
+  status: PcapMissionStatus;
+  batch_id: string;
+  events: PcapTraceEvent[];
+  summary: PcapBatchSummary | null;
+  report: PcapMissionReport;
+  limitations: PcapPublicNarrative[];
+  created_at: string;
+}
+
+export type SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult;
+
 export type LabRunRequest =
   | { scenario_kind: "custom"; custom_input: string; mode: Mode }
   | { scenario_kind: "frozen"; sample_id: string; mode: Mode };

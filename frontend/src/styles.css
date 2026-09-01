@@ -2210,6 +2210,34 @@ td:first-child { min-width: 128px; }
 
 /* SuperAgent: a bounded command track, not a conversational interface. */
 .superagent-page { max-width: 1540px; }
+.superagent-task-switch {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 12px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #e9eeec;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.superagent-task-switch button {
+  min-width: 190px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 2px;
+  color: var(--muted);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 750;
+}
+.superagent-task-switch button[aria-pressed="true"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px rgba(35, 53, 70, .14); }
+.superagent-task-switch button:not([aria-pressed="true"]):hover { color: var(--ink); background: #dfe8e5; }
 .superagent-kicker {
   margin-bottom: 7px;
   color: var(--trusted);
@@ -2505,15 +2533,170 @@ td:first-child { min-width: 128px; }
 .superagent-limitations { padding: 10px 16px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
 .superagent-limitations span { color: var(--muted); font-size: 9px; line-height: 1.5; }
 
+/* PCAP mode: bounded evidence operations with an explicit authorization handoff. */
+.pcap-superagent { min-width: 0; }
+.pcap-authorization-track {
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--ink);
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.pcap-overview-stage,
+.pcap-consent-stage { min-width: 0; padding: 16px 18px; }
+.pcap-overview-stage { border-right: 1px solid var(--line-strong); }
+.pcap-consent-stage { background: var(--surface-soft); }
+.pcap-consent-stage.is-active { background: #fff9ea; box-shadow: inset 3px 0 0 var(--review); }
+.pcap-stage-index { margin-bottom: 14px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pcap-stage-index span { color: var(--muted); font: 800 9px/1.2 Consolas, "Courier New", monospace; text-transform: uppercase; }
+.pcap-stage-index strong { color: var(--ink); font-size: 12px; }
+.pcap-overview-metric { display: flex; align-items: center; gap: 10px; color: var(--trusted); }
+.pcap-overview-metric > span { display: grid; gap: 3px; }
+.pcap-overview-metric small { color: var(--muted); font-size: 9px; }
+.pcap-overview-metric strong { color: var(--ink); font-size: 17px; }
+.pcap-overview-stage > p { margin: 12px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.pcap-overview-stage label { display: grid; grid-template-columns: minmax(0, 1fr) 92px; align-items: center; gap: 12px; }
+.pcap-overview-stage label > span { color: var(--ink); font-size: 11px; font-weight: 700; }
+.pcap-overview-stage input {
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--surface);
+  font: 700 12px/1 Consolas, "Courier New", monospace;
+}
+.pcap-field-error { display: block; margin: 6px 0 0; color: var(--blocked); font-size: 9px; }
+.pcap-prepare-button,
+.pcap-consent-actions button:not(.secondary-button) {
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid #0e6757;
+  border-radius: 3px;
+  color: #fff;
+  background: var(--trusted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.pcap-prepare-button { width: 100%; margin-top: 13px; }
+.pcap-prepare-button:disabled,
+.pcap-consent-actions button:disabled { border-color: var(--line-strong); color: #87918e; background: #e8ecea; }
+.pcap-consent-locked { min-height: 160px; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 10px; }
+.pcap-consent-locked > span { display: grid; gap: 4px; }
+.pcap-consent-locked strong { color: var(--ink); font-size: 11px; }
+.pcap-consent-locked small { font-size: 9px; }
+.pcap-consent-surface { min-height: 160px; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-content: center; gap: 9px 10px; color: var(--review); }
+.pcap-consent-surface > div { min-width: 0; }
+.pcap-consent-surface strong { color: var(--ink); font-size: 12px; }
+.pcap-consent-surface p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.pcap-consent-actions { grid-column: 1 / -1; margin-top: 7px; display: flex; justify-content: flex-end; gap: 8px; }
+.pcap-consent-actions button { min-width: 112px; }
+.pcap-mission-workspace { min-width: 0; }
+.pcap-mission-status {
+  min-height: 54px;
+  margin-bottom: 14px;
+  padding: 9px 13px;
+  border: 1px solid #9ccfc2;
+  border-left: 3px solid var(--trusted);
+  color: var(--trusted);
+  background: var(--trusted-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.pcap-mission-status.is-cancelled,
+.pcap-mission-status.is-degraded { border-color: #e8c77d; border-left-color: var(--review); color: var(--review); background: var(--review-soft); }
+.pcap-mission-status > div { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.pcap-mission-status > div > span { min-width: 0; display: grid; gap: 3px; }
+.pcap-mission-status strong { color: var(--ink); font-size: 12px; }
+.pcap-mission-status code { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 9px; }
+.pcap-cancel-button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #d7a4a6;
+  border-radius: 3px;
+  color: var(--blocked);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.pcap-cancel-button:not(:disabled):hover { color: #fff; background: var(--blocked); }
+.pcap-operations-grid { min-width: 0; display: grid; grid-template-columns: minmax(300px, .72fr) minmax(0, 1.28fr); gap: 14px; align-items: start; }
+.pcap-trace,
+.pcap-report,
+.pcap-batch-evidence,
+.pcap-empty-state { min-width: 0; border: 1px solid var(--line); background: var(--surface); }
+.pcap-section-heading { min-height: 45px; padding: 9px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+.pcap-section-heading strong { min-width: 0; color: var(--ink); font-size: 12px; }
+.pcap-section-heading > span,
+.pcap-section-heading > code { min-width: 0; margin-left: auto; overflow-wrap: anywhere; color: var(--muted); font-size: 9px; }
+.pcap-trace ol { margin: 0; padding: 0; list-style: none; }
+.pcap-trace li { min-width: 0; min-height: 59px; padding: 9px 12px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.pcap-trace li:last-child { border-bottom: 0; }
+.pcap-trace li > span:first-child { color: var(--muted); font: 800 9px/1 Consolas, "Courier New", monospace; }
+.pcap-trace li > div { min-width: 0; display: grid; gap: 3px; }
+.pcap-trace li strong { font-size: 10px; }
+.pcap-trace li small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.pcap-trace li > span:last-child { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.pcap-trace li.is-running { box-shadow: inset 2px 0 0 var(--review); background: var(--review-soft); }
+.pcap-trace li.is-succeeded > span:last-child { color: var(--trusted); }
+.pcap-trace li.is-failed > span:last-child { color: var(--blocked); }
+.pcap-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pcap-report-grid section { min-width: 0; padding: 12px 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.pcap-report-grid section:nth-child(2n) { border-right: 0; }
+.pcap-report-grid section:nth-last-child(-n + 2) { border-bottom: 0; }
+.pcap-report-grid h3 { margin: 0 0 7px; color: var(--muted); font-size: 9px; }
+.pcap-report-grid ul { margin: 0; padding-left: 15px; color: var(--ink); font-size: 10px; line-height: 1.55; }
+.pcap-report-grid p { margin: 0; color: var(--muted); font-size: 10px; }
+.pcap-unavailable-evidence { padding: 9px 14px; border-top: 1px solid var(--line); background: var(--surface-soft); display: flex; flex-wrap: wrap; gap: 6px; }
+.pcap-unavailable-evidence span { padding: 4px 7px; color: var(--muted); background: #e8ecea; display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; }
+.pcap-batch-evidence { margin-top: 14px; }
+.pcap-batch-counts { min-height: 43px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface-soft); display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.pcap-batch-counts strong { margin-right: auto; font-size: 11px; }
+.pcap-batch-counts span { padding: 3px 6px; color: var(--muted); background: #e8ecea; font-size: 9px; }
+.pcap-capture { min-width: 0; min-height: 68px; padding: 10px 14px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 25px minmax(215px, 1.1fr) minmax(150px, .8fr) auto; align-items: center; gap: 10px; }
+.pcap-capture:last-child { border-bottom: 0; }
+.pcap-capture-state { color: var(--trusted); }
+.pcap-capture.is-failed .pcap-capture-state { color: var(--blocked); }
+.pcap-capture-identity { min-width: 0; display: grid; gap: 4px; }
+.pcap-capture-identity code { min-width: 0; overflow-wrap: anywhere; font-size: 9px; }
+.pcap-capture-identity small,
+.pcap-visibility { color: var(--muted); font-size: 9px; }
+.pcap-protocols { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.pcap-protocols span { padding: 3px 5px; color: var(--muted); background: var(--surface-soft); font: 700 8px/1.4 Consolas, "Courier New", monospace; }
+.pcap-visibility { text-align: right; white-space: nowrap; }
+.pcap-limitations { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.pcap-limitations span { padding: 5px 7px; color: var(--muted); background: var(--surface-soft); font-size: 9px; }
+.pcap-empty-state { min-height: 240px; color: var(--muted); display: grid; place-content: center; justify-items: center; gap: 7px; text-align: center; }
+.pcap-empty-state strong { color: var(--ink); font-size: 12px; }
+.pcap-empty-state span { font-size: 10px; }
+
 @media (max-width: 1100px) {
   .superagent-control-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .superagent-start-button { width: 100%; }
+  .pcap-operations-grid { grid-template-columns: 1fr; }
+  .pcap-trace ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pcap-trace li:nth-child(odd) { border-right: 1px solid var(--line); }
 }
 
 @media (max-width: 760px) {
   .sidebar nav a { font-size: 8px; }
   .superagent-page .page-header { flex-direction: column; }
   .superagent-page .readiness { max-width: none; justify-content: flex-start; }
+  .superagent-task-switch { width: 100%; }
+  .superagent-task-switch button { min-width: 0; padding: 0 8px; line-height: 1.25; }
   .superagent-control-band { grid-template-columns: 1fr; padding: 13px; }
   .superagent-workspace { grid-template-columns: 1fr; }
   .superagent-role-list { grid-template-columns: 1fr; }
@@ -2535,6 +2718,20 @@ td:first-child { min-width: 128px; }
   .superagent-closure-summary > div:last-child { border-bottom: 0; }
   .superagent-receipts article { grid-template-columns: 24px minmax(0, 1fr); }
   .superagent-receipts article code { grid-column: 2; }
+  .pcap-authorization-track { grid-template-columns: 1fr; }
+  .pcap-overview-stage { border-right: 0; border-bottom: 1px solid var(--line-strong); }
+  .pcap-consent-stage.is-active { box-shadow: inset 0 3px 0 var(--review); }
+  .pcap-trace ol { grid-template-columns: 1fr; }
+  .pcap-trace li:nth-child(odd) { border-right: 0; }
+  .pcap-report-grid { grid-template-columns: 1fr; }
+  .pcap-report-grid section { border-right: 0; }
+  .pcap-report-grid section:nth-last-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .pcap-report-grid section:last-child { border-bottom: 0; }
+  .pcap-capture { grid-template-columns: 25px minmax(0, 1fr); align-items: start; }
+  .pcap-protocols,
+  .pcap-visibility { grid-column: 2; text-align: left; }
+  .pcap-mission-status { align-items: flex-start; flex-direction: column; }
+  .pcap-cancel-button { width: 100%; justify-content: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -4,6 +4,8 @@ import {
   CheckCircle2,
   CircleAlert,
   FileCheck2,
+  MessageSquareText,
+  Network,
   Play,
   Radar,
   RotateCw,
@@ -16,6 +18,7 @@ import type { FormEvent } from "react";
 
 import { api } from "../api";
 import { AuditableReasoningChain } from "../components/AuditableReasoningChain";
+import { PcapSuperAgentWorkspace } from "./PcapSuperAgentWorkspace";
 import {
   superAgentActorLabels,
   superAgentPhaseLabels,
@@ -138,6 +141,7 @@ function ClosurePanel({ mission }: { mission: SuperAgentMissionResult }) {
 }
 
 export function SuperAgentPage() {
+  const [taskKind, setTaskKind] = useState<"prompt" | "pcap">("prompt");
   const [capabilities, setCapabilities] = useState<SuperAgentCapabilities | null>(null);
   const [scenarios, setScenarios] = useState<LabScenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState("");
@@ -165,10 +169,15 @@ export function SuperAgentPage() {
       } else setError("任务场景加载失败");
       if (capabilityResult.status === "fulfilled") setCapabilities(capabilityResult.value);
       else setError("SuperAgent 服务不可用");
-      if (missionResult.status === "fulfilled" && missionResult.value) {
+      if (
+        missionResult.status === "fulfilled" &&
+        missionResult.value?.objective === "investigate_and_respond"
+      ) {
         setMission(missionResult.value);
         setSelectedScenario(missionResult.value.scenario_id);
         setMode(missionResult.value.mode);
+      } else if (missionResult.status === "fulfilled" && missionResult.value) {
+        rememberLastMissionId(null);
       } else if (missionResult.status === "rejected") {
         rememberLastMissionId(null);
       }
@@ -218,6 +227,16 @@ export function SuperAgentPage() {
         </span>
       </header>
 
+      <div className="superagent-task-switch" role="group" aria-label="SuperAgent 任务类型">
+        <button type="button" aria-pressed={taskKind === "prompt"} onClick={() => setTaskKind("prompt")}>
+          <MessageSquareText size={16} /> Prompt 安全调查
+        </button>
+        <button type="button" aria-pressed={taskKind === "pcap"} onClick={() => setTaskKind("pcap")}>
+          <Network size={16} /> PCAP 证据分诊
+        </button>
+      </div>
+
+      {taskKind === "prompt" ? <>
       <form className="superagent-control-band" onSubmit={startMission}>
         <label><span>任务场景</span><select value={selectedScenario} onChange={(event) => setSelectedScenario(event.target.value)} disabled={loading}>
           {scenarios.map((item) => <option key={item.scenario_id} value={item.scenario_id}>{item.label}</option>)}
@@ -251,6 +270,7 @@ export function SuperAgentPage() {
         </div>
       ) : null}
       {mission ? <ClosurePanel mission={mission} /> : null}
+      </> : <PcapSuperAgentWorkspace />}
     </main>
   );
 }

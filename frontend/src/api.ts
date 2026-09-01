@@ -13,9 +13,15 @@ import type {
   LabToolExecution,
   LabToolId,
   Mode,
+  PcapAuthorizationReceipt,
+  PcapAuthorizationRequest,
+  PcapMissionRequest,
+  PcapMissionResult,
+  PcapOverview,
   SuperAgentCapabilities,
   SuperAgentMissionRequest,
   SuperAgentMissionResult,
+  SuperAgentStoredMission,
 } from "./types";
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -98,8 +104,29 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+  pcapCapabilities: () =>
+    requestJson<PcapOverview>("/api/v1/superagent/pcap/capabilities"),
+  pcapOverview: () =>
+    requestJson<PcapOverview>("/api/v1/superagent/pcap/overview"),
+  authorizePcapBatch: (payload: PcapAuthorizationRequest) =>
+    requestJson<PcapAuthorizationReceipt>("/api/v1/superagent/pcap/authorizations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  createPcapMission: (payload: PcapMissionRequest) =>
+    requestJson<PcapMissionResult>("/api/v1/superagent/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
   getSuperAgentMission: (missionId: string) =>
-    requestJson<SuperAgentMissionResult>(
+    requestJson<SuperAgentStoredMission>(
       "/api/v1/superagent/missions/" + encodeURIComponent(missionId),
+    ),
+  cancelPcapMission: (missionId: string) =>
+    requestJson<PcapMissionResult>(
+      "/api/v1/superagent/missions/" + encodeURIComponent(missionId) + "/cancel",
+      { method: "POST" },
     ),
 };

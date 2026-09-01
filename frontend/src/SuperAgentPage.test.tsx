@@ -106,10 +106,13 @@ describe("bounded SuperAgent workspace", () => {
     render(<App />);
 
     expect(await screen.findByText("平台内部仿真闭环")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Prompt 安全调查" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "PCAP 证据分诊" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByLabelText("任务场景")).toBeInTheDocument();
     expect(screen.getByLabelText("工作模式")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "启动自主任务" })).toBeEnabled();
     expect(screen.getByText("最多 3 次工具调用")).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith("/api/v1/superagent/pcap/overview", expect.anything());
   });
 
   it("renders the auditable ReAct trace and bound execution receipts", async () => {
