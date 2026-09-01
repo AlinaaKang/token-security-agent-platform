@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.pcap.models import (
+    PcapAuthorizationReceipt,
     PcapBatchSummary,
     PcapCaptureEvidence,
     PcapMissionResult,
@@ -41,7 +42,7 @@ def public_mission_payload() -> dict[str, object]:
                 "sequence": 1,
                 "actor": "coordinator",
                 "status": "succeeded",
-                "summary": "Authorized batch triage completed.",
+                "summary": "batch_triage_completed",
             }
         ],
         "summary": {
@@ -53,13 +54,26 @@ def public_mission_payload() -> dict[str, object]:
             "captures": [capture],
         },
         "report": {
-            "confirmed": ["Encrypted transport observed."],
+            "confirmed": ["encrypted_transport_observed"],
             "candidates": [],
             "unknowns": [],
-            "recommended_action": ["Retain only public metadata."],
+            "recommended_action": ["retain_public_metadata"],
         },
-        "limitations": ["No packet payload was retained."],
+        "limitations": ["no_packet_payload_retained"],
         "created_at": "2026-09-01T00:00:00Z",
+    }
+
+
+def public_authorization_receipt_payload() -> dict[str, object]:
+    return {
+        "receipt_id": "pcap_auth_receipt_0123456789abcdef0123456789abcdef",
+        "request_id": "pcap_auth_request_0123456789abcdef0123456789abcdef",
+        "batch_id": "batch_0123456789abcdef0123456789abcdef",
+        "status": "authorized",
+        "authorized_capture_ids": [
+            "capture_0123456789abcdef0123456789abcdef",
+        ],
+        "issued_at": "2026-09-01T00:00:00Z",
     }
 
 
@@ -107,6 +121,13 @@ def test_capture_evidence_is_immutable_and_serializes_only_public_fields() -> No
         evidence.packet_count = 99
 
 
+def test_capture_evidence_rejects_token_eligible_without_plaintext_visibility() -> None:
+    payload = public_capture_payload() | {"capability": "token_eligible"}
+
+    with pytest.raises(ValidationError, match="token_eligible"):
+        PcapCaptureEvidence.model_validate(payload)
+
+
 def test_batch_summary_limits_captures_to_twenty() -> None:
     capture = public_capture_payload()
     payload = {
@@ -122,6 +143,84 @@ def test_batch_summary_limits_captures_to_twenty() -> None:
         PcapBatchSummary.model_validate(payload)
 
 
+def test_batch_summary_rejects_counts_that_contradict_capture_statuses() -> None:
+    payload = {
+        "batch_id": "batch_0123456789abcdef0123456789abcdef",
+        "selected_count": 1,
+        "succeeded_count": 0,
+        "failed_count": 1,
+        "skipped_count": 0,
+        "captures": [public_capture_payload()],
+    }
+
+    with pytest.raises(ValidationError, match="capture statuses"):
+        PcapBatchSummary.model_validate(payload)
+
+
+@pytest.mark.parametrize("private_identifier", ["capture.pcap", r"C:\\private\\capture.pcap"])
+def test_authorization_receipt_rejects_non_public_capture_identifiers(
+    private_identifier: str,
+) -> None:
+    payload = public_authorization_receipt_payload() | {
+        "authorized_capture_ids": [private_identifier]
+    }
+
+    with pytest.raises(ValidationError):
+        PcapAuthorizationReceipt.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "private_narrative",
+    [
+        "capture.pcap",
+        r"C:\\quarantine\\input\\capture.pcap",
+        "203.0.113.10:443",
+        "aa:bb:cc:dd:ee:ff",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "raw packet payload",
+        "original Prompt text",
+        "adversarial suffix",
+        "Token text",
+        "raw stderr: access denied",
+        "hidden reasoning: private",
+    ],
+)
+def test_public_narrative_rejects_sensitive_capture_content(
+    private_narrative: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        PcapTraceEvent.model_validate(
+            {
+                "sequence": 1,
+                "actor": "coordinator",
+                "status": "succeeded",
+                "summary": private_narrative,
+            }
+        )
+
+
+@pytest.mark.parametrize("private_narrative", ["capture.pcap", "203.0.113.10:443"])
+def test_mission_report_and_limitations_reject_sensitive_narratives(
+    private_narrative: str,
+) -> None:
+    report_payload = public_mission_payload() | {
+        "report": {
+            "confirmed": [private_narrative],
+            "candidates": [],
+            "unknowns": [],
+            "recommended_action": [],
+        }
+    }
+    limitation_payload = public_mission_payload() | {
+        "limitations": [private_narrative]
+    }
+
+    with pytest.raises(ValidationError):
+        PcapMissionResult.model_validate(report_payload)
+    with pytest.raises(ValidationError):
+        PcapMissionResult.model_validate(limitation_payload)
+
+
 def test_mission_result_requires_ordered_public_events_and_fixed_report_sections() -> None:
     payload = public_mission_payload()
 
@@ -129,7 +228,7 @@ def test_mission_result_requires_ordered_public_events_and_fixed_report_sections
 
     assert result.status is PcapMissionStatus.COMPLETED
     assert result.events[0].sequence == 1
-    assert result.report.confirmed == ("Encrypted transport observed.",)
+    assert result.report.confirmed == ("encrypted_transport_observed",)
     assert PcapToolId.PCAP_BATCH_TRIAGE.value == "pcap_batch_triage"
 
     with pytest.raises(ValidationError, match="ordered"):
@@ -141,13 +240,13 @@ def test_mission_result_requires_ordered_public_events_and_fixed_report_sections
                         "sequence": 2,
                         "actor": "coordinator",
                         "status": "succeeded",
-                        "summary": "Second public event.",
+                        "summary": "batch_triage_completed",
                     },
                     {
                         "sequence": 1,
                         "actor": "knowledge_analyst",
                         "status": "succeeded",
-                        "summary": "First public event.",
+                        "summary": "batch_triage_completed",
                     },
                 ]
             }
