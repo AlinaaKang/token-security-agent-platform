@@ -267,7 +267,12 @@ def test_lifespan_initializes_and_closes_opt_in_pcap_components(
     )
     config = object()
     executor = SimpleNamespace(overview=lambda: {"enabled": True})
+    executor_configs = []
     coordinator = SimpleNamespace(close_calls=0)
+
+    def create_executor(*, config):
+        executor_configs.append(config)
+        return executor
 
     def close() -> None:
         coordinator.close_calls += 1
@@ -278,7 +283,7 @@ def test_lifespan_initializes_and_closes_opt_in_pcap_components(
         "from_environ",
         staticmethod(lambda _environ: config),
     )
-    monkeypatch.setattr(main_module, "PcapBatchExecutor", lambda config: executor)
+    monkeypatch.setattr(main_module, "PcapBatchExecutor", create_executor)
     monkeypatch.setattr(
         main_module,
         "PcapMissionCoordinator",
@@ -293,6 +298,7 @@ def test_lifespan_initializes_and_closes_opt_in_pcap_components(
         "ready": True,
         "reason": "ready",
     }
+    assert executor_configs == [config]
     assert coordinator.close_calls == 1
     assert not hasattr(app.state, "pcap_authorization_store")
     assert not hasattr(app.state, "pcap_executor")

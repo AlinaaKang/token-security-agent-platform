@@ -264,7 +264,7 @@ def _initialize_lifespan_services(
         pcap_config = PcapConfig.from_environ(os.environ)
         if pcap_config is not None:
             authorization_store = PcapAuthorizationStore()
-            executor = PcapBatchExecutor(pcap_config)
+            executor = PcapBatchExecutor(config=pcap_config)
             pcap_coordinator = PcapMissionCoordinator(
                 authorization_store=authorization_store,
                 executor=executor,
