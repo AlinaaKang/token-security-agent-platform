@@ -30,6 +30,10 @@ from app.evaluation.service import EvaluationReportService
 from app.demo.service import DemoSampleService
 from app.lab.execution_store import SQLiteLabExecutionStore
 from app.lab.service import LabService
+from app.pcap.authorization import PcapAuthorizationStore
+from app.pcap.config import PcapConfig
+from app.pcap.executor import PcapBatchExecutor
+from app.superagent.pcap_coordinator import PcapMissionCoordinator
 from app.superagent.service import SuperAgentService
 
 
@@ -43,6 +47,9 @@ _LIFESPAN_STATE_NAMES = (
     "event_store",
     "lab_enabled",
     "lab_service",
+    "pcap_authorization_store",
+    "pcap_coordinator",
+    "pcap_executor",
     "service_health",
     "superagent_service",
 )
@@ -86,14 +93,27 @@ async def lifespan(application: FastAPI):
         yield
     finally:
         try:
-            if lab_execution_store is not None:
-                lab_execution_store.close()
+            pcap_coordinator = getattr(
+                application.state, "pcap_coordinator", None
+            )
+            if pcap_coordinator is not None:
+                try:
+                    pcap_coordinator.close()
+                except Exception as exc:
+                    logger.error(
+                        "pcap coordinator cleanup failed error_type=%s",
+                        type(exc).__name__,
+                    )
         finally:
             try:
-                if event_store is not None:
-                    event_store.close()
+                if lab_execution_store is not None:
+                    lab_execution_store.close()
             finally:
-                _clear_lifespan_state(application)
+                try:
+                    if event_store is not None:
+                        event_store.close()
+                finally:
+                    _clear_lifespan_state(application)
 
 
 def _initialize_lifespan_services(
@@ -238,6 +258,34 @@ def _initialize_lifespan_services(
                 "reason": "unavailable",
                 "tool_storage": "sqlite",
             }
+    pcap_health = {"enabled": False, "ready": False, "reason": "disabled"}
+    pcap_coordinator = None
+    try:
+        pcap_config = PcapConfig.from_environ(os.environ)
+        if pcap_config is not None:
+            authorization_store = PcapAuthorizationStore()
+            executor = PcapBatchExecutor(pcap_config)
+            pcap_coordinator = PcapMissionCoordinator(
+                authorization_store=authorization_store,
+                executor=executor,
+            )
+            application.state.pcap_authorization_store = authorization_store
+            application.state.pcap_executor = executor
+            application.state.pcap_coordinator = pcap_coordinator
+            pcap_health = {
+                "enabled": True,
+                "ready": True,
+                "reason": "ready",
+            }
+    except Exception as exc:
+        logger.error(
+            "pcap initialization failed error_type=%s", type(exc).__name__
+        )
+        pcap_health = {
+            "enabled": True,
+            "ready": False,
+            "reason": "unavailable",
+        }
     superagent_health = {
         "ready": False,
         "internal_only": True,
@@ -247,7 +295,8 @@ def _initialize_lifespan_services(
     if lab_health.get("ready") is True and lab_service is not None:
         try:
             application.state.superagent_service = SuperAgentService(
-                lab_service=lab_service
+                lab_service=lab_service,
+                pcap_coordinator=pcap_coordinator,
             )
             superagent_health = {
                 "ready": True,
@@ -267,6 +316,7 @@ def _initialize_lifespan_services(
         "demo": demo_health,
         "lab": lab_health,
         "superagent": superagent_health,
+        "pcap": pcap_health,
     }
 
 
@@ -333,4 +383,5 @@ def health() -> dict[str, Any]:
             "internal_only": True,
             "reason": "lab_unavailable",
         },
+        "pcap": {"enabled": False, "ready": False, "reason": "disabled"},
     }

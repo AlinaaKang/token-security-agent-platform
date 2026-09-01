@@ -78,6 +78,7 @@ def test_health_reports_api_model_and_detector_readiness_separately() -> None:
             "internal_only": True,
             "reason": "lab_unavailable",
         },
+        "pcap": {"enabled": False, "ready": False, "reason": "disabled"},
     }
 
 
@@ -254,3 +255,83 @@ def test_startup_failure_after_store_construction_closes_resources_and_state(
         not hasattr(app.state, name)
         for name in main_module._LIFESPAN_STATE_NAMES
     )
+
+
+def test_lifespan_initializes_and_closes_opt_in_pcap_components(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_configured_bundle(monkeypatch)
+    monkeypatch.setenv("TOKEN_SECURITY_LAB_ENABLED", "true")
+    monkeypatch.setenv(
+        "TOKEN_SECURITY_EVENT_DB_PATH", str(tmp_path / "shared.sqlite3")
+    )
+    config = object()
+    executor = SimpleNamespace(overview=lambda: {"enabled": True})
+    coordinator = SimpleNamespace(close_calls=0)
+
+    def close() -> None:
+        coordinator.close_calls += 1
+
+    coordinator.close = close
+    monkeypatch.setattr(
+        main_module.PcapConfig,
+        "from_environ",
+        staticmethod(lambda _environ: config),
+    )
+    monkeypatch.setattr(main_module, "PcapBatchExecutor", lambda config: executor)
+    monkeypatch.setattr(
+        main_module,
+        "PcapMissionCoordinator",
+        lambda **_kwargs: coordinator,
+    )
+
+    with TestClient(app) as client:
+        health = client.get("/health")
+
+    assert health.json()["pcap"] == {
+        "enabled": True,
+        "ready": True,
+        "reason": "ready",
+    }
+    assert coordinator.close_calls == 1
+    assert not hasattr(app.state, "pcap_authorization_store")
+    assert not hasattr(app.state, "pcap_executor")
+    assert not hasattr(app.state, "pcap_coordinator")
+
+
+def test_pcap_initialization_failure_degrades_only_pcap_and_hides_details(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_configured_bundle(monkeypatch)
+    monkeypatch.setenv("TOKEN_SECURITY_LAB_ENABLED", "true")
+    monkeypatch.setenv(
+        "TOKEN_SECURITY_EVENT_DB_PATH", str(tmp_path / "shared.sqlite3")
+    )
+    monkeypatch.setattr(
+        main_module.PcapConfig,
+        "from_environ",
+        staticmethod(lambda _environ: object()),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PcapBatchExecutor",
+        lambda _config: (_ for _ in ()).throw(
+            RuntimeError("PRIVATE_PCAP_INITIALIZATION_PATH")
+        ),
+    )
+
+    with TestClient(app) as client:
+        health = client.get("/health")
+        prompt = client.get("/api/v1/superagent/capabilities")
+        pcap = client.get("/api/v1/superagent/pcap/capabilities")
+
+    assert health.json()["superagent"]["ready"] is True
+    assert health.json()["pcap"] == {
+        "enabled": True,
+        "ready": False,
+        "reason": "unavailable",
+    }
+    assert "PRIVATE_PCAP_INITIALIZATION_PATH" not in health.text
+    assert prompt.status_code == 200
+    assert pcap.status_code == 503
+    assert pcap.json()["error"]["code"] == "pcap_triage_unavailable"

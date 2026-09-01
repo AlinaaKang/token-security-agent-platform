@@ -75,6 +75,11 @@ class _PrivacyApiHandler(BaseHTTPRequestHandler):
                     "max_tool_calls": 3,
                     "max_trace_events": 12,
                 },
+                "pcap": {
+                    "enabled": False,
+                    "ready": False,
+                    "reason": "disabled",
+                },
             }
             self._response(
                 "api.health",
