@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from hashlib import sha256
 from pathlib import Path
 
@@ -87,6 +88,11 @@ try {
     if ($cancelAfter -gt 0 -and (Get-Content -LiteralPath (Join-Path $logRoot 'invocations.txt')).Count -eq $cancelAfter) {
         New-Item -ItemType File -Path $env:FAKE_INSPECTOR_CANCEL_MARKER -Force | Out-Null
     }
+    $pauseAt = [int]$env:FAKE_INSPECTOR_PAUSE_AT
+    if ($pauseAt -gt 0 -and (Get-Content -LiteralPath (Join-Path $logRoot 'invocations.txt')).Count -eq $pauseAt) {
+        New-Item -ItemType File -Path $env:FAKE_INSPECTOR_PAUSE_MARKER -Force | Out-Null
+        while ($true) { Start-Sleep -Milliseconds 100 }
+    }
     exit 0
 }
 finally {
@@ -105,25 +111,17 @@ def run_batch(
     *,
     max_files: int,
     batch_id: str = BATCH_ID,
+    quarantine_argument: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    log_root = inspector.parent / "fake-inspector-log"
-    log_root.mkdir(exist_ok=True)
-    environment = os.environ.copy()
-    environment.update(
-        {
-            "FAKE_INSPECTOR_LOG_ROOT": str(log_root),
-            "FAKE_INSPECTOR_FAIL_NAMES": environment.get("FAKE_INSPECTOR_FAIL_NAMES", ""),
-            "FAKE_INSPECTOR_MALFORMED_NAMES": environment.get("FAKE_INSPECTOR_MALFORMED_NAMES", ""),
-            "FAKE_INSPECTOR_CANCEL_AFTER": environment.get("FAKE_INSPECTOR_CANCEL_AFTER", "0"),
-            "FAKE_INSPECTOR_CANCEL_MARKER": str(root / "state" / f"{batch_id}.cancel"),
-        }
-    )
+    environment = batch_environment(root, inspector, batch_id=batch_id)
     result = subprocess.run(
-        [
-            str(WINDOWS_POWERSHELL), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-            "-File", str(SCRIPT), "-QuarantineRoot", str(root), "-BatchId", batch_id,
-            "-MaxFiles", str(max_files), "-InspectorScript", str(inspector),
-        ],
+        batch_command(
+            root,
+            inspector,
+            max_files=max_files,
+            batch_id=batch_id,
+            quarantine_argument=quarantine_argument,
+        ),
         capture_output=True,
         check=False,
         encoding="utf-8",
@@ -134,6 +132,49 @@ def run_batch(
             (root / "output" / f"pcap-batch-{batch_id}.json").read_text(encoding="utf-8")
         )
     return result
+
+
+def batch_command(
+    root: Path,
+    inspector: Path,
+    *,
+    max_files: int,
+    batch_id: str = BATCH_ID,
+    quarantine_argument: str | None = None,
+) -> list[str]:
+    return [
+        str(WINDOWS_POWERSHELL), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+        "-File", str(SCRIPT), "-QuarantineRoot", quarantine_argument or str(root), "-BatchId", batch_id,
+        "-MaxFiles", str(max_files), "-InspectorScript", str(inspector),
+    ]
+
+
+def batch_environment(root: Path, inspector: Path, *, batch_id: str = BATCH_ID) -> dict[str, str]:
+    log_root = inspector.parent / "fake-inspector-log"
+    log_root.mkdir(exist_ok=True)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "FAKE_INSPECTOR_LOG_ROOT": str(log_root),
+            "FAKE_INSPECTOR_FAIL_NAMES": environment.get("FAKE_INSPECTOR_FAIL_NAMES", ""),
+            "FAKE_INSPECTOR_MALFORMED_NAMES": environment.get("FAKE_INSPECTOR_MALFORMED_NAMES", ""),
+            "FAKE_INSPECTOR_CANCEL_AFTER": environment.get("FAKE_INSPECTOR_CANCEL_AFTER", "0"),
+            "FAKE_INSPECTOR_CANCEL_MARKER": str(root / "state" / f"{batch_id}.cancel"),
+            "FAKE_INSPECTOR_PAUSE_AT": environment.get("FAKE_INSPECTOR_PAUSE_AT", "0"),
+            "FAKE_INSPECTOR_PAUSE_MARKER": str(log_root / "paused.txt"),
+        }
+    )
+    return environment
+
+
+def make_directory_junction(link: Path, target: Path) -> None:
+    result = subprocess.run(
+        [os.environ["ComSpec"], "/d", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def load_public_summary(root: Path, result: subprocess.CompletedProcess[str]) -> dict[str, object]:
@@ -193,19 +234,19 @@ def test_batch_discovers_uppercase_extensions_and_nested_regular_directories(tmp
     assert recorded_sizes(tmp_path) == [2, 3]
 
 
-def test_batch_ignores_reparse_points_when_available(tmp_path: Path) -> None:
-    root, captures = make_capture_batch(tmp_path, count=1)
+def test_batch_rejects_nested_input_junction(tmp_path: Path) -> None:
+    root, _ = make_capture_batch(tmp_path, count=1)
     outside = tmp_path / "outside"
     outside.mkdir()
-    add_capture(outside, size=1, name="linked.pcap")
+    (outside / "linked.pcap").write_bytes(b"x")
     link = root / "input" / "linked"
+    make_directory_junction(link, outside)
     try:
-        os.symlink(outside, link, target_is_directory=True)
-    except OSError:
-        pytest.skip("symlink creation is unavailable for this Windows test user")
-    result = run_batch(root, fake_inspector(tmp_path), max_files=20)
-    assert result.returncode == 0
-    assert recorded_sizes(tmp_path) == [captures[0].stat().st_size]
+        result = run_batch(root, fake_inspector(tmp_path), max_files=20)
+    finally:
+        link.rmdir()
+    assert result.returncode != 0
+    assert result.stdout.strip() == "pcap_batch_error=input_reparse_point"
 
 
 def test_batch_cancellation_stops_before_the_next_file(tmp_path: Path) -> None:
@@ -243,19 +284,40 @@ def test_batch_rejects_malformed_child_reports_without_exposing_private_content(
     assert "PRIVATE_CHILD_REPORT" not in result.stdout + result.stderr + json.dumps(summary)
 
 
-def test_batch_emits_only_fixed_error_code_for_reparse_output(tmp_path: Path) -> None:
-    root, _ = make_capture_batch(tmp_path, count=1)
-    outside = tmp_path / "outside-output"
+def test_batch_rejects_junction_input_root(tmp_path: Path) -> None:
+    root = tmp_path / "pcap-quarantine"
+    root.mkdir()
+    outside = tmp_path / "outside-input"
     outside.mkdir()
-    link = root / "output"
+    (outside / "capture.pcap").write_bytes(b"x")
+    link = root / "input"
+    make_directory_junction(link, outside)
     try:
-        os.symlink(outside, link, target_is_directory=True)
-    except OSError:
-        pytest.skip("symlink creation is unavailable for this Windows test user")
-    result = run_batch(root, fake_inspector(tmp_path), max_files=1)
+        result = run_batch(root, fake_inspector(tmp_path), max_files=1)
+    finally:
+        link.rmdir()
     assert result.returncode != 0
-    assert result.stdout.strip() == "pcap_batch_error=output_reparse_point"
-    assert PRIVATE_SENTINEL not in result.stdout + result.stderr
+    assert result.stdout.strip() == "pcap_batch_error=input_reparse_point"
+
+
+@pytest.mark.parametrize(
+    ("directory", "error"),
+    [("output", "output_reparse_point"), ("state", "state_reparse_point")],
+)
+def test_batch_rejects_junction_output_and_state_directories(
+    tmp_path: Path, directory: str, error: str
+) -> None:
+    root, _ = make_capture_batch(tmp_path, count=1)
+    outside = tmp_path / f"outside-{directory}"
+    outside.mkdir()
+    link = root / directory
+    make_directory_junction(link, outside)
+    try:
+        result = run_batch(root, fake_inspector(tmp_path), max_files=1)
+    finally:
+        link.rmdir()
+    assert result.returncode != 0
+    assert result.stdout.strip() == f"pcap_batch_error={error}"
 
 
 def test_batch_public_report_uses_only_model_keys_and_hides_private_identity(tmp_path: Path) -> None:
@@ -302,3 +364,60 @@ def test_batch_honors_preexisting_cancellation_before_discovery(tmp_path: Path) 
     assert result.returncode == 0
     assert summary["selected_count"] == 0
     assert not (tmp_path / "fake-inspector-log" / "invocations.txt").exists()
+
+
+def test_batch_checkpoints_completed_file_before_abrupt_interruption(tmp_path: Path) -> None:
+    root, captures = make_capture_batch(tmp_path, count=2)
+    inspector = fake_inspector(tmp_path)
+    environment = batch_environment(root, inspector)
+    environment["FAKE_INSPECTOR_PAUSE_AT"] = "2"
+    pause_marker = Path(environment["FAKE_INSPECTOR_PAUSE_MARKER"])
+    interrupted = subprocess.Popen(
+        batch_command(root, inspector, max_files=2),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not pause_marker.exists():
+            assert interrupted.poll() is None, interrupted.communicate()
+            assert time.monotonic() < deadline, "second inspector did not reach the pause point"
+            time.sleep(0.05)
+
+        state = json.loads((root / "state" / "pcap-batch-private.json").read_text(encoding="utf-8"))
+        assert [entry["internal_path"] for entry in state["entries"]] == [captures[0].name]
+    finally:
+        if interrupted.poll() is None:
+            killed = subprocess.run(
+                ["taskkill.exe", "/PID", str(interrupted.pid), "/T", "/F"],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+            assert killed.returncode == 0, killed.stdout + killed.stderr
+        interrupted.communicate(timeout=5)
+
+    resumed = run_batch(root, inspector, max_files=2)
+
+    assert resumed.returncode == 0
+    assert invocation_count(tmp_path, captures[0]) == 1
+    assert invocation_count(tmp_path, captures[1]) == 2
+
+
+def test_batch_passes_trailing_separator_and_special_root_to_child(tmp_path: Path) -> None:
+    root = tmp_path / "quarantine & special (path) [100%]!"
+    add_capture(root, size=1, name="capture ^ $value ; [1].pcap")
+    inspector_root = tmp_path / "inspector & tools (special) [100%]!"
+    inspector_root.mkdir()
+
+    result = run_batch(
+        root,
+        fake_inspector(inspector_root),
+        max_files=1,
+        quarantine_argument=str(root) + "\\",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert load_public_summary(root, result)["succeeded_count"] == 1

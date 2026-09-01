@@ -93,7 +93,7 @@ function Get-SafeCaptureFiles {
     while ($queue.Count -gt 0) {
         $directory = $queue.Dequeue()
         foreach ($entry in $directory.GetFileSystemInfos()) {
-            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { Fail-Batch 'input_reparse_point' }
             if ($entry -is [System.IO.DirectoryInfo]) { $queue.Enqueue($entry); continue }
             if ($entry -is [System.IO.FileInfo] -and $entry.Extension.ToLowerInvariant() -in @('.pcap', '.pcapng')) { $entry }
         }
@@ -224,7 +224,26 @@ function Convert-ChildReportToEvidence {
 
 function Quote-ProcessArgument {
     param([Parameter(Mandatory = $true)][string]$Value)
-    return '"' + $Value.Replace('"', '\"') + '"'
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append([char]34)
+    $backslashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq [char]92) {
+            $backslashes++
+            continue
+        }
+        if ($character -eq [char]34) {
+            [void]$builder.Append([char]92, ($backslashes * 2) + 1)
+        }
+        elseif ($backslashes -gt 0) {
+            [void]$builder.Append([char]92, $backslashes)
+        }
+        [void]$builder.Append($character)
+        $backslashes = 0
+    }
+    if ($backslashes -gt 0) { [void]$builder.Append([char]92, $backslashes * 2) }
+    [void]$builder.Append([char]34)
+    return $builder.ToString()
 }
 
 function Invoke-Inspector {
@@ -344,6 +363,7 @@ try {
             capability = $result.capability
             error_code = $result.error_code
         })
+        Save-AtomicJson ([ordered]@{ schema_version = 1; entries = @($updatedEntries) }) $privateStatePath
     }
     Save-AtomicJson ([ordered]@{ schema_version = 1; entries = @($updatedEntries) }) $privateStatePath
     $succeeded = @($captures | Where-Object { $_.status -eq 'succeeded' }).Count
