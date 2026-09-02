@@ -374,6 +374,17 @@ describe("PCAP SuperAgent evidence workspace", () => {
     expect(within(failedCapture!).getByText("检查失败")).toBeVisible();
     expect(within(failedCapture!).getByText("inspection_failed")).toBeVisible();
     expect(within(failedCapture!).queryByText("证据不足")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "PCAP 侦探证据回放" })).toBeVisible();
     expect(document.body.textContent).not.toContain(PRIVATE_SENTINEL);
+  });
+
+  it("does not mount mascot evidence playback before the PCAP mission is terminal", async () => {
+    window.sessionStorage.setItem("token-security-superagent-pcap-mission-id", missionId);
+    installFetch({ missionSequence: [runningMission] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
+    await screen.findByText("任务运行中");
+
+    expect(screen.queryByRole("region", { name: "PCAP 侦探证据回放" })).not.toBeInTheDocument();
   });
 });

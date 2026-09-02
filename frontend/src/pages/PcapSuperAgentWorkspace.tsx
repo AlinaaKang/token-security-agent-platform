@@ -16,6 +16,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
+import { PcapMascotTeam } from "../components/PcapMascotTeam";
 import type {
   PcapActor,
   PcapCaptureEvidence,
@@ -188,6 +189,7 @@ function MissionWorkspace({
       <div className="pcap-limitations">
         {mission.limitations.map((limitation) => <span key={limitation}>{narrativeLabels[limitation]}</span>)}
       </div>
+      {terminal ? <PcapMascotTeam mission={mission} /> : null}
     </div>
   );
 }
