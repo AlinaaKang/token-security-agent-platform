@@ -72,6 +72,7 @@ def test_enabled_pcap_config_uses_repository_owned_scripts(tmp_path: Path) -> No
         "TOKEN_SECURITY_PCAP_POWERSHELL_EXECUTABLE": str(powershell.resolve()),
         "TOKEN_SECURITY_PCAP_BATCH_SCRIPT": str((tmp_path / "outside.ps1").resolve()),
         "TOKEN_SECURITY_PCAP_INSPECT_SCRIPT": str((tmp_path / "outside-single.ps1").resolve()),
+        "TOKEN_SECURITY_PCAP_RECON_BATCH_SCRIPT": str((tmp_path / "outside-recon.ps1").resolve()),
     }
 
     with pytest.raises(ValueError, match="PCAP script override"):
@@ -85,6 +86,7 @@ def test_enabled_pcap_config_uses_repository_owned_scripts(tmp_path: Path) -> No
             not in {
                 "TOKEN_SECURITY_PCAP_BATCH_SCRIPT",
                 "TOKEN_SECURITY_PCAP_INSPECT_SCRIPT",
+                "TOKEN_SECURITY_PCAP_RECON_BATCH_SCRIPT",
             }
         }
     )
@@ -92,8 +94,10 @@ def test_enabled_pcap_config_uses_repository_owned_scripts(tmp_path: Path) -> No
     assert config is not None
     assert config.batch_script.name == "inspect_pcap_batch.ps1"
     assert config.inspect_script.name == "inspect_pcap.ps1"
+    assert config.recon_batch_script.name == "inspect_pcap_recon_batch.ps1"
     assert config.batch_script.parent.name == "scripts"
     assert config.inspect_script.parent == config.batch_script.parent
+    assert config.recon_batch_script.parent == config.batch_script.parent
 
 
 @pytest.mark.parametrize(
