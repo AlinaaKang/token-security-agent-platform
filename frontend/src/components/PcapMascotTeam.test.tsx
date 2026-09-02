@@ -69,6 +69,29 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function installMotionPreference(initialMatches = false) {
+  let matches = initialMatches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const mediaQuery = {
+    get matches() { return matches; },
+    media: "(prefers-reduced-motion: reduce)",
+    onchange: null,
+    addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener)),
+    removeEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener)),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  };
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(mediaQuery));
+  return {
+    mediaQuery,
+    setReduced(nextMatches: boolean) {
+      matches = nextMatches;
+      listeners.forEach((listener) => listener({ matches } as MediaQueryListEvent));
+    },
+  };
+}
+
 describe("PcapMascotTeam", () => {
   it("uses the three original mascot assets and never invents Token evidence", () => {
     render(<PcapMascotTeam mission={networkOnlyMission} />);
@@ -111,10 +134,14 @@ describe("PcapMascotTeam", () => {
     expect(vi.getTimerCount()).toBe(0);
 
     fireEvent.click(cpd);
+    expect(screen.getByText(/明文应用协议候选：1 个/)).toBeVisible();
+    expect(screen.queryByText("模型与 Token 证据不可用")).not.toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(420); });
     const captain = screen.getByRole("button", { name: "Agent 小队队长" });
     expect(captain).toBeEnabled();
     fireEvent.click(captain);
+    expect(screen.getByText("批次计数：已选择 2，成功 2，失败 0，跳过 0")).toBeVisible();
+    expect(screen.getByRole("region", { name: "已证实" })).not.toHaveTextContent("仅有网络流量证据");
     await act(async () => { await vi.advanceTimersByTimeAsync(1_260); });
     expect(screen.getByRole("region", { name: "已证实" })).toBeVisible();
   });
@@ -134,5 +161,18 @@ describe("PcapMascotTeam", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guard 语义侦探" }));
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("updates hop motion when the reduced-motion preference changes and cleans up", () => {
+    const preference = installMotionPreference();
+    const { unmount } = render(<PcapMascotTeam mission={networkOnlyMission} />);
+    expect(screen.getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
+      .toHaveAttribute("data-motion", "hop");
+
+    act(() => preference.setReduced(true));
+    screen.getAllByRole("figure").forEach((figure) => expect(figure).toHaveAttribute("data-motion", "none"));
+
+    unmount();
+    expect(preference.mediaQuery.removeEventListener).toHaveBeenCalledTimes(1);
   });
 });

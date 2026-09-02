@@ -1,4 +1,5 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { useLayoutEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PcapMissionResult } from "../types";
@@ -69,6 +70,54 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function installMotionPreference(initialMatches = false) {
+  let matches = initialMatches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const mediaQuery = {
+    get matches() { return matches; },
+    media: "(prefers-reduced-motion: reduce)",
+    onchange: null,
+    addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.add(listener);
+    }),
+    removeEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.delete(listener);
+    }),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  };
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(mediaQuery));
+  return {
+    mediaQuery,
+    listenerCount: () => listeners.size,
+    setReduced(nextMatches: boolean) {
+      matches = nextMatches;
+      listeners.forEach((listener) => listener({ matches } as MediaQueryListEvent));
+    },
+  };
+}
+
+function CommitProbe({
+  role,
+  replay,
+  onCommit,
+}: {
+  role: "guard" | "cpd" | "captain";
+  replay: boolean;
+  onCommit: (text: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    onCommit(rootRef.current?.textContent ?? "");
+  }, [onCommit, replay, role]);
+  return (
+    <div ref={rootRef}>
+      <PcapEvidenceDesk mission={mission} role={role} replay={replay} onComplete={vi.fn()} />
+    </div>
+  );
+}
+
 describe("PcapEvidenceDesk", () => {
   it("reveals first-visit evidence one safe line every 420 ms", async () => {
     const onComplete = vi.fn();
@@ -86,10 +135,35 @@ describe("PcapEvidenceDesk", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("renders every line immediately when replaying a visited role", () => {
+  it("renders every line immediately when replaying a completed role", () => {
     render(<PcapEvidenceDesk mission={mission} role="guard" replay onComplete={vi.fn()} />);
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("commits only the first CPD line immediately after Guard replay", () => {
+    const commits: string[] = [];
+    const onCommit = (text: string) => commits.push(text);
+    const { rerender } = render(<CommitProbe role="guard" replay onCommit={onCommit} />);
+    commits.length = 0;
+
+    rerender(<CommitProbe role="cpd" replay={false} onCommit={onCommit} />);
+
+    expect(commits[0]).toContain("明文应用协议候选：1 个");
+    expect(commits[0]).not.toContain("模型与 Token 证据不可用");
+  });
+
+  it("commits only Captain counts immediately after CPD replay", () => {
+    const commits: string[] = [];
+    const onCommit = (text: string) => commits.push(text);
+    const { rerender } = render(<CommitProbe role="cpd" replay onCommit={onCommit} />);
+    commits.length = 0;
+
+    rerender(<CommitProbe role="captain" replay={false} onCommit={onCommit} />);
+
+    expect(commits[0]).toContain("批次计数：已选择 2，成功 2，失败 0，跳过 0");
+    expect(commits[0]).not.toContain("仅有网络流量证据");
+    expect(commits[0]).not.toContain("明文应用协议候选，不证明 LLM 流量");
   });
 
   it("uses no reveal timer when reduced motion is requested", () => {
@@ -100,6 +174,31 @@ describe("PcapEvidenceDesk", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("finishes active playback when reduced motion changes and removes its listener", () => {
+    const preference = installMotionPreference();
+    const onComplete = vi.fn();
+    const { unmount } = render(
+      <PcapEvidenceDesk mission={mission} role="guard" replay={false} onComplete={onComplete} />,
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(1);
+    expect(preference.listenerCount()).toBe(1);
+
+    act(() => preference.setReduced(true));
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => preference.setReduced(false));
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    unmount();
+    expect(preference.mediaQuery.removeEventListener).toHaveBeenCalledTimes(1);
+    expect(preference.listenerCount()).toBe(0);
   });
 
   it("renders Captain findings as distinct confirmed, candidate, and unknown sections", () => {

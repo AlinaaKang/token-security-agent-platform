@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   buildPcapRoleLines,
   type PcapEvidenceSection,
   type PcapInvestigationRole,
 } from "../pcap/investigation";
+import { usePrefersReducedMotion } from "../pcap/usePrefersReducedMotion";
 import type { PcapMissionResult } from "../types";
 
 const LINE_REVEAL_INTERVAL_MS = 420;
@@ -28,26 +29,34 @@ interface PcapEvidenceDeskProps {
   onComplete: () => void;
 }
 
-function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 export function PcapEvidenceDesk({ mission, role, replay, onComplete }: PcapEvidenceDeskProps) {
-  const reducedMotion = prefersReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const lines = useMemo(() => buildPcapRoleLines(mission, role), [mission, role]);
   const immediate = replay || reducedMotion;
-  const [visibleCount, setVisibleCount] = useState(() => immediate ? lines.length : Math.min(1, lines.length));
+  const playbackId = `${mission.mission_id}:${role}:${replay ? "replay" : "first"}`;
+  const firstVisibleCount = immediate ? lines.length : Math.min(1, lines.length);
+  const completedPlaybackIds = useRef(new Set<string>());
+  const [reveal, setReveal] = useState(() => ({ playbackId, visibleCount: firstVisibleCount }));
+  const visibleCount = immediate
+    ? lines.length
+    : reveal.playbackId === playbackId ? reveal.visibleCount : firstVisibleCount;
 
   useEffect(() => {
-    if (immediate) {
-      setVisibleCount(lines.length);
-      if (!replay) onComplete();
+    if (replay || completedPlaybackIds.current.has(playbackId)) {
+      setReveal({ playbackId, visibleCount: lines.length });
       return;
     }
 
-    setVisibleCount(Math.min(1, lines.length));
+    if (reducedMotion) {
+      completedPlaybackIds.current.add(playbackId);
+      setReveal({ playbackId, visibleCount: lines.length });
+      onComplete();
+      return;
+    }
+
+    setReveal({ playbackId, visibleCount: Math.min(1, lines.length) });
     if (lines.length <= 1) {
+      completedPlaybackIds.current.add(playbackId);
       onComplete();
       return;
     }
@@ -55,14 +64,15 @@ export function PcapEvidenceDesk({ mission, role, replay, onComplete }: PcapEvid
     let nextCount = 1;
     const timer = window.setInterval(() => {
       nextCount += 1;
-      setVisibleCount(nextCount);
+      setReveal({ playbackId, visibleCount: nextCount });
       if (nextCount >= lines.length) {
         window.clearInterval(timer);
+        completedPlaybackIds.current.add(playbackId);
         onComplete();
       }
     }, LINE_REVEAL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [immediate, lines, onComplete, replay]);
+  }, [lines, onComplete, playbackId, reducedMotion, replay]);
 
   const visibleLines = lines.slice(0, visibleCount);
   const evidenceLines = visibleLines.filter(({ section }) => section === "evidence");

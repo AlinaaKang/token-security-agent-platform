@@ -9,6 +9,7 @@ import {
   type PcapInvestigationRole,
   type PcapInvestigationRoleState,
 } from "../pcap/investigation";
+import { usePrefersReducedMotion } from "../pcap/usePrefersReducedMotion";
 import type { PcapMissionResult } from "../types";
 import { PcapEvidenceDesk } from "./PcapEvidenceDesk";
 
@@ -43,18 +44,13 @@ const roleStatusLabels: Record<PcapInvestigationRoleState, string> = {
   visited: "已汇报，可回看",
 };
 
-function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 function roleStatusId(role: PcapInvestigationRole): string {
   return `pcap-mascot-role-status-${role}`;
 }
 
 export function PcapMascotTeam({ mission }: { mission: PcapMissionResult }) {
   const [state, setState] = useState(initialPcapInvestigationState);
-  const reducedMotion = prefersReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const presentationActive = state.presentingRole !== null;
 
   const completePresentation = useCallback(() => {
