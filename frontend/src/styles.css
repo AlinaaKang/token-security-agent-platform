@@ -2317,6 +2317,23 @@ td:first-child { min-width: 128px; }
   gap: 8px;
   font-size: 12px;
 }
+.superagent-error > span { min-width: 0; }
+.superagent-error > button {
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 9px;
+  border: 1px solid #d7a4a6;
+  border-radius: 3px;
+  color: var(--blocked);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.superagent-error > button:not(:disabled):hover { color: #fff; background: var(--blocked); }
 .superagent-workspace {
   min-width: 0;
   display: grid;
@@ -2666,14 +2683,15 @@ td:first-child { min-width: 128px; }
 .pcap-batch-counts { min-height: 43px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface-soft); display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .pcap-batch-counts strong { margin-right: auto; font-size: 11px; }
 .pcap-batch-counts span { padding: 3px 6px; color: var(--muted); background: #e8ecea; font-size: 9px; }
-.pcap-capture { min-width: 0; min-height: 68px; padding: 10px 14px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 25px minmax(215px, 1.1fr) minmax(150px, .8fr) auto; align-items: center; gap: 10px; }
+.pcap-capture { min-width: 0; min-height: 68px; padding: 10px 14px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(72px, auto) minmax(215px, 1.1fr) minmax(150px, .8fr) auto; align-items: center; gap: 10px; }
 .pcap-capture:last-child { border-bottom: 0; }
-.pcap-capture-state { color: var(--trusted); }
+.pcap-capture-state { color: var(--trusted); display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 750; white-space: nowrap; }
 .pcap-capture.is-failed .pcap-capture-state { color: var(--blocked); }
 .pcap-capture-identity { min-width: 0; display: grid; gap: 4px; }
 .pcap-capture-identity code { min-width: 0; overflow-wrap: anywhere; font-size: 9px; }
 .pcap-capture-identity small,
 .pcap-visibility { color: var(--muted); font-size: 9px; }
+.pcap-capture-identity small code { color: var(--blocked); font-size: 9px; }
 .pcap-protocols { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }
 .pcap-protocols span { padding: 3px 5px; color: var(--muted); background: var(--surface-soft); font: 700 8px/1.4 Consolas, "Courier New", monospace; }
 .pcap-visibility { text-align: right; white-space: nowrap; }
@@ -2727,7 +2745,7 @@ td:first-child { min-width: 128px; }
   .pcap-report-grid section { border-right: 0; }
   .pcap-report-grid section:nth-last-child(-n + 2) { border-bottom: 1px solid var(--line); }
   .pcap-report-grid section:last-child { border-bottom: 0; }
-  .pcap-capture { grid-template-columns: 25px minmax(0, 1fr); align-items: start; }
+  .pcap-capture { grid-template-columns: minmax(72px, auto) minmax(0, 1fr); align-items: start; }
   .pcap-protocols,
   .pcap-visibility { grid-column: 2; text-align: left; }
   .pcap-mission-status { align-items: flex-start; flex-direction: column; }

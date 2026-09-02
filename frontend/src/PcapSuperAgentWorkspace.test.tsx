@@ -8,6 +8,7 @@ const missionId = "mission_0123456789abcdef0123456789abcdef";
 
 const overview = {
   enabled: true,
+  pending_file_count: 17,
   tool_id: "pcap_batch_triage",
   max_batch_size: 20,
   max_trace_events: 12,
@@ -85,6 +86,12 @@ function response(payload: unknown, ok = true, status = 200) {
   return Promise.resolve({ ok, status, json: async () => payload });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
 function requestUrls() {
   return vi.mocked(fetch).mock.calls.map(([input]) => String(input));
 }
@@ -97,7 +104,9 @@ function requestBodies(path: string) {
 
 function installFetch(options: {
   overview?: typeof overview;
-  missionSequence?: unknown[];
+  overviewResponse?: Promise<typeof overview>;
+  missionSequence?: Array<unknown | Error | Promise<unknown>>;
+  cancelResponse?: Promise<unknown>;
   failPath?: string;
 } = {}) {
   const missions = [...(options.missionSequence ?? [runningMission, completedMission])];
@@ -118,16 +127,27 @@ function installFetch(options: {
         replanning_limit: 1,
       });
     }
-    if (url === "/api/v1/superagent/pcap/overview") return response(options.overview ?? overview);
+    if (url === "/api/v1/superagent/pcap/overview") {
+      return options.overviewResponse
+        ? options.overviewResponse.then((payload) => response(payload))
+        : response(options.overview ?? overview);
+    }
     if (url === "/api/v1/superagent/pcap/authorizations") {
       return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 }, true, 201);
     }
     if (url === "/api/v1/superagent/missions") return response(runningMission, true, 201);
     if (url === `/api/v1/superagent/missions/${missionId}/cancel`) {
-      return response({ ...runningMission, status: "cancelled" });
+      return options.cancelResponse
+        ? options.cancelResponse.then((payload) => response(payload))
+        : response({ ...runningMission, status: "cancelled" });
     }
     if (url === `/api/v1/superagent/missions/${missionId}`) {
-      return response(missions.shift() ?? completedMission);
+      const next = missions.shift() ?? completedMission;
+      if (next instanceof Error) {
+        return response({ error: { message: next.message } }, false, 500);
+      }
+      if (next instanceof Promise) return next.then((payload) => response(payload));
+      return response(next);
     }
     throw new Error(`Unexpected request: ${url}`);
   }));
@@ -135,7 +155,7 @@ function installFetch(options: {
 
 async function openPcapMode() {
   fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
-  await screen.findByText("待处理文件 2318");
+  await screen.findByText("待处理文件 17");
 }
 
 describe("PCAP SuperAgent evidence workspace", () => {
@@ -181,8 +201,24 @@ describe("PCAP SuperAgent evidence workspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("PCAP 证据分诊暂不可用");
+    expect(screen.queryByText(/待处理文件/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "准备开始" })).toBeDisabled();
     expect(requestBodies("/pcap/authorizations")).toHaveLength(0);
+  });
+
+  it("shows no pending count until the dynamic overview resolves", async () => {
+    cleanup();
+    vi.unstubAllGlobals();
+    const pendingOverview = deferred<typeof overview>();
+    installFetch({ overviewResponse: pendingOverview.promise });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
+
+    expect(screen.queryByText(/待处理文件/)).not.toBeInTheDocument();
+    expect(screen.getByText("正在读取证据目录")).toBeVisible();
+
+    pendingOverview.resolve(overview);
+    expect(await screen.findByText("待处理文件 17")).toBeVisible();
   });
 
   it("enforces the public max-files range before showing consent", async () => {
@@ -223,6 +259,29 @@ describe("PCAP SuperAgent evidence workspace", () => {
     expect(document.body.textContent).not.toMatch(/LLM 检测|越狱检测|CPD 检测|Token 检测/);
   });
 
+  it("offers an accessible retry after polling fails and resumes to terminal", async () => {
+    vi.useFakeTimers();
+    cleanup();
+    vi.unstubAllGlobals();
+    installFetch({ missionSequence: [new Error(PRIVATE_SENTINEL), completedMission] });
+    render(<App />);
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    fireEvent.click(screen.getByRole("button", { name: "PCAP 证据分诊" }));
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    fireEvent.click(screen.getByRole("button", { name: "准备开始" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认并开始" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByRole("alert")).toHaveTextContent("无法刷新 PCAP 任务状态，请重试。");
+    expect(screen.getByRole("button", { name: "重试刷新" })).toBeEnabled();
+    expect(document.body.textContent).not.toContain(PRIVATE_SENTINEL);
+
+    fireEvent.click(screen.getByRole("button", { name: "重试刷新" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByText("任务已完成")).toBeVisible();
+  });
+
   it("restores only from the PCAP key and resumes polling without authorizing", async () => {
     window.sessionStorage.setItem("token-security-superagent-mission-id", "mission_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     window.sessionStorage.setItem("token-security-superagent-pcap-mission-id", missionId);
@@ -254,6 +313,37 @@ describe("PCAP SuperAgent evidence workspace", () => {
     expect(window.sessionStorage.getItem("token-security-superagent-mission-id")).toBe("mission_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   });
 
+  it("keeps a mission cancelled when an earlier poll resolves late", async () => {
+    vi.useFakeTimers();
+    cleanup();
+    vi.unstubAllGlobals();
+    const stalePoll = deferred<unknown>();
+    const cancelResult = deferred<unknown>();
+    installFetch({
+      missionSequence: [stalePoll.promise],
+      cancelResponse: cancelResult.promise,
+    });
+    render(<App />);
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    fireEvent.click(screen.getByRole("button", { name: "PCAP 证据分诊" }));
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    fireEvent.click(screen.getByRole("button", { name: "准备开始" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认并开始" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    act(() => { vi.advanceTimersByTime(1000); });
+
+    fireEvent.click(screen.getByRole("button", { name: "取消任务" }));
+    await act(async () => {
+      cancelResult.resolve({ ...runningMission, status: "cancelled" });
+      await Promise.resolve();
+      stalePoll.resolve(runningMission);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("任务已取消")).toBeVisible();
+    expect(screen.queryByText("任务运行中")).not.toBeInTheDocument();
+  });
+
   it("uses fixed public error copy and does not render backend details", async () => {
     cleanup();
     vi.unstubAllGlobals();
@@ -264,6 +354,7 @@ describe("PCAP SuperAgent evidence workspace", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("PCAP 证据分诊暂不可用");
     expect(alert).not.toHaveTextContent(PRIVATE_SENTINEL);
+    expect(screen.queryByText(/待处理文件/)).not.toBeInTheDocument();
   });
 
   it("shows complete public evidence status without exposing private capture fields", async () => {
@@ -276,6 +367,13 @@ describe("PCAP SuperAgent evidence workspace", () => {
     const evidence = screen.getByRole("region", { name: "PCAP 批次证据" });
     expect(within(evidence).getByText("成功 1")).toBeVisible();
     expect(within(evidence).getByText("失败 1")).toBeVisible();
+    const failedCapture = within(evidence)
+      .getByText("capture_fedcba9876543210fedcba9876543210")
+      .closest("article");
+    expect(failedCapture).not.toBeNull();
+    expect(within(failedCapture!).getByText("检查失败")).toBeVisible();
+    expect(within(failedCapture!).getByText("inspection_failed")).toBeVisible();
+    expect(within(failedCapture!).queryByText("证据不足")).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain(PRIVATE_SENTINEL);
   });
 });

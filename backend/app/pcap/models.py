@@ -214,6 +214,7 @@ class PcapMissionResult(_FrozenPcapPublicModel):
 
 class PcapOverview(_FrozenPcapPublicModel):
     enabled: bool
+    pending_file_count: int = Field(ge=0, le=2_147_483_647, strict=True)
     tool_id: PcapToolId = PcapToolId.PCAP_BATCH_TRIAGE
     max_batch_size: Literal[20] = 20
     max_trace_events: Literal[12] = 12

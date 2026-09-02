@@ -90,6 +90,10 @@ function installFetch(mission: unknown = blockMission) {
   }));
 }
 
+function requestUrls() {
+  return vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input), window.location.origin).pathname);
+}
+
 describe("bounded SuperAgent workspace", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/super-agent");
@@ -112,7 +116,7 @@ describe("bounded SuperAgent workspace", () => {
     expect(screen.getByLabelText("工作模式")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "启动自主任务" })).toBeEnabled();
     expect(screen.getByText("最多 3 次工具调用")).toBeInTheDocument();
-    expect(fetch).not.toHaveBeenCalledWith("/api/v1/superagent/pcap/overview", expect.anything());
+    expect(requestUrls()).not.toContain("/api/v1/superagent/pcap/overview");
   });
 
   it("renders the auditable ReAct trace and bound execution receipts", async () => {

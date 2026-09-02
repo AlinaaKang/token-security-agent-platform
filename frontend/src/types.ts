@@ -334,6 +334,7 @@ export type PcapPublicNarrative =
 
 export interface PcapOverview {
   enabled: boolean;
+  pending_file_count: number;
   tool_id: "pcap_batch_triage";
   max_batch_size: 20;
   max_trace_events: 12;

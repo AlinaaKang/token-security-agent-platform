@@ -9,10 +9,11 @@ import {
   LoaderCircle,
   Network,
   Play,
+  RefreshCw,
   ShieldCheck,
   Square,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
 import type {
@@ -24,7 +25,6 @@ import type {
 } from "../types";
 
 const PCAP_MISSION_STORAGE_KEY = "token-security-superagent-pcap-mission-id";
-const PCAP_INVENTORY_COUNT = 2318;
 const POLL_INTERVAL_MS = 1000;
 
 const terminalStatuses = new Set<PcapMissionStatus>(["completed", "cancelled", "degraded"]);
@@ -80,14 +80,19 @@ function rememberMissionId(missionId: string | null) {
 
 function CaptureRow({ capture }: { capture: PcapCaptureEvidence }) {
   const protocols = Object.entries(capture.protocol_counts);
+  const failed = capture.status === "failed";
+  const skipped = capture.status === "skipped";
   return (
     <article className={`pcap-capture is-${capture.status}`}>
-      <span className="pcap-capture-state" aria-hidden="true">
-        {capture.status === "succeeded" ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}
+      <span className="pcap-capture-state">
+        {failed ? <CircleAlert size={17} aria-hidden="true" /> : skipped ? <Ban size={17} aria-hidden="true" /> : <CheckCircle2 size={17} aria-hidden="true" />}
+        <span>{failed ? "检查失败" : skipped ? "已跳过" : "检查成功"}</span>
       </span>
       <div className="pcap-capture-identity">
         <code>{capture.capture_id}</code>
-        <small>{capture.packet_count} 个数据包 · {capture.capability === "traffic_only" ? "仅流量证据" : capture.capability === "token_eligible" ? "明文应用协议可见" : "证据不足"}</small>
+        <small>
+          {capture.packet_count} 个数据包 · {failed ? <code>{capture.error_code ?? "未提供错误代码"}</code> : capture.capability === "traffic_only" ? "仅流量证据" : capture.capability === "token_eligible" ? "明文应用协议可见" : "证据不足"}
+        </small>
       </div>
       <div className="pcap-protocols" aria-label="协议计数">
         {protocols.length ? protocols.map(([protocol, count]) => (
@@ -189,6 +194,7 @@ function MissionWorkspace({
 
 export function PcapSuperAgentWorkspace() {
   const [overviewEnabled, setOverviewEnabled] = useState<boolean | null>(null);
+  const [pendingFileCount, setPendingFileCount] = useState<number | null>(null);
   const [maxBatchSize, setMaxBatchSize] = useState(20);
   const [maxFiles, setMaxFiles] = useState("20");
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -196,6 +202,9 @@ export function PcapSuperAgentWorkspace() {
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pollFailed, setPollFailed] = useState(false);
+  const [pollRevision, setPollRevision] = useState(0);
+  const pollEpochRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -208,11 +217,17 @@ export function PcapSuperAgentWorkspace() {
       if (!active) return;
       if (overviewResult.status === "fulfilled") {
         setOverviewEnabled(overviewResult.value.enabled);
+        setPendingFileCount(
+          overviewResult.value.enabled
+            ? overviewResult.value.pending_file_count
+            : null,
+        );
         setMaxBatchSize(overviewResult.value.max_batch_size);
         setMaxFiles(String(overviewResult.value.max_batch_size));
         if (!overviewResult.value.enabled) setError("PCAP 证据分诊暂不可用");
       } else {
         setOverviewEnabled(false);
+        setPendingFileCount(null);
         setError("PCAP 证据分诊暂不可用");
       }
       if (missionResult.status === "fulfilled" && missionResult.value) {
@@ -236,18 +251,25 @@ export function PcapSuperAgentWorkspace() {
     if (!missionId || !missionStatus || terminalStatuses.has(missionStatus)) return;
     let active = true;
     let timer: number | undefined;
+    const pollEpoch = ++pollEpochRef.current;
+    const isCurrentPoll = () => active && pollEpochRef.current === pollEpoch;
     const pollMission = async () => {
+      if (!isCurrentPoll()) return;
       try {
         const result = await api.getSuperAgentMission(missionId);
-        if (!active) return;
+        if (!isCurrentPoll()) return;
         if (result.objective !== "triage_pcap_evidence") throw new Error("unexpected mission type");
+        setPollFailed(false);
         setMission(result);
         if (result.status === "cancelled") rememberMissionId(null);
         if (!terminalStatuses.has(result.status)) {
           timer = window.setTimeout(pollMission, POLL_INTERVAL_MS);
         }
       } catch {
-        if (active) setError("无法刷新 PCAP 任务状态，请重试。");
+        if (isCurrentPoll()) {
+          setPollFailed(true);
+          setError("无法刷新 PCAP 任务状态，请重试。");
+        }
       }
     };
     timer = window.setTimeout(pollMission, POLL_INTERVAL_MS);
@@ -255,7 +277,7 @@ export function PcapSuperAgentWorkspace() {
       active = false;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [missionId, missionStatus]);
+  }, [missionId, missionStatus, pollRevision]);
 
   const parsedMaxFiles = Number(maxFiles);
   const validMaxFiles = /^\d+$/.test(maxFiles) && Number.isInteger(parsedMaxFiles) && parsedMaxFiles >= 1 && parsedMaxFiles <= maxBatchSize;
@@ -266,6 +288,8 @@ export function PcapSuperAgentWorkspace() {
     if (!canPrepare || !confirmationOpen) return;
     setActionPending(true);
     setError(null);
+    setPollFailed(false);
+    pollEpochRef.current += 1;
     setMission(null);
     rememberMissionId(null);
     try {
@@ -286,6 +310,8 @@ export function PcapSuperAgentWorkspace() {
 
   async function cancelMission() {
     if (!mission || terminalStatuses.has(mission.status) || actionPending) return;
+    pollEpochRef.current += 1;
+    setPollFailed(false);
     setActionPending(true);
     setError(null);
     try {
@@ -294,9 +320,17 @@ export function PcapSuperAgentWorkspace() {
       rememberMissionId(null);
     } catch {
       setError("无法取消 PCAP 任务，请重试。");
+      setPollRevision((revision) => revision + 1);
     } finally {
       setActionPending(false);
     }
+  }
+
+  function retryPolling() {
+    if (!mission || terminalStatuses.has(mission.status) || actionPending) return;
+    setPollFailed(false);
+    setError(null);
+    setPollRevision((revision) => revision + 1);
   }
 
   return (
@@ -304,7 +338,13 @@ export function PcapSuperAgentWorkspace() {
       <div className="pcap-authorization-track">
         <section className="pcap-overview-stage">
           <div className="pcap-stage-index"><span>阶段 1</span><strong>范围概览</strong></div>
-          <div className="pcap-overview-metric"><FileSearch size={20} /><span><small>证据目录</small><strong>待处理文件 {PCAP_INVENTORY_COUNT}</strong></span></div>
+          <div className="pcap-overview-metric">
+            <FileSearch size={20} />
+            <span>
+              <small>证据目录</small>
+              {loading ? <strong role="status">正在读取证据目录</strong> : overviewEnabled && pendingFileCount !== null ? <strong>待处理文件 {pendingFileCount}</strong> : <strong>证据目录不可用</strong>}
+            </span>
+          </div>
           <p>每次仅处理有界文件批次，公开结果不包含文件名、路径、载荷或摘要。</p>
           <label>
             <span>本次最多处理文件数</span>
@@ -345,7 +385,12 @@ export function PcapSuperAgentWorkspace() {
         </section>
       </div>
 
-      {error ? <div className="superagent-error" role="alert"><CircleAlert size={16} />{error}</div> : null}
+      {error ? (
+        <div className="superagent-error" role="alert">
+          <CircleAlert size={16} /><span>{error}</span>
+          {pollFailed ? <button type="button" onClick={retryPolling}><RefreshCw size={14} />重试刷新</button> : null}
+        </div>
+      ) : null}
       {mission ? <MissionWorkspace mission={mission} actionPending={actionPending} onCancel={cancelMission} /> : (
         <section className="pcap-empty-state">
           <Network size={25} /><strong>等待有界批次任务</strong><span>范围概览与执行授权保持分离。</span>

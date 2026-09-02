@@ -125,7 +125,7 @@ def _summary(batch_id: str) -> PcapBatchSummary:
 
 class SyntheticExecutor:
     def overview(self) -> PcapOverview:
-        return PcapOverview(enabled=True)
+        return PcapOverview(enabled=True, pending_file_count=2318)
 
     def execute(self, batch_id: str, _max_files: int) -> PcapBatchSummary:
         return _summary(batch_id)
@@ -324,6 +324,7 @@ def test_pcap_mission_requires_one_time_authorization_and_supports_polling() -> 
     assert capabilities.json() == overview.json()
     assert overview.json() == {
         "enabled": True,
+        "pending_file_count": 2318,
         "tool_id": "pcap_batch_triage",
         "max_batch_size": 20,
         "max_trace_events": 12,

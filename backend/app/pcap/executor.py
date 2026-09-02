@@ -4,6 +4,7 @@ import ctypes
 import json
 import os
 import re
+import stat
 import subprocess
 from collections.abc import Callable
 from ctypes import wintypes
@@ -16,6 +17,8 @@ from app.pcap.models import PcapBatchSummary, PcapOverview
 
 _BATCH_ID = re.compile(r"^batch_[0-9a-f]{32}$")
 _MAX_FILES = 20
+_MAX_PENDING_FILE_COUNT = 2_147_483_647
+_PCAP_EXTENSIONS = frozenset({".pcap", ".pcapng"})
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _FILE_ADD_FILE = 0x0002
 _FILE_ADD_SUBDIRECTORY = 0x0004
@@ -76,7 +79,17 @@ class PcapBatchExecutor:
         self._runner = runner
 
     def overview(self) -> PcapOverview:
-        return PcapOverview(enabled=True)
+        try:
+            pending_file_count = _count_pending_files(
+                self._config.quarantine_root / "input"
+            )
+            return PcapOverview(
+                enabled=True, pending_file_count=pending_file_count
+            )
+        except PcapToolFailed:
+            raise
+        except Exception:
+            raise PcapToolFailed() from None
 
     def execute(self, batch_id: str, max_files: int) -> PcapBatchSummary:
         _validate_batch_id(batch_id)
@@ -164,6 +177,39 @@ def _validate_batch_id(batch_id: str) -> None:
 def _validate_max_files(max_files: int) -> None:
     if type(max_files) is not int or not 1 <= max_files <= _MAX_FILES:
         raise ValueError("max_files must be an integer between 1 and 20")
+
+
+def _count_pending_files(input_root: Path) -> int:
+    root_metadata = input_root.lstat()
+    if _is_reparse_metadata(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
+        return 0
+
+    count = 0
+    pending_directories = [input_root]
+    while pending_directories:
+        directory = pending_directories.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                metadata = entry.stat(follow_symlinks=False)
+                if entry.is_symlink() or _is_reparse_metadata(metadata):
+                    continue
+                if stat.S_ISDIR(metadata.st_mode):
+                    pending_directories.append(Path(entry.path))
+                elif (
+                    stat.S_ISREG(metadata.st_mode)
+                    and Path(entry.name).suffix.lower() in _PCAP_EXTENSIONS
+                ):
+                    count += 1
+                    if count > _MAX_PENDING_FILE_COUNT:
+                        raise PcapToolFailed()
+    return count
+
+
+def _is_reparse_metadata(metadata: os.stat_result) -> bool:
+    return bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & _FILE_ATTRIBUTE_REPARSE_POINT
+    )
 
 
 def _open_quarantine_root(quarantine_root: Path) -> wintypes.HANDLE:

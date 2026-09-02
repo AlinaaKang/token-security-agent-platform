@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import builtins
 import inspect
 import json
 import msvcrt
@@ -447,16 +448,61 @@ def test_executor_rejects_a_reparse_point_for_the_configured_state_directory(
     assert not (outside / f"{batch_id()}.cancel").exists()
 
 
-def test_overview_does_not_open_capture_contents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_overview_counts_nested_mixed_case_regular_candidates_without_opening_contents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = config_fixture(tmp_path)
-    (config.quarantine_root / "input" / "placeholder.pcap").write_bytes(b"not a pcap")
+    input_root = config.quarantine_root / "input"
+    nested = input_root / "nested"
+    nested.mkdir()
+    (input_root / "first.pcap").write_bytes(b"not a pcap")
+    (input_root / "SECOND.PCAPNG").write_bytes(b"not a pcap")
+    (nested / "third.PCAP").write_bytes(b"not a pcap")
+    (nested / "ignored.txt").write_text("not a capture", encoding="utf-8")
+    (input_root / "directory.pcap").mkdir()
 
-    def forbidden(*args: object, **kwargs: object) -> bytes:
+    def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("overview opened capture content")
 
     monkeypatch.setattr(Path, "read_bytes", forbidden)
+    monkeypatch.setattr(Path, "read_text", forbidden)
+    monkeypatch.setattr(builtins, "open", forbidden)
 
     overview = PcapBatchExecutor(config=config, runner=RecordingRunner()).overview()
 
     assert overview.enabled is True
     assert overview.max_batch_size == 20
+    assert overview.pending_file_count == 3
+
+
+def test_overview_skips_directory_junctions(tmp_path: Path) -> None:
+    config = config_fixture(tmp_path)
+    input_root = config.quarantine_root / "input"
+    (input_root / "regular.pcap").touch()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "outside.pcap").touch()
+    junction = input_root / "linked-directory"
+    make_directory_junction(junction, outside)
+    try:
+        overview = PcapBatchExecutor(config=config, runner=RecordingRunner()).overview()
+    finally:
+        junction.rmdir()
+
+    assert overview.pending_file_count == 1
+
+
+def test_overview_skips_file_symbolic_links(tmp_path: Path) -> None:
+    config = config_fixture(tmp_path)
+    input_root = config.quarantine_root / "input"
+    (input_root / "regular.pcap").touch()
+    outside_capture = tmp_path / "outside.pcap"
+    outside_capture.touch()
+    file_link = input_root / "linked-file.pcap"
+    make_file_symbolic_link(file_link, outside_capture)
+    try:
+        overview = PcapBatchExecutor(config=config, runner=RecordingRunner()).overview()
+    finally:
+        file_link.unlink(missing_ok=True)
+
+    assert overview.pending_file_count == 1

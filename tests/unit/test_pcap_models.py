@@ -9,6 +9,7 @@ from app.pcap.models import (
     PcapCaptureEvidence,
     PcapMissionResult,
     PcapMissionStatus,
+    PcapOverview,
     PcapToolId,
     PcapTraceEvent,
 )
@@ -273,3 +274,12 @@ def test_trace_event_rejects_private_fields_and_sequence_over_twelve() -> None:
                 "payload": "PRIVATE_SENTINEL",
             }
         )
+
+
+def test_overview_requires_a_bounded_nonnegative_pending_file_count() -> None:
+    overview = PcapOverview(enabled=True, pending_file_count=3)
+
+    assert overview.pending_file_count == 3
+    for invalid in (-1, True, 2_147_483_648):
+        with pytest.raises(ValidationError):
+            PcapOverview(enabled=True, pending_file_count=invalid)
