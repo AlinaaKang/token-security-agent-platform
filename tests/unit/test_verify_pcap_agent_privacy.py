@@ -273,6 +273,11 @@ def test_verifier_rejects_server_accepting_prompt_only_pcap_fields(
     assert result.returncode == 1
     assert "privacy_violation_count=1" in result.stdout
     assert "pcap_auth_" not in result.stdout + result.stderr
+    assert server.requests[3][2] == {
+        "objective": "triage_pcap_evidence",
+        "authorization_id": "pcap_auth_00000000000000000000000000000000",
+        "scenario_kind": "frozen",
+    }
 
 
 def test_verifier_rejects_each_private_report_or_state_pattern(

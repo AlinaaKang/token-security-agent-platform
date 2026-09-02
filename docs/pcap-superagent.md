@@ -61,7 +61,7 @@ python scripts/verify_pcap_agent_privacy.py --base-url http://127.0.0.1:8000 --r
 ```
 
 验证器只读取两个 count-only PCAP 概览，并发送四个必然失败的验证请求：无效授权、
-PCAP objective 混入 Prompt 专属字段的无效任务创建、未知任务恢复和未知任务取消。它不签发有效授权、不启动
+PCAP objective 混入 Prompt-only 字段的无效任务创建、未知任务恢复和未知任务取消。它不签发有效授权、不启动
 任务，也不读取捕获内容。成功输出固定为：
 
 ```text
