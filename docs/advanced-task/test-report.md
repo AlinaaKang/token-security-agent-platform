@@ -108,3 +108,36 @@ api_violations=0
 ```
 
 Playwright 在 1440x900 和 390x844 验证 `/super-agent`，文档宽度分别等于视口宽度；安全回执为 0，整页刷新后通过脱敏 mission ID 恢复且回执仍为 0；拦截回执为 3，减少动效下事件动画为 `none`。同时回归 `/analyze`、`/lab` 和 `/challenge`，四个路由控制台均为 0 error。验收截图只保留在未跟踪临时目录，未写入报告或 Git。
+
+## 10. PCAP SuperAgent 合成验收
+
+2026-09-02 在当前分支使用项目 Python 3.12.13，并将 `PYTHONPATH` 显式指向当前
+worktree 的 `backend`，观察到后端全量 `751 passed，4 skipped，0 failed`。四个跳过项
+分别是未配置真实 GPU 模型、当前 Windows 账户不能创建一个 inspector 文件符号链接，
+以及两个 executor 文件符号链接用例；无需该权限的 junction 边界用例已执行并通过。
+
+新增 PCAP Agent 隐私验证器测试观察到 `6 passed，0 failed`。验证器单独连接本机合成
+HTTP fixture 时只输出以下聚合：
+
+```text
+pcap_agent_privacy_verification=passed
+checked_endpoint_count=6
+privacy_violation_count=0
+tracked_private_artifact_count=0
+```
+
+前端全量观察到 `23` 个测试文件、`229 passed，0 failed`；生产构建观察到
+`1622 modules transformed` 并成功生成产物。现有 Docker 机械隔离验证器观察到无网络、
+只读根文件系统、非 root、全部 capability 丢弃、`no-new-privileges`、资源限制全部通过，
+`payload_leaks=0` 且 `residual_containers=0`。
+
+缓存 Playwright 与本机构建产物的合成浏览器验收覆盖 `/analyze`、`/super-agent` 和
+`/challenge` 三个路由。原三关挑战完成 `3/3`；PCAP 在 `1440x900` 与 `390x844` 下均完成
+两次点击授权、取消和三公仔证据回放，两个视口的横向溢出均为 `0`，浏览器控制台错误为
+`0`。所有浏览器 API 响应均为合成公开字段，未连接真实 PCAP 服务。
+
+本轮没有新的明确 UI 授权，因此未读取或处理真实 PCAP，未执行真实 20 文件批次，也未
+验收真实文件间取消、成功跳过、失败重试或新增文件续跑。这些项目保持 pending，必须在
+后续获得一次新的 `确认并开始` UI 授权后执行；不得直接调用批处理脚本替代授权。第一版
+仍不提供 Prompt 恢复、Entropy-CPD 或 Token 分析，不声明 PCAP 检测到 jailbreak 或
+异常 Token。

@@ -24,6 +24,13 @@ PCAP、RAG、ReAct、BEAST 和 AutoDAN-HGA 不进入基础任务算法与冻结 
 
 构建、机械隔离验证、文件放置、三档结论和固定失败处理见 [PCAP 安全预检操作指南](docs/pcap-safe-preflight.md)。
 
+## 可选 PCAP SuperAgent
+
+`/super-agent` 增加了默认关闭的 PCAP 网络证据分诊模式。该模式只在用户先点击
+`准备开始`、再点击 `确认并开始` 后签发一次性授权；Agent 仅接收匿名计数、协议可见性
+和固定能力类别。启用配置、Docker 隔离门禁、取消/续跑、隐私验证和比赛用语见
+[PCAP SuperAgent 操作与演示指南](docs/pcap-superagent.md)。
+
 ## 当前验证
 
 - 后端：617 passed；1 个本机真实 GPU 集成测试因未配置模型而 skipped，1 个 Windows 符号链接测试因当前账户无相应权限而 skipped；无需该权限的目录 junction 边界测试已通过。
@@ -99,3 +106,4 @@ CPD 算法和首批数据唯一参考为 CPDonline，固定 commit：
 - [Token 侦探挑战](docs/token-detective-challenge.md)
 - [挑战任务：有界 SuperAgent](docs/challenge-task.md)
 - [PCAP 安全预检操作指南](docs/pcap-safe-preflight.md)
+- [PCAP SuperAgent 操作与演示指南](docs/pcap-superagent.md)
