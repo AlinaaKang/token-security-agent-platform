@@ -145,9 +145,14 @@ def test_executor_uses_only_configured_paths_and_fixed_arguments(tmp_path: Path)
         str(config.inspect_script),
         "-BatchId",
         batch_id(),
+        "-StateId",
+        executor.checkpoint_scope_id,
         "-MaxFiles",
         "20",
     ]
+    assert executor.checkpoint_scope_id.startswith("state_")
+    assert len(executor.checkpoint_scope_id) == len("state_") + 32
+    assert batch_id() not in executor.checkpoint_scope_id
     assert runner.kwargs == {
         "capture_output": True,
         "check": False,

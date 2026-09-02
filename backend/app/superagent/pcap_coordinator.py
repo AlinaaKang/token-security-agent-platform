@@ -63,6 +63,8 @@ class PcapMissionCoordinator:
         self._lock = RLock()
         self._closed = False
         self._active_mission_ids: set[str] = set()
+        self._cancel_requested_mission_ids: set[str] = set()
+        self._cancel_failed_mission_ids: set[str] = set()
 
     @property
     def mission_store(self) -> SuperAgentMissionStore:
@@ -72,8 +74,8 @@ class PcapMissionCoordinator:
         with self._lock:
             if self._closed:
                 raise RuntimeError("pcap_coordinator_closed")
-            pcap_capacity = max(self._mission_store.capacity - 1, 0)
-            if len(self._active_mission_ids) >= pcap_capacity:
+            self._authorization_store.assert_usable(request.authorization_id)
+            if self._active_mission_ids:
                 raise RuntimeError("pcap_mission_capacity_reached")
             authorization = self._authorization_store.consume(
                 request.authorization_id
@@ -109,28 +111,10 @@ class PcapMissionCoordinator:
             try:
                 self._executor.request_cancel(current.batch_id)
             except Exception:
-                degraded = _snapshot(
-                    mission_id=current.mission_id,
-                    batch_id=current.batch_id,
-                    status=PcapMissionStatus.DEGRADED,
-                    events=_DEGRADED_EVENTS,
-                    report=_FALLBACK_REPORT,
-                    created_at=current.created_at,
-                )
-                self._mission_store.put(degraded)
-                self._active_mission_ids.discard(mission_id)
-                return degraded
-            cancelled = _snapshot(
-                mission_id=current.mission_id,
-                batch_id=current.batch_id,
-                status=PcapMissionStatus.CANCELLED,
-                events=_cancelled_events(),
-                report=_FALLBACK_REPORT,
-                created_at=current.created_at,
-            )
-            self._mission_store.put(cancelled)
-            self._active_mission_ids.discard(mission_id)
-            return cancelled
+                self._cancel_failed_mission_ids.add(mission_id)
+                return current
+            self._cancel_requested_mission_ids.add(mission_id)
+            return current
 
     def close(self) -> None:
         with self._lock:
@@ -140,7 +124,7 @@ class PcapMissionCoordinator:
             active_mission_ids = tuple(self._active_mission_ids)
         for mission_id in active_mission_ids:
             self.cancel(mission_id)
-        self._pool.shutdown(wait=True, cancel_futures=True)
+        self._pool.shutdown(wait=True, cancel_futures=False)
 
     def _run(
         self,
@@ -153,11 +137,19 @@ class PcapMissionCoordinator:
             self._run_mission(mission_id, batch_id, max_files, created_at)
         except Exception:
             try:
+                with self._lock:
+                    cancelled = mission_id in self._cancel_requested_mission_ids
                 self._finish(
                     mission_id=mission_id,
                     batch_id=batch_id,
-                    status=PcapMissionStatus.DEGRADED,
-                    events=_DEGRADED_EVENTS,
+                    status=(
+                        PcapMissionStatus.CANCELLED
+                        if cancelled
+                        else PcapMissionStatus.DEGRADED
+                    ),
+                    events=(
+                        _cancelled_events() if cancelled else _DEGRADED_EVENTS
+                    ),
                     report=_FALLBACK_REPORT,
                     summary=None,
                     created_at=created_at,
@@ -184,6 +176,17 @@ class PcapMissionCoordinator:
             ):
                 self._active_mission_ids.discard(mission_id)
                 return
+            if mission_id in self._cancel_failed_mission_ids:
+                self._finish(
+                    mission_id=mission_id,
+                    batch_id=batch_id,
+                    status=PcapMissionStatus.DEGRADED,
+                    events=_DEGRADED_EVENTS,
+                    report=_FALLBACK_REPORT,
+                    summary=None,
+                    created_at=created_at,
+                )
+                return
             self._mission_store.put(
                 _snapshot(
                     mission_id=mission_id,
@@ -199,11 +202,25 @@ class PcapMissionCoordinator:
         if not isinstance(summary, PcapBatchSummary):
             raise ValueError("pcap_executor_result_invalid")
 
+        with self._lock:
+            cancelled = mission_id in self._cancel_requested_mission_ids
+            cancel_failed = mission_id in self._cancel_failed_mission_ids
+        degraded = cancel_failed or summary.failed_count > 0
         self._finish(
             mission_id=mission_id,
             batch_id=batch_id,
-            status=PcapMissionStatus.COMPLETED,
-            events=_terminal_events(succeeded=True, summary=summary),
+            status=(
+                PcapMissionStatus.CANCELLED
+                if cancelled
+                else PcapMissionStatus.DEGRADED
+                if degraded
+                else PcapMissionStatus.COMPLETED
+            ),
+            events=(
+                _cancelled_events()
+                if cancelled
+                else _terminal_events(succeeded=not degraded, summary=summary)
+            ),
             report=_report_for(summary),
             summary=summary,
             created_at=created_at,
@@ -228,6 +245,13 @@ class PcapMissionCoordinator:
             ):
                 self._active_mission_ids.discard(mission_id)
                 return
+            if mission_id in self._cancel_requested_mission_ids:
+                status = PcapMissionStatus.CANCELLED
+                events = _cancelled_events()
+                report = _FALLBACK_REPORT
+            elif mission_id in self._cancel_failed_mission_ids:
+                status = PcapMissionStatus.DEGRADED
+                events = _DEGRADED_EVENTS
             self._mission_store.put(
                 _snapshot(
                     mission_id=mission_id,
@@ -239,6 +263,8 @@ class PcapMissionCoordinator:
                     created_at=created_at,
                 )
             )
+            self._cancel_requested_mission_ids.discard(mission_id)
+            self._cancel_failed_mission_ids.discard(mission_id)
             self._active_mission_ids.discard(mission_id)
 
 

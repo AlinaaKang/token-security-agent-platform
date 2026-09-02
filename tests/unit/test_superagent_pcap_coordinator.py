@@ -24,20 +24,22 @@ from app.superagent.service import SuperAgentService
 from app.superagent.store import SuperAgentMissionStore
 
 
-def _summary(*, token_eligible: bool = False) -> PcapBatchSummary:
+def _summary(
+    *, token_eligible: bool = False, failed: bool = False
+) -> PcapBatchSummary:
     return PcapBatchSummary.model_validate(
         {
             "batch_id": "batch_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "selected_count": 1,
-            "succeeded_count": 1,
-            "failed_count": 0,
+            "succeeded_count": 0 if failed else 1,
+            "failed_count": 1 if failed else 0,
             "skipped_count": 0,
             "captures": [
                 {
                     "capture_id": "capture_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                    "status": "succeeded",
-                    "packet_count": 4,
-                    "protocol_counts": {"http": 1, "tls": 3},
+                    "status": "failed" if failed else "succeeded",
+                    "packet_count": 0 if failed else 4,
+                    "protocol_counts": {} if failed else {"http": 1, "tls": 3},
                     "visibility": {
                         "plaintext_application_protocol_observed": token_eligible,
                         "encrypted_transport_observed": True,
@@ -45,8 +47,11 @@ def _summary(*, token_eligible: bool = False) -> PcapBatchSummary:
                         "quic_observed": False,
                     },
                     "capability": (
-                        "token_eligible" if token_eligible else "traffic_only"
+                        None
+                        if failed
+                        else "token_eligible" if token_eligible else "traffic_only"
                     ),
+                    "error_code": "inspector_failed" if failed else None,
                 }
             ],
         }
@@ -91,6 +96,13 @@ class InvalidThenValidExecutor(BlockingExecutor):
         if len(self.executions) == 1:
             return object()
         return summary
+
+
+class CleanupGatedExecutor(BlockingExecutor):
+    def request_cancel(self, batch_id: str) -> None:
+        if self.cancel_failure:
+            raise PcapToolFailed()
+        self.cancelled.append(batch_id)
 
 
 def _request(authorization_id: str) -> PcapTriageMissionRequest:
@@ -270,47 +282,73 @@ def test_tool_failure_degrades_to_the_fixed_public_report() -> None:
     assert degraded.events[-1].status == "failed"
 
 
-def test_cancel_sets_marker_and_cancelled_state_without_worker_overwrite() -> None:
-    executor = BlockingExecutor(failure=True)
+def test_valid_summary_with_file_failures_is_degraded() -> None:
+    executor = BlockingExecutor(summary=_summary(failed=True))
     coordinator, authorizations, store = _coordinator(executor)
     receipt = authorizations.issue(max_files=1)
-    untouched = PcapMissionResult(
-        mission_id="mission_cccccccccccccccccccccccccccccccc",
-        status="queued",
-        batch_id="batch_cccccccccccccccccccccccccccccccc",
-        events=(),
-        report={},
-        limitations=("no_packet_payload_retained",),
-        created_at="2026-09-01T00:00:00Z",
+    try:
+        queued = coordinator.start(_request(receipt.authorization_id))
+        assert executor.started.wait(timeout=3)
+        executor.release.set()
+        degraded = _wait_for_status(
+            store, queued.mission_id, PcapMissionStatus.DEGRADED
+        )
+    finally:
+        executor.release.set()
+        coordinator.close()
+
+    assert degraded.summary is not None
+    assert degraded.summary.failed_count == 1
+
+
+def test_cancel_waits_for_worker_cleanup_before_terminal_state_and_restarts() -> None:
+    executor = CleanupGatedExecutor()
+    authorizations = PcapAuthorizationStore()
+    store = SuperAgentMissionStore()
+    coordinator = PcapMissionCoordinator(
+        authorization_store=authorizations,
+        executor=executor,
+        mission_store=store,
     )
-    store.put(untouched)
+    receipt = authorizations.issue(max_files=1)
+    retryable_receipt = authorizations.issue(max_files=1)
     try:
         queued = coordinator.start(_request(receipt.authorization_id))
         assert executor.started.wait(timeout=3)
 
-        cancelled = coordinator.cancel(queued.mission_id)
-        after_worker = _wait_for_status(
+        acknowledged = coordinator.cancel(queued.mission_id)
+        assert acknowledged.status is PcapMissionStatus.RUNNING
+        with pytest.raises(RuntimeError, match="pcap_mission_capacity_reached"):
+            coordinator.start(_request(retryable_receipt.authorization_id))
+
+        executor.release.set()
+        cancelled = _wait_for_status(
             store, queued.mission_id, PcapMissionStatus.CANCELLED
         )
+
+        restarted = coordinator.start(_request(retryable_receipt.authorization_id))
+        _wait_for_status(store, restarted.mission_id, PcapMissionStatus.COMPLETED)
     finally:
         executor.release.set()
         coordinator.close()
 
     assert executor.cancelled == [queued.batch_id]
     assert cancelled.status is PcapMissionStatus.CANCELLED
-    assert after_worker.status is PcapMissionStatus.CANCELLED
-    assert store.get(untouched.mission_id) is untouched
 
 
 def test_cancel_marker_failure_degrades_without_later_terminal_overwrite() -> None:
-    executor = BlockingExecutor(cancel_failure=True)
+    executor = CleanupGatedExecutor(cancel_failure=True)
     coordinator, authorizations, store = _coordinator(executor)
     receipt = authorizations.issue(max_files=1)
     queued = coordinator.start(_request(receipt.authorization_id))
     assert executor.started.wait(timeout=3)
 
-    degraded = coordinator.cancel(queued.mission_id)
+    acknowledged = coordinator.cancel(queued.mission_id)
+    assert acknowledged.status is PcapMissionStatus.RUNNING
     executor.release.set()
+    degraded = _wait_for_status(
+        store, queued.mission_id, PcapMissionStatus.DEGRADED
+    )
     coordinator.close()
 
     assert degraded.status is PcapMissionStatus.DEGRADED
@@ -319,45 +357,61 @@ def test_cancel_marker_failure_degrades_without_later_terminal_overwrite() -> No
     assert persisted.status is PcapMissionStatus.DEGRADED
 
 
-def test_queued_marker_failure_never_revives_or_reaches_the_executor() -> None:
-    executor = BlockingExecutor(cancel_failure=True)
+def test_cancel_wins_race_after_executor_cleanup_before_terminal_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = CleanupGatedExecutor()
     coordinator, authorizations, store = _coordinator(executor)
-    first_receipt = authorizations.issue(max_files=1)
-    second_receipt = authorizations.issue(max_files=1)
-    third_receipt = authorizations.issue(max_files=1)
-    first = coordinator.start(_request(first_receipt.authorization_id))
-    assert executor.started.wait(timeout=3)
-    second = coordinator.start(_request(second_receipt.authorization_id))
-    third = coordinator.start(_request(third_receipt.authorization_id))
+    receipt = authorizations.issue(max_files=1)
+    terminal_events_started = Event()
+    release_terminal_events = Event()
+    original_terminal_events = coordinator_module._terminal_events
 
-    degraded = coordinator.cancel(second.mission_id)
-    executor.release.set()
+    def blocking_terminal_events(**kwargs: object) -> object:
+        terminal_events_started.set()
+        if not release_terminal_events.wait(timeout=3):
+            raise AssertionError("terminal event transformation was not released")
+        return original_terminal_events(**kwargs)
+
+    monkeypatch.setattr(
+        coordinator_module,
+        "_terminal_events",
+        blocking_terminal_events,
+    )
     try:
-        _wait_for_status(store, third.mission_id, PcapMissionStatus.COMPLETED)
-        persisted = store.get(second.mission_id)
-        assert isinstance(persisted, PcapMissionResult)
-        assert degraded.status is PcapMissionStatus.DEGRADED
-        assert persisted.status is PcapMissionStatus.DEGRADED
-        assert executor.executions == [
-            (first.batch_id, 1),
-            (third.batch_id, 1),
-        ]
+        queued = coordinator.start(_request(receipt.authorization_id))
+        assert executor.started.wait(timeout=3)
+        executor.release.set()
+        assert terminal_events_started.wait(timeout=3)
+
+        acknowledged = coordinator.cancel(queued.mission_id)
+        assert acknowledged.status is PcapMissionStatus.RUNNING
+        release_terminal_events.set()
+        cancelled = _wait_for_status(
+            store, queued.mission_id, PcapMissionStatus.CANCELLED
+        )
     finally:
+        release_terminal_events.set()
+        executor.release.set()
         coordinator.close()
 
+    assert cancelled.status is PcapMissionStatus.CANCELLED
 
-def test_close_terminalizes_a_mission_queued_behind_running_work() -> None:
-    executor = BlockingExecutor()
+
+def test_close_waits_for_running_cleanup_before_cancelled_terminal() -> None:
+    executor = CleanupGatedExecutor()
     coordinator, authorizations, store = _coordinator(executor)
     first_receipt = authorizations.issue(max_files=1)
-    second_receipt = authorizations.issue(max_files=1)
     first = coordinator.start(_request(first_receipt.authorization_id))
     assert executor.started.wait(timeout=3)
-    second = coordinator.start(_request(second_receipt.authorization_id))
     closer = Thread(target=coordinator.close)
     try:
         closer.start()
         closer.join(timeout=0.1)
+        assert closer.is_alive()
+        running = store.get(first.mission_id)
+        assert isinstance(running, PcapMissionResult)
+        assert running.status is PcapMissionStatus.RUNNING
         executor.release.set()
         closer.join(timeout=3)
         assert not closer.is_alive()
@@ -367,11 +421,9 @@ def test_close_terminalizes_a_mission_queued_behind_running_work() -> None:
         coordinator.close()
 
     first_result = store.get(first.mission_id)
-    second_result = store.get(second.mission_id)
     assert isinstance(first_result, PcapMissionResult)
-    assert isinstance(second_result, PcapMissionResult)
-    assert second_result.status is PcapMissionStatus.CANCELLED
-    assert second.batch_id in executor.cancelled
+    assert first_result.status is PcapMissionStatus.CANCELLED
+    assert first.batch_id in executor.cancelled
 
 
 def test_service_uses_the_coordinators_common_store_for_pcap_polling() -> None:

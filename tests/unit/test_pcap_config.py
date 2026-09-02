@@ -1,10 +1,31 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
 
 import pytest
 
+import app.pcap.config as config_module
 from app.pcap.config import PcapConfig
+
+
+def make_directory_junction(link: Path, target: Path) -> None:
+    result = subprocess.run(
+        [os.environ["ComSpec"], "/d", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def enabled_environment(quarantine_root: Path, powershell: Path) -> dict[str, str]:
+    return {
+        "TOKEN_SECURITY_PCAP_ENABLED": "true",
+        "TOKEN_SECURITY_PCAP_QUARANTINE_ROOT": str(quarantine_root.absolute()),
+        "TOKEN_SECURITY_PCAP_POWERSHELL_EXECUTABLE": str(powershell.absolute()),
+    }
 
 
 def test_pcap_config_is_disabled_without_explicit_flag(tmp_path: Path) -> None:
@@ -106,3 +127,51 @@ def test_enabled_pcap_config_rejects_relative_paths(
 
     with pytest.raises(ValueError, match=message):
         PcapConfig.from_environ(env)
+
+
+def test_enabled_pcap_config_rejects_quarantine_inside_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root = tmp_path / "repository"
+    quarantine_root = repository_root / "private-quarantine"
+    (quarantine_root / "input").mkdir(parents=True)
+    powershell = tmp_path / "powershell.exe"
+    powershell.touch()
+    fake_config_file = repository_root / "backend" / "app" / "pcap" / "config.py"
+    monkeypatch.setattr(config_module, "__file__", str(fake_config_file))
+
+    with pytest.raises(ValueError, match="outside the repository"):
+        PcapConfig.from_environ(enabled_environment(quarantine_root, powershell))
+
+
+@pytest.mark.parametrize("junction_target", ["root", "root_ancestor", "input"])
+def test_enabled_pcap_config_rejects_supplied_quarantine_reparse_points(
+    tmp_path: Path, junction_target: str
+) -> None:
+    powershell = tmp_path / "powershell.exe"
+    powershell.touch()
+    target = tmp_path / "junction-target"
+    (target / "input").mkdir(parents=True)
+    quarantine_root = tmp_path / "quarantine"
+    if junction_target == "root":
+        make_directory_junction(quarantine_root, target)
+    elif junction_target == "root_ancestor":
+        (target / "quarantine" / "input").mkdir(parents=True)
+        linked_parent = tmp_path / "linked-parent"
+        make_directory_junction(linked_parent, target)
+        quarantine_root = linked_parent / "quarantine"
+    else:
+        quarantine_root.mkdir()
+        make_directory_junction(quarantine_root / "input", target / "input")
+    try:
+        with pytest.raises(ValueError, match="reparse point"):
+            PcapConfig.from_environ(
+                enabled_environment(quarantine_root, powershell)
+            )
+    finally:
+        if junction_target == "root":
+            quarantine_root.rmdir()
+        elif junction_target == "root_ancestor":
+            (tmp_path / "linked-parent").rmdir()
+        else:
+            (quarantine_root / "input").rmdir()

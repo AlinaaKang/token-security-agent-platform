@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+import stat
 
 
 _TRUTHY_VALUES = frozenset({"1", "on", "true", "yes"})
@@ -10,6 +11,7 @@ _SCRIPT_OVERRIDE_VARIABLES = (
     "TOKEN_SECURITY_PCAP_BATCH_SCRIPT",
     "TOKEN_SECURITY_PCAP_INSPECT_SCRIPT",
 )
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 @dataclass(frozen=True)
@@ -29,14 +31,18 @@ class PcapConfig:
             environ.get("TOKEN_SECURITY_PCAP_QUARANTINE_ROOT", ""),
             "PCAP quarantine root",
         )
-        if not (quarantine_root / "input").is_dir():
-            raise ValueError("PCAP quarantine root must contain an input directory")
+        _existing_directory(
+            quarantine_root / "input",
+            "PCAP quarantine root input",
+        )
         powershell_executable = _existing_file(
             environ.get("TOKEN_SECURITY_PCAP_POWERSHELL_EXECUTABLE", ""),
             "PCAP PowerShell executable",
         )
 
         repository_root = Path(__file__).resolve().parents[3]
+        if _is_within_repository(quarantine_root, repository_root):
+            raise ValueError("PCAP quarantine root must remain outside the repository")
         _reject_external_script_overrides(environ, repository_root)
         scripts = repository_root / "scripts"
         return cls(
@@ -47,11 +53,35 @@ class PcapConfig:
         )
 
 
-def _existing_directory(value: str, label: str) -> Path:
+def _existing_directory(value: str | Path, label: str) -> Path:
     path = _absolute_path(value, label)
-    if not path.is_dir():
+    _reject_reparse_components(path, label)
+    try:
+        metadata = path.lstat()
+    except OSError:
+        raise ValueError(f"{label} must be an existing directory") from None
+    if _is_reparse_or_symlink(metadata):
+        raise ValueError(f"{label} cannot be a symlink or reparse point")
+    if not stat.S_ISDIR(metadata.st_mode):
         raise ValueError(f"{label} must be an existing directory")
     return path.resolve()
+
+
+def _reject_reparse_components(path: Path, label: str) -> None:
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except OSError:
+            if current == path:
+                return
+            raise ValueError(f"{label} path could not be inspected") from None
+        if _is_reparse_or_symlink(metadata):
+            raise ValueError(f"{label} cannot contain a symlink or reparse point")
+        parent = current.parent
+        if parent == current:
+            return
+        current = parent
 
 
 def _existing_file(value: str, label: str) -> Path:
@@ -61,11 +91,18 @@ def _existing_file(value: str, label: str) -> Path:
     return path.resolve()
 
 
-def _absolute_path(value: str, label: str) -> Path:
+def _absolute_path(value: str | Path, label: str) -> Path:
     path = Path(value)
-    if not value or not path.is_absolute():
+    if not str(value) or not path.is_absolute():
         raise ValueError(f"{label} must be an absolute path")
     return path
+
+
+def _is_reparse_or_symlink(metadata: object) -> bool:
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & _FILE_ATTRIBUTE_REPARSE_POINT
+    )
 
 
 def _reject_external_script_overrides(

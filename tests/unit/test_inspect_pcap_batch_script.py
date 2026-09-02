@@ -15,6 +15,8 @@ from app.pcap.models import PcapBatchSummary
 WINDOWS_POWERSHELL = Path(os.environ["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "inspect_pcap_batch.ps1"
 BATCH_ID = "batch_0123456789abcdef0123456789abcdef"
+SECOND_BATCH_ID = "batch_fedcba9876543210fedcba9876543210"
+STATE_ID = "state_00112233445566778899aabbccddeeff"
 PRIVATE_SENTINEL = "PRIVATE_SENTINEL_capture-name_203.0.113.10_443_aabbccddeeff"
 
 
@@ -111,6 +113,7 @@ def run_batch(
     *,
     max_files: int,
     batch_id: str = BATCH_ID,
+    state_id: str = STATE_ID,
     quarantine_argument: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     environment = batch_environment(root, inspector, batch_id=batch_id)
@@ -120,6 +123,7 @@ def run_batch(
             inspector,
             max_files=max_files,
             batch_id=batch_id,
+            state_id=state_id,
             quarantine_argument=quarantine_argument,
         ),
         capture_output=True,
@@ -140,12 +144,13 @@ def batch_command(
     *,
     max_files: int,
     batch_id: str = BATCH_ID,
+    state_id: str = STATE_ID,
     quarantine_argument: str | None = None,
 ) -> list[str]:
     return [
         str(WINDOWS_POWERSHELL), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
         "-File", str(SCRIPT), "-QuarantineRoot", quarantine_argument or str(root), "-BatchId", batch_id,
-        "-MaxFiles", str(max_files), "-InspectorScript", str(inspector),
+        "-StateId", state_id, "-MaxFiles", str(max_files), "-InspectorScript", str(inspector),
     ]
 
 
@@ -216,11 +221,43 @@ def test_batch_resume_skips_unchanged_success_retries_failure_and_adds_new_file(
     first = run_batch(root, fake_inspector(tmp_path), max_files=3)
     add_capture(root, size=999)
     os.environ.pop("FAKE_INSPECTOR_FAIL_NAMES")
-    second = run_batch(root, fake_inspector(tmp_path), max_files=4)
+    second = run_batch(
+        root,
+        fake_inspector(tmp_path),
+        max_files=4,
+        batch_id=SECOND_BATCH_ID,
+    )
     assert public_counts(first) == {"succeeded": 2, "failed": 1, "skipped": 0}
-    assert public_counts(second) == {"succeeded": 2, "failed": 0, "skipped": 2}
+    assert public_counts(second) == {"succeeded": 2, "failed": 0, "skipped": 0}
+    assert second.public_summary["selected_count"] == 2
     assert invocation_count(tmp_path, captures[0]) == 1
     assert invocation_count(tmp_path, captures[1]) == 2
+
+
+def test_batch_applies_cap_after_prior_successes_so_larger_files_eventually_run(
+    tmp_path: Path,
+) -> None:
+    root, captures = make_capture_batch(tmp_path, count=23)
+    first = run_batch(root, fake_inspector(tmp_path), max_files=20)
+    added = add_capture(root, size=100, name="new-largest.pcap")
+
+    second = run_batch(
+        root,
+        fake_inspector(tmp_path),
+        max_files=20,
+        batch_id=SECOND_BATCH_ID,
+    )
+
+    assert first.returncode == second.returncode == 0
+    assert recorded_sizes(tmp_path)[20:] == [
+        captures[20].stat().st_size,
+        captures[21].stat().st_size,
+        captures[22].stat().st_size,
+        added.stat().st_size,
+    ]
+    assert second.public_summary["selected_count"] == 4
+    assert public_counts(second) == {"succeeded": 4, "failed": 0, "skipped": 0}
+    assert len(second.public_summary["captures"]) <= 20
 
 
 def test_batch_discovers_uppercase_extensions_and_nested_regular_directories(tmp_path: Path) -> None:
@@ -268,8 +305,77 @@ def test_batch_replaces_private_state_atomically(tmp_path: Path) -> None:
     assert first.returncode == second.returncode == 0
     state_path = root / "state" / "pcap-batch-private.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
-    assert state["schema_version"] == 1
+    assert state["schema_version"] == 2
+    assert state["state_id"] == STATE_ID
     assert not list(state_path.parent.glob("pcap-batch-private.json.*.tmp"))
+
+
+def test_batch_migrates_legacy_checkpoint_and_reuses_it_across_missions(
+    tmp_path: Path,
+) -> None:
+    root, captures = make_capture_batch(tmp_path, count=2)
+    state_path = root / "state" / "pcap-batch-private.json"
+    state_path.parent.mkdir(parents=True)
+    visibility = {
+        "plaintext_application_protocol_observed": True,
+        "encrypted_transport_observed": False,
+        "tls_observed": False,
+        "quic_observed": False,
+    }
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "entries": [
+                    {
+                        "batch_id": BATCH_ID,
+                        "internal_path": captures[0].name,
+                        "sha256": sha256(captures[0].read_bytes()).hexdigest(),
+                        "size_bytes": captures[0].stat().st_size,
+                        "last_result": "succeeded",
+                        "capture_id": "capture_" + "a" * 32,
+                        "packet_count": 1,
+                        "protocol_counts": {"http": 1},
+                        "visibility": visibility,
+                        "capability": "token_eligible",
+                        "error_code": None,
+                    },
+                    {
+                        "batch_id": BATCH_ID,
+                        "internal_path": captures[1].name,
+                        "sha256": sha256(captures[1].read_bytes()).hexdigest(),
+                        "size_bytes": captures[1].stat().st_size,
+                        "last_result": "failed",
+                        "capture_id": "capture_" + "b" * 32,
+                        "packet_count": 0,
+                        "protocol_counts": {},
+                        "visibility": {
+                            key: False for key in visibility
+                        },
+                        "capability": None,
+                        "error_code": "inspector_failed",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_batch(
+        root,
+        fake_inspector(tmp_path),
+        max_files=2,
+        batch_id=SECOND_BATCH_ID,
+    )
+
+    assert result.returncode == 0
+    assert result.public_summary["selected_count"] == 1
+    assert invocation_count(tmp_path, captures[0]) == 0
+    assert invocation_count(tmp_path, captures[1]) == 1
+    migrated = json.loads(state_path.read_text(encoding="utf-8"))
+    assert migrated["schema_version"] == 2
+    assert migrated["state_id"] == STATE_ID
+    assert all("batch_id" not in entry for entry in migrated["entries"])
 
 
 def test_batch_rejects_malformed_child_reports_without_exposing_private_content(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$QuarantineRoot,
     [Parameter(Mandatory = $true)][ValidatePattern('^batch_[0-9a-f]{32}$')][string]$BatchId,
+    [Parameter(Mandatory = $true)][ValidatePattern('^state_[0-9a-f]{32}$')][string]$StateId,
     [ValidateRange(1, 20)][int]$MaxFiles = 20,
     [Parameter(Mandatory = $true)][string]$InspectorScript,
     [string]$DockerExecutable
@@ -19,7 +20,10 @@ $script:PublicErrorCodes = @(
 $script:AllowedProtocols = @('arp', 'dns', 'eth', 'http', 'http2', 'icmp', 'icmpv6', 'ip', 'ipv6', 'quic', 'sll', 'sll2', 'tcp', 'tls', 'udp', 'websocket')
 $script:ChildReportKeys = @('schema_version', 'sha256', 'size_bytes', 'capture_format', 'packet_count', 'duration_seconds', 'link_types', 'protocol_counts', 'visibility', 'capability', 'reasons', 'tool_versions')
 $script:VisibilityKeys = @('plaintext_application_protocol_observed', 'encrypted_transport_observed', 'tls_observed', 'quic_observed')
-$script:PrivateStateEntryKeys = @('batch_id', 'internal_path', 'sha256', 'size_bytes', 'last_result', 'capture_id', 'packet_count', 'protocol_counts', 'visibility', 'capability', 'error_code')
+$script:PrivateStateKeys = @('schema_version', 'state_id', 'entries')
+$script:PrivateStateEntryKeys = @('internal_path', 'sha256', 'size_bytes', 'last_result', 'capture_id', 'packet_count', 'protocol_counts', 'visibility', 'capability', 'error_code')
+$script:LegacyPrivateStateKeys = @('schema_version', 'entries')
+$script:LegacyPrivateStateEntryKeys = @('batch_id', 'internal_path', 'sha256', 'size_bytes', 'last_result', 'capture_id', 'packet_count', 'protocol_counts', 'visibility', 'capability', 'error_code')
 
 function Fail-Batch {
     param([Parameter(Mandatory = $true)][string]$Code)
@@ -120,35 +124,71 @@ function Get-OrderedCaptureFiles {
     return @($items)
 }
 
+function Assert-ValidPrivateStateEntry {
+    param(
+        [Parameter(Mandatory = $true)]$Entry,
+        [Parameter(Mandatory = $true)][string[]]$ExpectedKeys,
+        [switch]$RequireBatchId
+    )
+    if ($Entry -isnot [pscustomobject] -or -not (Test-ExactPropertyNames (@($Entry.PSObject.Properties | ForEach-Object { $_.Name })) $ExpectedKeys)) { Fail-Batch 'invalid_state' }
+    if ($RequireBatchId -and ($Entry.batch_id -isnot [string] -or $Entry.batch_id -notmatch '^batch_[0-9a-f]{32}$')) { Fail-Batch 'invalid_state' }
+    if ($Entry.internal_path -isnot [string] -or [string]::IsNullOrEmpty($Entry.internal_path)) { Fail-Batch 'invalid_state' }
+    if ($Entry.sha256 -isnot [string] -or $Entry.sha256 -notmatch '^[0-9a-f]{64}$' -or -not (Test-NonnegativeInteger $Entry.size_bytes)) { Fail-Batch 'invalid_state' }
+    if (@('succeeded', 'failed') -notcontains $Entry.last_result -or $Entry.capture_id -isnot [string] -or $Entry.capture_id -notmatch '^capture_[0-9a-f]{32}$' -or -not (Test-NonnegativeInteger $Entry.packet_count)) { Fail-Batch 'invalid_state' }
+    if ($Entry.protocol_counts -isnot [pscustomobject] -or $Entry.visibility -isnot [pscustomobject]) { Fail-Batch 'invalid_state' }
+    foreach ($name in @($Entry.protocol_counts.PSObject.Properties | ForEach-Object { $_.Name })) {
+        if ($script:AllowedProtocols -notcontains $name -or -not (Test-NonnegativeInteger $Entry.protocol_counts.$name)) { Fail-Batch 'invalid_state' }
+    }
+    if (-not (Test-ExactPropertyNames (@($Entry.visibility.PSObject.Properties | ForEach-Object { $_.Name })) $script:VisibilityKeys)) { Fail-Batch 'invalid_state' }
+    foreach ($name in $script:VisibilityKeys) { if ($Entry.visibility.$name -isnot [bool]) { Fail-Batch 'invalid_state' } }
+    if ($null -ne $Entry.capability -and @('token_eligible', 'traffic_only', 'insufficient_evidence') -notcontains $Entry.capability) { Fail-Batch 'invalid_state' }
+    if ($Entry.capability -eq 'token_eligible' -and -not $Entry.visibility.plaintext_application_protocol_observed) { Fail-Batch 'invalid_state' }
+    if ($null -ne $Entry.error_code -and ($Entry.error_code -isnot [string] -or $Entry.error_code -notmatch '^[a-z0-9_]+$')) { Fail-Batch 'invalid_state' }
+    if ($Entry.last_result -eq 'succeeded' -and ($null -eq $Entry.capability -or $null -ne $Entry.error_code)) { Fail-Batch 'invalid_state' }
+}
+
 function Assert-ValidPrivateState {
     param([Parameter(Mandatory = $true)]$State)
-    if ($null -eq $State -or $State -isnot [pscustomobject] -or $State.schema_version -ne 1 -or $null -eq $State.entries) { Fail-Batch 'invalid_state' }
+    if ($null -eq $State -or $State -isnot [pscustomobject] -or -not (Test-ExactPropertyNames (@($State.PSObject.Properties | ForEach-Object { $_.Name })) $script:PrivateStateKeys)) { Fail-Batch 'invalid_state' }
+    if ($State.schema_version -ne 2 -or $State.state_id -isnot [string] -or $State.state_id -notmatch '^state_[0-9a-f]{32}$' -or $null -eq $State.entries) { Fail-Batch 'invalid_state' }
+    foreach ($entry in @($State.entries)) { Assert-ValidPrivateStateEntry $entry $script:PrivateStateEntryKeys }
+}
+
+function Convert-LegacyPrivateState {
+    param([Parameter(Mandatory = $true)]$State)
+    if ($State -isnot [pscustomobject] -or -not (Test-ExactPropertyNames (@($State.PSObject.Properties | ForEach-Object { $_.Name })) $script:LegacyPrivateStateKeys) -or $State.schema_version -ne 1 -or $null -eq $State.entries) { Fail-Batch 'invalid_state' }
+    $migrated = [System.Collections.ArrayList]::new()
     foreach ($entry in @($State.entries)) {
-        if ($entry -isnot [pscustomobject] -or -not (Test-ExactPropertyNames (@($entry.PSObject.Properties | ForEach-Object { $_.Name })) $script:PrivateStateEntryKeys)) { Fail-Batch 'invalid_state' }
-        if ($entry.batch_id -isnot [string] -or $entry.batch_id -notmatch '^batch_[0-9a-f]{32}$' -or $entry.internal_path -isnot [string] -or [string]::IsNullOrEmpty($entry.internal_path)) { Fail-Batch 'invalid_state' }
-        if ($entry.sha256 -isnot [string] -or $entry.sha256 -notmatch '^[0-9a-f]{64}$' -or -not (Test-NonnegativeInteger $entry.size_bytes)) { Fail-Batch 'invalid_state' }
-        if (@('succeeded', 'failed') -notcontains $entry.last_result -or $entry.capture_id -isnot [string] -or $entry.capture_id -notmatch '^capture_[0-9a-f]{32}$' -or -not (Test-NonnegativeInteger $entry.packet_count)) { Fail-Batch 'invalid_state' }
-        if ($entry.protocol_counts -isnot [pscustomobject] -or $entry.visibility -isnot [pscustomobject]) { Fail-Batch 'invalid_state' }
-        foreach ($name in @($entry.protocol_counts.PSObject.Properties | ForEach-Object { $_.Name })) {
-            if ($script:AllowedProtocols -notcontains $name -or -not (Test-NonnegativeInteger $entry.protocol_counts.$name)) { Fail-Batch 'invalid_state' }
-        }
-        if (-not (Test-ExactPropertyNames (@($entry.visibility.PSObject.Properties | ForEach-Object { $_.Name })) $script:VisibilityKeys)) { Fail-Batch 'invalid_state' }
-        foreach ($name in $script:VisibilityKeys) { if ($entry.visibility.$name -isnot [bool]) { Fail-Batch 'invalid_state' } }
-        if ($null -ne $entry.capability -and @('token_eligible', 'traffic_only', 'insufficient_evidence') -notcontains $entry.capability) { Fail-Batch 'invalid_state' }
-        if ($entry.capability -eq 'token_eligible' -and -not $entry.visibility.plaintext_application_protocol_observed) { Fail-Batch 'invalid_state' }
-        if ($null -ne $entry.error_code -and ($entry.error_code -isnot [string] -or $entry.error_code -notmatch '^[a-z0-9_]+$')) { Fail-Batch 'invalid_state' }
-        if ($entry.last_result -eq 'succeeded' -and ($null -eq $entry.capability -or $null -ne $entry.error_code)) { Fail-Batch 'invalid_state' }
+        Assert-ValidPrivateStateEntry $entry $script:LegacyPrivateStateEntryKeys -RequireBatchId
+        $migrated = [System.Collections.ArrayList]@($migrated | Where-Object { $_.internal_path -ne $entry.internal_path })
+        [void]$migrated.Add([ordered]@{
+            internal_path = $entry.internal_path
+            sha256 = $entry.sha256
+            size_bytes = [int64]$entry.size_bytes
+            last_result = $entry.last_result
+            capture_id = $entry.capture_id
+            packet_count = [int64]$entry.packet_count
+            protocol_counts = $entry.protocol_counts
+            visibility = $entry.visibility
+            capability = $entry.capability
+            error_code = $entry.error_code
+        })
     }
+    return [pscustomobject][ordered]@{ schema_version = 2; state_id = $StateId; entries = @($migrated) }
 }
 
 function Read-PrivateState {
     param([Parameter(Mandatory = $true)][string]$StatePath)
     if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) {
-        return [pscustomobject]@{ schema_version = 1; entries = @() }
+        return [pscustomobject]@{ schema_version = 2; state_id = $StateId; entries = @() }
     }
     try { $state = [System.IO.File]::ReadAllText($StatePath) | ConvertFrom-Json -ErrorAction Stop }
     catch { Fail-Batch 'invalid_state' }
+    if ($state.schema_version -eq 1) { return Convert-LegacyPrivateState $state }
     Assert-ValidPrivateState $state
+    if ($state.state_id -ne $StateId) {
+        return [pscustomobject]@{ schema_version = 2; state_id = $StateId; entries = @() }
+    }
     return $state
 }
 
@@ -280,22 +320,9 @@ function Invoke-Inspector {
 function Find-StateEntry {
     param([Parameter(Mandatory = $true)]$State, [Parameter(Mandatory = $true)][string]$InternalPath)
     foreach ($entry in @($State.entries)) {
-        if ($entry.batch_id -eq $BatchId -and $entry.internal_path -eq $InternalPath) { return $entry }
+        if ($entry.internal_path -eq $InternalPath) { return $entry }
     }
     return $null
-}
-
-function Convert-StateEntryToSkippedEvidence {
-    param([Parameter(Mandatory = $true)]$Entry)
-    return [ordered]@{
-        capture_id = $Entry.capture_id
-        status = 'skipped'
-        packet_count = [int64]$Entry.packet_count
-        protocol_counts = $Entry.protocol_counts
-        visibility = $Entry.visibility
-        capability = $Entry.capability
-        error_code = $null
-    }
 }
 
 try {
@@ -315,7 +342,25 @@ try {
         $selected = @()
     }
     else {
-        $selected = @(Get-OrderedCaptureFiles (Get-Item -LiteralPath $inputPath)) | Select-Object -First $MaxFiles
+        $selected = [System.Collections.ArrayList]::new()
+        foreach ($candidate in @(Get-OrderedCaptureFiles (Get-Item -LiteralPath $inputPath))) {
+            Assert-NoReparsePoints $candidate.File.FullName 'input_reparse_point'
+            if (Test-Path -LiteralPath $cancelPath -PathType Leaf) {
+                Remove-Item -LiteralPath $cancelPath -Force -ErrorAction SilentlyContinue
+                $selected.Clear()
+                break
+            }
+            $currentSha = Get-Sha256Hex $candidate.File.FullName
+            $previous = Find-StateEntry $state $candidate.Ordinal
+            if ($null -ne $previous -and $previous.last_result -eq 'succeeded' -and $previous.sha256 -eq $currentSha -and $previous.size_bytes -eq $candidate.File.Length) { continue }
+            [void]$selected.Add([pscustomobject]@{
+                File = $candidate.File
+                Ordinal = $candidate.Ordinal
+                CurrentSha = $currentSha
+                Previous = $previous
+            })
+            if ($selected.Count -ge $MaxFiles) { break }
+        }
     }
     $captures = [System.Collections.ArrayList]::new()
     $updatedEntries = [System.Collections.ArrayList]::new()
@@ -327,12 +372,8 @@ try {
             Remove-Item -LiteralPath $cancelPath -Force -ErrorAction SilentlyContinue
             break
         }
-        $currentSha = Get-Sha256Hex $candidate.File.FullName
-        $previous = Find-StateEntry $state $candidate.Ordinal
-        if ($null -ne $previous -and $previous.last_result -eq 'succeeded' -and $previous.sha256 -eq $currentSha -and $previous.size_bytes -eq $candidate.File.Length) {
-            [void]$captures.Add((Convert-StateEntryToSkippedEvidence $previous))
-            continue
-        }
+        $currentSha = $candidate.CurrentSha
+        $previous = $candidate.Previous
         $captureId = if ($null -ne $previous -and $previous.capture_id -match '^capture_[0-9a-f]{32}$') { $previous.capture_id } else { 'capture_' + [Guid]::NewGuid().ToString('N') }
         $childPath = [System.IO.Path]::Combine($outputPath, ('pcap-preflight-' + $currentSha.Substring(0, 16) + '.json'))
         $result = $null
@@ -349,9 +390,8 @@ try {
             if (Test-Path -LiteralPath $childPath -PathType Leaf) { Remove-Item -LiteralPath $childPath -Force -ErrorAction SilentlyContinue }
         }
         [void]$captures.Add($result)
-        $updatedEntries = [System.Collections.ArrayList]@($updatedEntries | Where-Object { -not ($_.batch_id -eq $BatchId -and $_.internal_path -eq $candidate.Ordinal) })
+        $updatedEntries = [System.Collections.ArrayList]@($updatedEntries | Where-Object { $_.internal_path -ne $candidate.Ordinal })
         [void]$updatedEntries.Add([ordered]@{
-            batch_id = $BatchId
             internal_path = $candidate.Ordinal
             sha256 = $currentSha
             size_bytes = [int64]$candidate.File.Length
@@ -363,9 +403,9 @@ try {
             capability = $result.capability
             error_code = $result.error_code
         })
-        Save-AtomicJson ([ordered]@{ schema_version = 1; entries = @($updatedEntries) }) $privateStatePath
+        Save-AtomicJson ([ordered]@{ schema_version = 2; state_id = $StateId; entries = @($updatedEntries) }) $privateStatePath
     }
-    Save-AtomicJson ([ordered]@{ schema_version = 1; entries = @($updatedEntries) }) $privateStatePath
+    Save-AtomicJson ([ordered]@{ schema_version = 2; state_id = $StateId; entries = @($updatedEntries) }) $privateStatePath
     $succeeded = @($captures | Where-Object { $_.status -eq 'succeeded' }).Count
     $failed = @($captures | Where-Object { $_.status -eq 'failed' }).Count
     $skipped = @($captures | Where-Object { $_.status -eq 'skipped' }).Count

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from threading import Event
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -146,7 +147,7 @@ class BlockingSyntheticExecutor(SyntheticExecutor):
         return _summary(batch_id)
 
     def request_cancel(self, _batch_id: str) -> None:
-        self.release.set()
+        return None
 
 
 class FailingOverviewExecutor(SyntheticExecutor):
@@ -435,7 +436,7 @@ def test_pcap_expired_authorization_uses_fixed_public_error() -> None:
     assert "PRIVATE" not in expired.text
 
 
-def test_pcap_mission_can_be_cancelled_but_prompt_mission_cannot() -> None:
+def test_pcap_cancel_acknowledges_before_cleanup_but_prompt_cannot_cancel() -> None:
     executor = BlockingSyntheticExecutor()
     with installed_pcap(executor):
         client = TestClient(app)
@@ -456,6 +457,19 @@ def test_pcap_mission_can_be_cancelled_but_prompt_mission_cannot() -> None:
             + started.json()["mission_id"]
             + "/cancel"
         )
+        running_after_ack = client.get(
+            "/api/v1/superagent/missions/" + started.json()["mission_id"]
+        )
+        executor.release.set()
+        deadline = time.monotonic() + 3
+        terminal = running_after_ack
+        while time.monotonic() < deadline:
+            terminal = client.get(
+                "/api/v1/superagent/missions/" + started.json()["mission_id"]
+            )
+            if terminal.json()["status"] == "cancelled":
+                break
+            time.sleep(0.01)
         prompt = client.post(
             "/api/v1/superagent/missions",
             json={
@@ -472,7 +486,9 @@ def test_pcap_mission_can_be_cancelled_but_prompt_mission_cannot() -> None:
         )
 
     assert cancelled.status_code == 200
-    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["status"] == "running"
+    assert running_after_ack.json()["status"] == "running"
+    assert terminal.json()["status"] == "cancelled"
     assert _forbidden_hits(cancelled.json()) == []
     assert prompt_cancel.status_code == 409
     assert prompt_cancel.json()["error"]["code"] == "pcap_mission_not_cancellable"

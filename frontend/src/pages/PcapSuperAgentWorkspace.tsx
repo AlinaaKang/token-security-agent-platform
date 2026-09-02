@@ -319,7 +319,12 @@ export function PcapSuperAgentWorkspace() {
     try {
       const result = await api.cancelPcapMission(mission.mission_id);
       setMission(result);
-      rememberMissionId(null);
+      if (terminalStatuses.has(result.status)) {
+        if (result.status === "cancelled") rememberMissionId(null);
+      } else {
+        rememberMissionId(result.mission_id);
+        setPollRevision((revision) => revision + 1);
+      }
     } catch {
       setError("无法取消 PCAP 任务，请重试。");
       setPollRevision((revision) => revision + 1);

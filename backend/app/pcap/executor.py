@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -77,6 +78,11 @@ class PcapBatchExecutor:
     ) -> None:
         self._config = config
         self._runner = runner
+        self._checkpoint_scope_id = _checkpoint_scope_id(config)
+
+    @property
+    def checkpoint_scope_id(self) -> str:
+        return self._checkpoint_scope_id
 
     def overview(self) -> PcapOverview:
         try:
@@ -149,6 +155,8 @@ class PcapBatchExecutor:
             str(self._config.inspect_script),
             "-BatchId",
             batch_id,
+            "-StateId",
+            self._checkpoint_scope_id,
             "-MaxFiles",
             str(max_files),
         ]
@@ -177,6 +185,21 @@ def _validate_batch_id(batch_id: str) -> None:
 def _validate_max_files(max_files: int) -> None:
     if type(max_files) is not int or not 1 <= max_files <= _MAX_FILES:
         raise ValueError("max_files must be an integer between 1 and 20")
+
+
+def _checkpoint_scope_id(config: PcapConfig) -> str:
+    digest = hashlib.sha256()
+    digest.update(b"pcap-private-checkpoint-scope-v1\0")
+    for path in (
+        config.quarantine_root,
+        config.powershell_executable,
+        config.batch_script,
+        config.inspect_script,
+    ):
+        normalized = os.path.normcase(str(path.resolve())).encode("utf-8")
+        digest.update(len(normalized).to_bytes(4, "big"))
+        digest.update(normalized)
+    return "state_" + digest.hexdigest()[:32]
 
 
 def _count_pending_files(input_root: Path) -> int:

@@ -80,24 +80,32 @@ class PcapAuthorizationStore:
         )
 
     def consume(self, authorization_id: str) -> ConsumedPcapAuthorization:
-        if (
-            type(authorization_id) is not str
-            or _AUTHORIZATION_ID.fullmatch(authorization_id) is None
-        ):
-            raise PcapAuthorizationUnknown("pcap_authorization_required")
         with self._lock:
-            authorization = self._authorizations.get(authorization_id)
-            if authorization is None:
-                raise PcapAuthorizationUnknown("pcap_authorization_required")
-            if authorization.used:
-                raise PcapAuthorizationAlreadyUsed("pcap_authorization_used")
-            if self._clock() >= authorization.expires_at:
-                raise PcapAuthorizationExpired("pcap_authorization_expired")
+            authorization = self._require_usable(authorization_id)
             authorization.used = True
             return ConsumedPcapAuthorization(
                 authorization_id=authorization_id,
                 max_files=authorization.max_files,
             )
+
+    def assert_usable(self, authorization_id: str) -> None:
+        with self._lock:
+            self._require_usable(authorization_id)
+
+    def _require_usable(self, authorization_id: str) -> _Authorization:
+        if (
+            type(authorization_id) is not str
+            or _AUTHORIZATION_ID.fullmatch(authorization_id) is None
+        ):
+            raise PcapAuthorizationUnknown("pcap_authorization_required")
+        authorization = self._authorizations.get(authorization_id)
+        if authorization is None:
+            raise PcapAuthorizationUnknown("pcap_authorization_required")
+        if authorization.used:
+            raise PcapAuthorizationAlreadyUsed("pcap_authorization_used")
+        if self._clock() >= authorization.expires_at:
+            raise PcapAuthorizationExpired("pcap_authorization_expired")
+        return authorization
 
 
 def _validate_max_files(max_files: int) -> None:

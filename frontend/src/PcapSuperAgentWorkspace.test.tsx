@@ -139,7 +139,7 @@ function installFetch(options: {
     if (url === `/api/v1/superagent/missions/${missionId}/cancel`) {
       return options.cancelResponse
         ? options.cancelResponse.then((payload) => response(payload))
-        : response({ ...runningMission, status: "cancelled" });
+        : response(runningMission);
     }
     if (url === `/api/v1/superagent/missions/${missionId}`) {
       const next = missions.shift() ?? completedMission;
@@ -297,18 +297,24 @@ describe("PCAP SuperAgent evidence workspace", () => {
     expect(requestBodies("/pcap/authorizations")).toHaveLength(0);
   });
 
-  it("cancels a non-terminal PCAP mission and removes only its storage key", async () => {
+  it("keeps polling after cancel acknowledgement until cleanup publishes cancelled", async () => {
     window.sessionStorage.setItem("token-security-superagent-pcap-mission-id", missionId);
-    installFetch({ missionSequence: [runningMission] });
+    installFetch({
+      missionSequence: [runningMission, { ...runningMission, status: "cancelled" }],
+    });
     render(<App />);
     await screen.findByLabelText("任务场景");
     window.sessionStorage.setItem("token-security-superagent-mission-id", "mission_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
+    fireEvent.click(screen.getByRole("button", { name: "PCAP 证据分诊" }));
     expect(await screen.findByText("任务运行中")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "取消任务" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-    expect(await screen.findByText("任务已取消")).toBeVisible();
+    expect(screen.getByText("任务运行中")).toBeVisible();
+    expect(window.sessionStorage.getItem("token-security-superagent-pcap-mission-id")).toBe(missionId);
+
+    expect(await screen.findByText("任务已取消", {}, { timeout: 2000 })).toBeVisible();
     expect(window.sessionStorage.getItem("token-security-superagent-pcap-mission-id")).toBeNull();
     expect(window.sessionStorage.getItem("token-security-superagent-mission-id")).toBe("mission_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   });
