@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 
 _UNKNOWN_MISSION = "mission_" + "0" * 32
+_UNKNOWN_RECON = "recon_" + "0" * 32
 _UNKNOWN_AUTHORIZATION = "pcap_auth_" + "0" * 32
 _OVERVIEW_KEYS = frozenset(
     {
@@ -31,6 +32,9 @@ _PCAP_ACTORS = [
     "knowledge_analyst",
     "response_operator",
 ]
+_RECON_OVERVIEW_KEYS = frozenset(
+    {"enabled", "eligible_file_count", "sample_limit", "sampling_method"}
+)
 _FORBIDDEN_KEYS = frozenset(
     {
         "absolute_path",
@@ -39,9 +43,13 @@ _FORBIDDEN_KEYS = frozenset(
         "body",
         "capture_id",
         "capture_ids",
+        "capture_filename",
+        "capture_path",
         "created_at",
         "file_name",
+        "file_path",
         "filename",
+        "http_body",
         "ip",
         "ip_address",
         "issued_at",
@@ -51,9 +59,18 @@ _FORBIDDEN_KEYS = frozenset(
         "payload",
         "port",
         "prompt",
+        "private_pcap_path",
+        "private_capture_id",
+        "private_file_name",
+        "private_filename",
+        "private_mapping",
+        "private_path",
         "receipt_id",
+        "request_body",
         "relative_path",
+        "response_body",
         "request_id",
+        "raw_stderr",
         "run_id",
         "sha256",
         "suffix",
@@ -79,6 +96,8 @@ _PRIVATE_ARTIFACT_PATTERNS = (
     "pcap-batch*.json",
     "pcap-batch-private*",
     "pcap-preflight-*.json",
+    "*pcap-recon*.json",
+    "*pcap-recon-private*",
 )
 
 
@@ -108,6 +127,19 @@ def _valid_overview(payload: object) -> bool:
         and payload["max_trace_events"] == 12
         and type(payload["max_trace_events"]) is int
         and payload["actors"] == _PCAP_ACTORS
+    )
+
+
+def _valid_recon_overview(payload: object) -> bool:
+    if not isinstance(payload, dict) or set(payload) != _RECON_OVERVIEW_KEYS:
+        return False
+    return (
+        type(payload["enabled"]) is bool
+        and _is_strict_int(payload["eligible_file_count"])
+        and 0 <= payload["eligible_file_count"] <= 2_147_483_647
+        and payload["sample_limit"] == 20
+        and type(payload["sample_limit"]) is int
+        and payload["sampling_method"] == "size_quartile_v1"
     )
 
 
@@ -148,6 +180,13 @@ def _endpoint_checks() -> tuple[_EndpointCheck, ...]:
             validate=_valid_overview,
         ),
         _EndpointCheck(
+            method="GET",
+            path="/api/v1/superagent/pcap/reconnaissance/overview",
+            expected_status=200,
+            request_body=None,
+            validate=_valid_recon_overview,
+        ),
+        _EndpointCheck(
             method="POST",
             path="/api/v1/superagent/pcap/authorizations",
             expected_status=422,
@@ -156,10 +195,28 @@ def _endpoint_checks() -> tuple[_EndpointCheck, ...]:
         ),
         _EndpointCheck(
             method="POST",
+            path="/api/v1/superagent/pcap/reconnaissance/authorizations",
+            expected_status=422,
+            request_body={"confirmed": False, "sample_limit": 20},
+            validate=validation_error,
+        ),
+        _EndpointCheck(
+            method="POST",
             path="/api/v1/superagent/missions",
             expected_status=422,
             request_body={
                 "objective": "triage_pcap_evidence",
+                "authorization_id": _UNKNOWN_AUTHORIZATION,
+                "scenario_kind": "frozen",
+            },
+            validate=validation_error,
+        ),
+        _EndpointCheck(
+            method="POST",
+            path="/api/v1/superagent/missions",
+            expected_status=422,
+            request_body={
+                "objective": "reconnoiter_pcap_dataset",
                 "authorization_id": _UNKNOWN_AUTHORIZATION,
                 "scenario_kind": "frozen",
             },
@@ -176,8 +233,28 @@ def _endpoint_checks() -> tuple[_EndpointCheck, ...]:
             ),
         ),
         _EndpointCheck(
+            method="GET",
+            path=f"/api/v1/superagent/missions/{_UNKNOWN_RECON}",
+            expected_status=404,
+            request_body=None,
+            validate=_fixed_error_validator(
+                code="superagent_mission_not_found",
+                message="bounded superagent mission was not found",
+            ),
+        ),
+        _EndpointCheck(
             method="POST",
             path=f"/api/v1/superagent/missions/{_UNKNOWN_MISSION}/cancel",
+            expected_status=409,
+            request_body=None,
+            validate=_fixed_error_validator(
+                code="pcap_mission_not_cancellable",
+                message="pcap mission is not cancellable",
+            ),
+        ),
+        _EndpointCheck(
+            method="POST",
+            path=f"/api/v1/superagent/missions/{_UNKNOWN_RECON}/cancel",
             expected_status=409,
             request_body=None,
             validate=_fixed_error_validator(
