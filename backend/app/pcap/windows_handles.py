@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-import msvcrt
 import os
 from ctypes import wintypes
 from pathlib import Path
@@ -25,6 +24,7 @@ _GENERIC_READ = 0x80000000
 _WIN32_OPEN_EXISTING = 3
 _STATUS_OBJECT_NAME_COLLISION = ctypes.c_long(0xC0000035).value
 _SYNCHRONIZE = 0x00100000
+_MAX_RELATIVE_READ_BYTES = 256 * 1024
 
 
 class _UnicodeString(ctypes.Structure):
@@ -118,14 +118,23 @@ def _read_file_relative(directory_handle: wintypes.HANDLE, file_name: str) -> st
     report_handle, status = _nt_create_relative(directory_handle, file_name, _GENERIC_READ | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE, _FILE_OPEN, _FILE_NON_DIRECTORY_FILE | _FILE_SYNCHRONOUS_IO_NONALERT | _FILE_OPEN_REPARSE_POINT)
     if status != 0:
         raise OSError("could not open PCAP public summary")
+    descriptor = None
     try:
         _reject_handle_reparse_point(report_handle)
+        import msvcrt
+
         descriptor = msvcrt.open_osfhandle(report_handle.value, os.O_RDONLY)
     except Exception:
         _close_handle(report_handle)
         raise
-    with os.fdopen(descriptor, "r", encoding="utf-8") as report:
-        return report.read()
+    try:
+        with os.fdopen(descriptor, "rb") as report:
+            data = report.read(_MAX_RELATIVE_READ_BYTES + 1)
+        if len(data) > _MAX_RELATIVE_READ_BYTES:
+            raise ValueError("PCAP public summary exceeds size limit")
+        return data.decode("utf-8")
+    except Exception:
+        raise
 
 
 def _nt_create_relative(parent_handle: wintypes.HANDLE, name_value: str, desired_access: int, disposition: int, options: int) -> tuple[wintypes.HANDLE, int]:
