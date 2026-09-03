@@ -341,3 +341,21 @@ def test_pcap_initialization_failure_degrades_only_pcap_and_hides_details(
     assert prompt.status_code == 200
     assert pcap.status_code == 503
     assert pcap.json()["error"]["code"] == "pcap_triage_unavailable"
+
+
+def test_reconnaissance_fallback_is_unavailable_without_ready_pcap_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("TOKEN_SECURITY_PCAP_ENABLED", raising=False)
+
+    with TestClient(app) as client:
+        overview = client.get("/api/v1/superagent/pcap/reconnaissance/overview")
+        authorization = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+
+    assert overview.status_code == 503
+    assert overview.json()["error"]["code"] == "pcap_reconnaissance_unavailable"
+    assert authorization.status_code == 503
+    assert authorization.json()["error"]["code"] == "pcap_reconnaissance_unavailable"

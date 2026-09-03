@@ -12,8 +12,10 @@ from app.lab.models import FORBIDDEN_PUBLIC_KEYS
 from app.main import app
 from app.pcap.authorization import PcapAuthorizationStore
 from app.pcap.models import PcapBatchSummary, PcapOverview
+from app.pcap.recon_models import PcapReconOverview, PcapReconSummary
 from app.schemas import Decision
 from app.superagent.pcap_coordinator import PcapMissionCoordinator
+from app.superagent.pcap_recon_coordinator import PcapReconMissionCoordinator
 from app.superagent.service import SuperAgentService
 from app.superagent.store import SuperAgentMissionStore
 from tests.unit.test_superagent_service import FakeLabService
@@ -153,6 +155,95 @@ class BlockingSyntheticExecutor(SyntheticExecutor):
 class FailingOverviewExecutor(SyntheticExecutor):
     def overview(self) -> PcapOverview:
         raise RuntimeError("PRIVATE_PCAP_PATH_AND_STDERR")
+
+
+def _recon_summary() -> PcapReconSummary:
+    return PcapReconSummary.model_validate(
+        {
+            "sampled_count": 4,
+            "succeeded_count": 4,
+            "failed_count": 0,
+            "quartile_counts": {"quartile_1": 1, "quartile_2": 1, "quartile_3": 1, "quartile_4": 1},
+            "size_bucket_counts": {"under_2_kib": 1, "2_kib_to_64_kib": 1, "64_kib_to_1_mib": 1, "at_least_1_mib": 1},
+            "packet_bucket_counts": {"empty": 1, "1_to_15": 1, "16_to_63": 1, "at_least_64": 1},
+            "duration_bucket_counts": {"zero": 1, "under_1_second": 1, "1_to_10_seconds": 1, "over_10_seconds": 1},
+            "protocol_presence_counts": {"dns": 2},
+            "plaintext_sample_count": 1,
+            "encrypted_sample_count": 1,
+            "sequence_candidate_count": 1,
+        }
+    )
+
+
+class SyntheticReconExecutor:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+
+    def overview(self) -> PcapReconOverview:
+        return PcapReconOverview(enabled=True, eligible_file_count=2318)
+
+    def execute(self, recon_id: str, max_files: int) -> PcapReconSummary:
+        self.calls.append((recon_id, max_files))
+        return _recon_summary()
+
+    def request_cancel(self, _recon_id: str) -> None:
+        return None
+
+
+class BlockingReconExecutor(SyntheticReconExecutor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = Event()
+        self.release = Event()
+
+    def execute(self, recon_id: str, max_files: int) -> PcapReconSummary:
+        self.started.set()
+        if not self.release.wait(timeout=3):
+            raise RuntimeError("test executor was not released")
+        return super().execute(recon_id, max_files)
+
+
+@contextmanager
+def installed_recon(
+    executor: SyntheticReconExecutor,
+    *,
+    authorization_store: PcapAuthorizationStore | None = None,
+) -> Iterator[PcapReconMissionCoordinator]:
+    authorizations = authorization_store or PcapAuthorizationStore()
+    store = SuperAgentMissionStore()
+    coordinator = PcapReconMissionCoordinator(
+        authorization_store=authorizations,
+        executor=executor,
+        mission_store=store,
+    )
+    service = SuperAgentService(
+        lab_service=FakeLabService(decision=Decision.ALLOW),
+        mission_store=store,
+        pcap_recon_coordinator=coordinator,
+    )
+    previous = {
+        name: getattr(app.state, name, None)
+        for name in (
+            "pcap_authorization_store",
+            "pcap_recon_executor",
+            "pcap_recon_coordinator",
+            "superagent_service",
+        )
+    }
+    app.state.pcap_authorization_store = authorizations
+    app.state.pcap_recon_executor = executor
+    app.state.pcap_recon_coordinator = coordinator
+    app.state.superagent_service = service
+    try:
+        yield coordinator
+    finally:
+        coordinator.close()
+        for name, value in previous.items():
+            if value is None:
+                if hasattr(app.state, name):
+                    delattr(app.state, name)
+            else:
+                setattr(app.state, name, value)
 
 
 def test_capabilities_and_mission_create_restore_are_public() -> None:
@@ -502,3 +593,193 @@ def test_pcap_tool_failure_uses_fixed_redacted_error() -> None:
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "pcap_batch_failed"
     assert "PRIVATE_PCAP_PATH_AND_STDERR" not in response.text
+
+
+def test_recon_overview_authorization_and_refresh_restore_use_aggregate_public_contract() -> None:
+    executor = SyntheticReconExecutor()
+    with installed_recon(executor):
+        client = TestClient(app)
+        overview = client.get("/api/v1/superagent/pcap/reconnaissance/overview")
+        receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        started = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": receipt.json()["authorization_id"],
+            },
+        )
+        mission_url = "/api/v1/superagent/missions/" + started.json()["recon_id"]
+        restored = client.get(mission_url)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and restored.json().get("status") != "completed":
+            time.sleep(0.01)
+            restored = client.get(mission_url)
+        refreshed = client.get(mission_url)
+
+    assert overview.status_code == 200
+    assert overview.json() == {
+        "enabled": True,
+        "eligible_file_count": 2318,
+        "sample_limit": 20,
+        "sampling_method": "size_quartile_v1",
+    }
+    assert receipt.status_code == 201
+    assert set(receipt.json()) == {"authorization_id", "max_files"}
+    assert started.status_code == 201
+    assert started.json()["objective"] == "reconnoiter_pcap_dataset"
+    assert restored.status_code == 200
+    assert restored.json() == refreshed.json()
+    assert executor.calls == [(started.json()["recon_id"], 20)]
+    assert [event["summary"] for event in restored.json()["events"]] == [
+        "authorization_accepted",
+        "quartile_sample_selected",
+        "isolated_full_capture_scan_running",
+        "aggregate_profile_validated",
+        "method_selection_checkpoint_ready",
+    ]
+    assert _forbidden_hits(restored.json()) == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"confirmed": False, "sample_limit": 20},
+        {"confirmed": True, "sample_limit": 19},
+        {"confirmed": True, "sample_limit": 21},
+    ],
+)
+def test_recon_authorization_requires_confirmation_and_fixed_sample_limit(
+    payload: dict[str, object],
+) -> None:
+    with installed_recon(SyntheticReconExecutor()):
+        response = TestClient(app).post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json=payload,
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "request_validation_failed",
+            "message": "request validation failed",
+        }
+    }
+
+
+def test_recon_purpose_mismatch_is_fixed_and_receipt_remains_usable() -> None:
+    with installed_recon(SyntheticReconExecutor()) as coordinator:
+        client = TestClient(app)
+        triage_receipt = app.state.pcap_authorization_store.issue(max_files=1)
+        mismatch = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": triage_receipt.authorization_id,
+            },
+        )
+        assert mismatch.status_code == 403
+        app.state.pcap_authorization_store.consume(
+            triage_receipt.authorization_id, purpose="triage"
+        )
+
+
+def test_recon_expiry_and_reuse_use_fixed_errors() -> None:
+    clock = [0.0]
+    authorizations = PcapAuthorizationStore(ttl_seconds=1, clock=lambda: clock[0])
+    with installed_recon(SyntheticReconExecutor(), authorization_store=authorizations):
+        client = TestClient(app)
+        receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        clock[0] = 2.0
+        expired = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": receipt.json()["authorization_id"],
+            },
+        )
+    assert expired.status_code == 410
+    assert expired.json()["error"]["code"] == "pcap_authorization_expired"
+
+
+def test_recon_active_limit_and_cancel_acknowledgement_are_cleanup_gated() -> None:
+    executor = BlockingReconExecutor()
+    with installed_recon(executor):
+        client = TestClient(app)
+        first_receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        first = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": first_receipt.json()["authorization_id"],
+            },
+        )
+        assert executor.started.wait(timeout=2)
+        second_receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        active = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": second_receipt.json()["authorization_id"],
+            },
+        )
+        cancelled = client.post(
+            "/api/v1/superagent/missions/" + first.json()["recon_id"] + "/cancel"
+        )
+        assert cancelled.status_code == 200
+        assert cancelled.json()["status"] == "running"
+        executor.release.set()
+        deadline = time.monotonic() + 3
+        terminal = cancelled
+        while time.monotonic() < deadline:
+            terminal = client.get(
+                "/api/v1/superagent/missions/" + first.json()["recon_id"]
+            )
+            if terminal.json()["status"] == "cancelled":
+                break
+            time.sleep(0.01)
+
+    assert active.status_code == 409
+    assert active.json() == {
+        "error": {
+            "code": "pcap_reconnaissance_active",
+            "message": "pcap reconnaissance is already active",
+        }
+    }
+    assert terminal.json()["status"] == "cancelled"
+
+
+def test_recon_unavailable_fallback_does_not_change_prompt_capabilities() -> None:
+    service = SuperAgentService(lab_service=FakeLabService(decision=Decision.ALLOW))
+    with installed_superagent(service):
+        for name in (
+            "pcap_authorization_store",
+            "pcap_recon_executor",
+            "pcap_recon_coordinator",
+        ):
+            if hasattr(app.state, name):
+                delattr(app.state, name)
+        client = TestClient(app)
+        prompt = client.get("/api/v1/superagent/capabilities")
+        overview = client.get("/api/v1/superagent/pcap/reconnaissance/overview")
+        auth = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+    assert prompt.status_code == 200
+    assert prompt.json()["objectives"] == ["investigate_and_respond"]
+    assert overview.status_code == 503
+    assert overview.json()["error"]["code"] == "pcap_reconnaissance_unavailable"
+    assert auth.status_code == 503
+    assert auth.json()["error"]["code"] == "pcap_reconnaissance_unavailable"
