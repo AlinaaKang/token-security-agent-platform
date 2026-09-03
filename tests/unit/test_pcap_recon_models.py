@@ -171,7 +171,7 @@ def test_recon_overview_rejects_private_fields(private_key: str) -> None:
         {"protocol_presence_counts": {"smtp": 1}},
         {
             "size_bucket_counts": {
-                "under_2_kib": 4,
+                "under_2_kib": 5,
                 "2_kib_to_64_kib": 1,
                 "64_kib_to_1_mib": 0,
                 "at_least_1_mib": 0,
@@ -195,6 +195,39 @@ def test_recon_mission_has_closed_identifier_trace_and_objective_contract() -> N
         PcapReconMissionResult.model_validate(
             public_mission_payload() | {"recon_id": "mission_" + "a" * 32}
         )
+
+
+def test_recon_summary_accepts_partial_histograms_for_incomplete_scans() -> None:
+    payload = public_summary_payload() | {
+        "quartile_counts": {
+            "quartile_1": 0,
+            "quartile_2": 0,
+            "quartile_3": 0,
+            "quartile_4": 0,
+        },
+        "size_bucket_counts": {
+            "under_2_kib": 0,
+            "2_kib_to_64_kib": 0,
+            "64_kib_to_1_mib": 0,
+            "at_least_1_mib": 0,
+        },
+        "packet_bucket_counts": {
+            "empty": 0,
+            "1_to_15": 0,
+            "16_to_63": 0,
+            "at_least_64": 0,
+        },
+        "duration_bucket_counts": {
+            "zero": 0,
+            "under_1_second": 0,
+            "1_to_10_seconds": 0,
+            "over_10_seconds": 0,
+        },
+    }
+
+    summary = PcapReconSummary.model_validate(payload)
+
+    assert summary.sampled_count == 4
     with pytest.raises(ValidationError):
         PcapReconMissionResult.model_validate(
             public_mission_payload()

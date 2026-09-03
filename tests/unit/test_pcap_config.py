@@ -100,6 +100,21 @@ def test_enabled_pcap_config_uses_repository_owned_scripts(tmp_path: Path) -> No
     assert config.recon_batch_script.parent == config.batch_script.parent
 
 
+def test_manual_pcap_config_recon_script_default_is_repository_absolute(
+    tmp_path: Path,
+) -> None:
+    config = PcapConfig(
+        quarantine_root=tmp_path,
+        powershell_executable=tmp_path / "pwsh.exe",
+        batch_script=tmp_path / "batch.ps1",
+        inspect_script=tmp_path / "inspect.ps1",
+    )
+
+    expected = Path(config_module.__file__).resolve().parents[3] / "scripts" / "inspect_pcap_recon_batch.ps1"
+    assert config.recon_batch_script == expected
+    assert config.recon_batch_script.is_absolute()
+
+
 @pytest.mark.parametrize(
     ("variable", "value", "message"),
     [

@@ -128,15 +128,6 @@ class PcapReconSummary(_FrozenPcapReconPublicModel):
     def require_consistent_aggregate_counts(self) -> PcapReconSummary:
         if self.succeeded_count + self.failed_count != self.sampled_count:
             raise ValueError("succeeded_count and failed_count must equal sampled_count")
-        if _histogram_total(self.quartile_counts) != self.sampled_count:
-            raise ValueError("quartile_counts must equal sampled_count")
-        for histogram in (
-            self.size_bucket_counts,
-            self.packet_bucket_counts,
-            self.duration_bucket_counts,
-        ):
-            if _histogram_total(histogram) != self.succeeded_count:
-                raise ValueError("bucket histogram counts must equal succeeded_count")
         counts = (
             *self.quartile_counts.model_dump().values(),
             *self.size_bucket_counts.model_dump().values(),
@@ -223,10 +214,6 @@ def bucket_duration(duration_seconds: float) -> PcapDurationBucket:
     if duration_seconds <= 10:
         return PcapDurationBucket.FROM_1_TO_10_SECONDS
     return PcapDurationBucket.OVER_10_SECONDS
-
-
-def _histogram_total(histogram: BaseModel) -> int:
-    return sum(histogram.model_dump().values())
 
 
 def _require_nonnegative_integer(value: int, label: str) -> None:

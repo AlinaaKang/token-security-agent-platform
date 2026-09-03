@@ -13,6 +13,9 @@ _SCRIPT_OVERRIDE_VARIABLES = (
     "TOKEN_SECURITY_PCAP_RECON_BATCH_SCRIPT",
 )
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_DEFAULT_RECON_BATCH_SCRIPT = (
+    Path(__file__).resolve().parents[3] / "scripts" / "inspect_pcap_recon_batch.ps1"
+)
 
 
 @dataclass(frozen=True)
@@ -21,7 +24,7 @@ class PcapConfig:
     powershell_executable: Path
     batch_script: Path
     inspect_script: Path
-    recon_batch_script: Path = Path("scripts/inspect_pcap_recon_batch.ps1")
+    recon_batch_script: Path = _DEFAULT_RECON_BATCH_SCRIPT
 
     @classmethod
     def from_environ(cls, environ: Mapping[str, str]) -> PcapConfig | None:
