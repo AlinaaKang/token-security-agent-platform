@@ -246,6 +246,59 @@ def installed_recon(
                 setattr(app.state, name, value)
 
 
+@contextmanager
+def installed_dual_recon(
+    recon_executor: SyntheticReconExecutor,
+) -> Iterator[tuple[PcapMissionCoordinator, PcapReconMissionCoordinator]]:
+    authorizations = PcapAuthorizationStore()
+    store = SuperAgentMissionStore()
+    triage_executor = SyntheticExecutor()
+    triage = PcapMissionCoordinator(
+        authorization_store=authorizations,
+        executor=triage_executor,
+        mission_store=store,
+    )
+    recon = PcapReconMissionCoordinator(
+        authorization_store=authorizations,
+        executor=recon_executor,
+        mission_store=store,
+    )
+    service = SuperAgentService(
+        lab_service=FakeLabService(decision=Decision.ALLOW),
+        mission_store=store,
+        pcap_coordinator=triage,
+        pcap_recon_coordinator=recon,
+    )
+    previous = {
+        name: getattr(app.state, name, None)
+        for name in (
+            "pcap_authorization_store",
+            "pcap_executor",
+            "pcap_coordinator",
+            "pcap_recon_executor",
+            "pcap_recon_coordinator",
+            "superagent_service",
+        )
+    }
+    app.state.pcap_authorization_store = authorizations
+    app.state.pcap_executor = triage_executor
+    app.state.pcap_coordinator = triage
+    app.state.pcap_recon_executor = recon_executor
+    app.state.pcap_recon_coordinator = recon
+    app.state.superagent_service = service
+    try:
+        yield triage, recon
+    finally:
+        recon.close()
+        triage.close()
+        for name, value in previous.items():
+            if value is None:
+                if hasattr(app.state, name):
+                    delattr(app.state, name)
+            else:
+                setattr(app.state, name, value)
+
+
 def test_capabilities_and_mission_create_restore_are_public() -> None:
     service = SuperAgentService(
         lab_service=FakeLabService(decision=Decision.BLOCK)
@@ -783,3 +836,125 @@ def test_recon_unavailable_fallback_does_not_change_prompt_capabilities() -> Non
     assert overview.json()["error"]["code"] == "pcap_reconnaissance_unavailable"
     assert auth.status_code == 503
     assert auth.json()["error"]["code"] == "pcap_reconnaissance_unavailable"
+
+
+def test_recon_receipt_cannot_start_triage_and_remains_usable() -> None:
+    with installed_dual_recon(SyntheticReconExecutor()):
+        client = TestClient(app)
+        receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        mismatch = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "triage_pcap_evidence",
+                "authorization_id": receipt.json()["authorization_id"],
+            },
+        )
+        assert mismatch.status_code == 403
+        usable = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": receipt.json()["authorization_id"],
+            },
+        )
+
+    assert mismatch.json() == {
+        "error": {
+            "code": "pcap_authorization_purpose_mismatch",
+            "message": "pcap authorization purpose mismatch",
+        }
+    }
+    assert usable.status_code == 201
+
+
+def test_recon_receipt_reuse_after_successful_start_is_rejected() -> None:
+    with installed_recon(SyntheticReconExecutor()):
+        client = TestClient(app)
+        receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        payload = {
+            "objective": "reconnoiter_pcap_dataset",
+            "authorization_id": receipt.json()["authorization_id"],
+        }
+        first = client.post("/api/v1/superagent/missions", json=payload)
+        second = client.post("/api/v1/superagent/missions", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+    assert second.json() == {
+        "error": {
+            "code": "pcap_authorization_used",
+            "message": "pcap authorization was already used",
+        }
+    }
+
+
+class FailingReconExecutor(SyntheticReconExecutor):
+    def overview(self) -> PcapReconOverview:
+        raise RuntimeError("PRIVATE_RECON_PATH_AND_STDERR")
+
+
+def test_recon_executor_failure_uses_fixed_redacted_500_error() -> None:
+    with installed_recon(FailingReconExecutor()):
+        response = TestClient(app).get(
+            "/api/v1/superagent/pcap/reconnaissance/overview"
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "pcap_reconnaissance_failed",
+            "message": "pcap reconnaissance failed",
+        }
+    }
+    assert "PRIVATE_RECON_PATH_AND_STDERR" not in response.text
+
+
+def test_recon_can_start_after_prior_cancellation_cleanup() -> None:
+    executor = BlockingReconExecutor()
+    with installed_recon(executor):
+        client = TestClient(app)
+        first_receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        first = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": first_receipt.json()["authorization_id"],
+            },
+        )
+        assert executor.started.wait(timeout=2)
+        client.post(
+            "/api/v1/superagent/missions/" + first.json()["recon_id"] + "/cancel"
+        )
+        executor.release.set()
+        deadline = time.monotonic() + 3
+        terminal = client.get(
+            "/api/v1/superagent/missions/" + first.json()["recon_id"]
+        )
+        while time.monotonic() < deadline and terminal.json()["status"] != "cancelled":
+            time.sleep(0.01)
+            terminal = client.get(
+                "/api/v1/superagent/missions/" + first.json()["recon_id"]
+            )
+        second_receipt = client.post(
+            "/api/v1/superagent/pcap/reconnaissance/authorizations",
+            json={"confirmed": True, "sample_limit": 20},
+        )
+        second = client.post(
+            "/api/v1/superagent/missions",
+            json={
+                "objective": "reconnoiter_pcap_dataset",
+                "authorization_id": second_receipt.json()["authorization_id"],
+            },
+        )
+
+    assert terminal.json()["status"] == "cancelled"
+    assert second.status_code == 201
