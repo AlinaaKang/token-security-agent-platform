@@ -59,6 +59,46 @@ exit {exit_code}
 ''', encoding="utf-8")
     return p
 
+
+def instrumented_inspector(tmp: Path) -> Path:
+    p = tmp / "instrumented-fake.ps1"
+    p.write_text(r'''param([string]$Path,[string]$QuarantineRoot)
+$ErrorActionPreference = 'Stop'
+$log = $env:FAKE_RECON_LOG_ROOT
+$activePath = Join-Path $log 'active.txt'; $maxPath = Join-Path $log 'max.txt'; $calls = Join-Path $log 'calls.txt'
+$active = 0; if (Test-Path -LiteralPath $activePath) { $active = [int](Get-Content -LiteralPath $activePath -Raw) }
+$active++; [IO.File]::WriteAllText($activePath, [string]$active)
+try {
+  $max = $active; if (Test-Path -LiteralPath $maxPath) { $max = [Math]::Max($max, [int](Get-Content -LiteralPath $maxPath -Raw)) }
+  [IO.File]::WriteAllText($maxPath, [string]$max)
+  $item = Get-Item -LiteralPath $Path
+  $readonly = ($item -is [IO.FileInfo] -and $item.Extension.ToLowerInvariant() -in @('.pcap','.pcapng'))
+  Add-Content -LiteralPath $calls -Value ('max_concurrent_calls=' + $max + ';readonly_single_capture=' + $readonly)
+  $hash = [Security.Cryptography.SHA256]::Create(); $stream = [IO.File]::OpenRead($Path)
+  try { $sha = (($hash.ComputeHash($stream) | % { $_.ToString('x2') }) -join '') } finally { $stream.Dispose(); $hash.Dispose() }
+  $report = [ordered]@{ schema_version=1; sha256=$sha; size_bytes=[int64]$item.Length; capture_format='pcap'; packet_count=64; duration_seconds=1.0; link_types=@('encap_1'); protocol_counts=[ordered]@{http=1}; visibility=[ordered]@{plaintext_application_protocol_observed=$true;encrypted_transport_observed=$false;tls_observed=$false;quic_observed=$false}; capability='token_eligible'; reasons=@('plaintext_application_protocol_observed'); tool_versions=[ordered]@{tshark='tshark'} }
+  $out = Join-Path $QuarantineRoot 'output'; New-Item -ItemType Directory -Force $out | Out-Null
+  [IO.File]::WriteAllText((Join-Path $out ('pcap-preflight-' + $sha.Substring(0,16) + '.json')), ($report | ConvertTo-Json -Depth 6 -Compress))
+} finally { $active = [int](Get-Content -LiteralPath $activePath -Raw) - 1; [IO.File]::WriteAllText($activePath, [string]$active) }
+''', encoding="utf-8")
+    return p
+
+
+def noisy_failure_inspector(tmp: Path) -> Path:
+    p = tmp / "noisy-failure.ps1"
+    p.write_text(r'''param([string]$Path,[string]$QuarantineRoot)
+$noise = ('PRIVATE_RAW_EXCEPTION ' * 50000)
+[Console]::Out.Write($noise)
+[Console]::Error.Write($noise)
+exit 17
+''', encoding="utf-8")
+    return p
+
+
+def make_directory_junction(link: Path, target: Path) -> None:
+    result = subprocess.run([os.environ["ComSpec"], "/d", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
 def run(root: Path, inspector: Path):
     env = os.environ.copy()
     env['FAKE_RECON_LOG_ROOT'] = str(inspector.parent / 'recon-log')
@@ -197,3 +237,41 @@ def test_recon_state_replacement_is_atomic_and_pre_cancel_cleans_children(tmp_pa
     assert not (state_dir/f'{RECON_ID}.cancel').exists()
     summary=json.loads((output/f'pcap-recon-{RECON_ID}.json').read_text())
     assert summary['sampled_count'] == 0
+
+
+def test_recon_refuses_reparse_point_input_without_following_it(tmp_path: Path):
+    root=tmp_path/'q'; inp=root/'input'; inp.mkdir(parents=True)
+    outside=tmp_path/'outside'; outside.mkdir(); (outside/'capture.pcap').write_bytes(b'x')
+    link=inp/'linked'; make_directory_junction(link, outside)
+    try:
+        result=run(root, fake_inspector(tmp_path))
+    finally:
+        link.rmdir()
+    assert result.returncode != 0
+    assert result.stdout.strip() == 'pcap_recon_error=input_reparse_point'
+    assert result.stderr == ''
+
+
+def test_recon_inspects_one_readonly_single_capture_serially(tmp_path: Path):
+    root=tmp_path/'q'; inp=root/'input'; inp.mkdir(parents=True)
+    for n in range(1, 9): (inp/f'{n:02}.pcap').write_bytes(b'x'*n)
+    inspector=instrumented_inspector(tmp_path)
+    result=run(root, inspector)
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines=(inspector.parent/'recon-log'/'calls.txt').read_text().splitlines()
+    assert lines
+    assert all('readonly_single_capture=True' in line for line in lines)
+    assert max(int(line.split(';',1)[0].split('=',1)[1]) for line in lines) == 1
+
+
+def test_recon_bounds_child_output_and_hides_raw_exception_text(tmp_path: Path):
+    root=tmp_path/'q'; inp=root/'input'; inp.mkdir(parents=True); (inp/'one.pcap').write_bytes(b'x')
+    result=run(root, noisy_failure_inspector(tmp_path))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == f'pcap_recon_result={RECON_ID}'
+    assert result.stderr == ''
+    assert len(result.stdout) < 128
+    assert len(result.stderr) < 128
+    assert 'PRIVATE_RAW_EXCEPTION' not in result.stdout + result.stderr
+    summary=(root/'output'/f'pcap-recon-{RECON_ID}.json').read_text()
+    assert 'PRIVATE_RAW_EXCEPTION' not in summary

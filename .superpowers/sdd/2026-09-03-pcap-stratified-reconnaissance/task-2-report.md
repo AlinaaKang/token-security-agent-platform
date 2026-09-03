@@ -89,3 +89,13 @@ Verification after hardening: `pytest tests/unit/test_inspect_pcap_recon_batch_s
 
 - The script computes SHA-256 over each selected placeholder to establish resume identity; it does not parse PCAP bytes and leaves container inspection policy to the existing inspector.
 - PowerShell 5.1 remains the execution prerequisite because the contract requires the fixed Windows PowerShell executable.
+
+## Final synthetic behavior coverage
+
+### Exact command and output
+
+`E:\Codex\token-security-agent-platform\.venv\Scripts\python.exe -m pytest tests/unit/test_inspect_pcap_recon_batch_script.py::test_recon_refuses_reparse_point_input_without_following_it tests/unit/test_inspect_pcap_recon_batch_script.py::test_recon_inspects_one_readonly_single_capture_serially tests/unit/test_inspect_pcap_recon_batch_script.py::test_recon_bounds_child_output_and_hides_raw_exception_text -q`
+
+`3 passed in 4.01s`
+
+These tests use only synthetic placeholder files and a fake inspector. They verify executable reparse-point refusal, `max_concurrent_calls == 1`, `readonly_single_capture == True` on every inspector call, bounded parent stdout/stderr despite large child streams, and absence of raw exception text.
