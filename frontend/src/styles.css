@@ -2552,6 +2552,30 @@ td:first-child { min-width: 128px; }
 
 /* PCAP mode: bounded evidence operations with an explicit authorization handoff. */
 .pcap-superagent { min-width: 0; }
+.pcap-mode-switch { width: fit-content; margin: 0 0 14px; padding: 3px; border: 1px solid var(--line-strong); background: #e9eeec; display: grid; grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+.pcap-mode-switch button { min-height: 34px; padding: 0 12px; border: 0; border-radius: 2px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 800; }
+.pcap-mode-switch button[aria-pressed="true"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px rgba(35, 53, 70, .14); }
+.pcap-recon-workspace { min-width: 0; }
+.pcap-recon-authorization { border: 1px solid var(--line); border-top: 2px solid var(--ink); padding: 16px; background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.pcap-recon-authorization p { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.pcap-recon-authorization > button, .pcap-recon-consent button:last-child { min-height: 38px; padding: 0 12px; border: 1px solid #0e6757; border-radius: 3px; color: #fff; background: var(--trusted); display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.pcap-recon-consent { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; color: var(--review); }
+.pcap-recon-consent p { margin: 0; color: var(--ink); }
+.pcap-recon-consent .secondary-button { min-height: 34px; }
+.pcap-recon-phase { margin-top: 14px; padding: 12px 14px; border-left: 3px solid var(--trusted); background: var(--trusted-soft); display: flex; flex-wrap: wrap; gap: 16px; align-items: baseline; }
+.pcap-recon-phase strong { color: var(--trusted); font-size: 12px; }
+.pcap-recon-phase span { color: var(--muted); font-size: 10px; }
+.pcap-recon-profile { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pcap-recon-profile section, .pcap-recon-stat { min-width: 0; border: 1px solid var(--line); background: var(--surface); padding: 12px 14px; }
+.pcap-recon-profile h3 { margin: 0 0 9px; color: var(--muted); font-size: 10px; }
+.pcap-recon-bar { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(90px, 2fr) 28px; gap: 8px; align-items: center; min-height: 24px; color: var(--ink); font-size: 9px; }
+.pcap-recon-bar i { height: 7px; background: var(--surface-soft); display: block; }
+.pcap-recon-bar b { height: 100%; display: block; background: var(--trusted); }
+.pcap-recon-bar strong { text-align: right; font: 700 9px Consolas, monospace; }
+.pcap-recon-stat { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 18px; }
+.pcap-recon-stat strong { color: var(--ink); font-size: 11px; }
+.pcap-recon-empty { min-height: 220px; margin-top: 14px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); display: grid; place-content: center; justify-items: center; gap: 8px; }
+.pcap-recon-events { margin: 14px 0 0; padding: 12px 18px 12px 30px; border: 1px solid var(--line); background: var(--surface-soft); color: var(--muted); font-size: 10px; line-height: 1.7; }
 .pcap-authorization-track {
   margin-bottom: 16px;
   border: 1px solid var(--line);
@@ -2885,6 +2909,12 @@ td:first-child { min-width: 128px; }
   .pcap-mascot-finding-grid { grid-template-columns: 1fr; }
   .pcap-mascot-finding-grid section { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .pcap-mascot-finding-grid section:last-child { border-bottom: 0; }
+  .pcap-recon-profile { grid-template-columns: 1fr; }
+  .pcap-recon-bar { grid-template-columns: minmax(82px, 1fr) minmax(0, 2fr) 28px; }
+  .pcap-recon-authorization { align-items: flex-start; flex-direction: column; }
+  .pcap-recon-authorization > button { width: 100%; justify-content: center; }
+  .pcap-recon-consent { grid-template-columns: 24px minmax(0, 1fr); }
+  .pcap-recon-consent button { grid-column: span 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

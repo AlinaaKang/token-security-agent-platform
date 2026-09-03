@@ -402,7 +402,53 @@ export interface PcapMissionResult {
   created_at: string;
 }
 
-export type SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult;
+export interface PcapReconOverview {
+  enabled: boolean;
+  eligible_file_count: number;
+  sample_limit: 20;
+  sampling_method: "size_quartile_v1";
+}
+
+export interface PcapReconAuthorizationRequest { confirmed: true; sample_limit: 20; }
+export interface PcapReconAuthorizationReceipt { authorization_id: string; max_files: number; }
+export interface PcapReconMissionRequest {
+  objective: "reconnoiter_pcap_dataset";
+  authorization_id: string;
+}
+
+export interface PcapReconHistogram { [bucket: string]: number }
+export interface PcapReconSummary {
+  schema_version: 1;
+  sampled_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  quartile_counts: { quartile_1: number; quartile_2: number; quartile_3: number; quartile_4: number };
+  size_bucket_counts: PcapReconHistogram;
+  packet_bucket_counts: PcapReconHistogram;
+  duration_bucket_counts: PcapReconHistogram;
+  protocol_presence_counts: Record<string, number>;
+  plaintext_sample_count: number;
+  encrypted_sample_count: number;
+  sequence_candidate_count: number;
+}
+
+export type PcapReconNarrative = "authorization_accepted" | "quartile_sample_selected" | "isolated_full_capture_scan_running" | "aggregate_profile_validated" | "method_selection_checkpoint_ready";
+export interface PcapReconTraceEvent {
+  sequence: number;
+  actor: PcapActor;
+  status: PcapEventStatus;
+  summary: PcapReconNarrative;
+}
+export interface PcapReconMissionResult {
+  recon_id: string;
+  objective: "reconnoiter_pcap_dataset";
+  status: PcapMissionStatus;
+  events: PcapReconTraceEvent[];
+  summary: PcapReconSummary | null;
+  created_at: string;
+}
+
+export type SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult | PcapReconMissionResult;
 
 export type LabRunRequest =
   | { scenario_kind: "custom"; custom_input: string; mode: Mode }

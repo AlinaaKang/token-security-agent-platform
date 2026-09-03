@@ -393,4 +393,26 @@ describe("PCAP SuperAgent evidence workspace", () => {
 
     expect(screen.queryByRole("region", { name: "PCAP 侦探证据回放" })).not.toBeInTheDocument();
   });
+
+  it("opens PCAP on the batch triage segment by default", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
+    expect(await screen.findByRole("button", { name: "批量分诊" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "数据勘察" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("stops triage mission polling after switching to reconnaissance", async () => {
+    vi.useFakeTimers();
+    render(<App />);
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    fireEvent.click(screen.getByRole("button", { name: "PCAP 证据分诊" }));
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    fireEvent.click(screen.getByRole("button", { name: "准备开始" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认并开始" }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const before = requestUrls().filter((url) => url.includes("/missions/")).length;
+    fireEvent.click(screen.getByRole("button", { name: "数据勘察" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(requestUrls().filter((url) => url.includes("/missions/")).length).toBe(before);
+  });
 });

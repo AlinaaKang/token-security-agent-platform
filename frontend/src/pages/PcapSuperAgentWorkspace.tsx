@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
 import { PcapMascotTeam } from "../components/PcapMascotTeam";
+import { PcapReconWorkspace } from "./PcapReconWorkspace";
 import type {
   PcapActor,
   PcapCaptureEvidence,
@@ -195,6 +196,7 @@ function MissionWorkspace({
 }
 
 export function PcapSuperAgentWorkspace() {
+  const [pcapView, setPcapView] = useState<"triage" | "recon">("triage");
   const [overviewEnabled, setOverviewEnabled] = useState<boolean | null>(null);
   const [pendingFileCount, setPendingFileCount] = useState<number | null>(null);
   const [maxBatchSize, setMaxBatchSize] = useState(20);
@@ -209,6 +211,7 @@ export function PcapSuperAgentWorkspace() {
   const pollEpochRef = useRef(0);
 
   useEffect(() => {
+    if (pcapView !== "triage") return;
     let active = true;
     const storedMissionId = readStoredMissionId();
     const restoreMission = storedMissionId
@@ -245,12 +248,12 @@ export function PcapSuperAgentWorkspace() {
       setLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [pcapView]);
 
   const missionId = mission?.mission_id ?? null;
   const missionStatus = mission?.status ?? null;
   useEffect(() => {
-    if (!missionId || !missionStatus || terminalStatuses.has(missionStatus)) return;
+    if (pcapView !== "triage" || !missionId || !missionStatus || terminalStatuses.has(missionStatus)) return;
     let active = true;
     let timer: number | undefined;
     const pollEpoch = ++pollEpochRef.current;
@@ -279,7 +282,7 @@ export function PcapSuperAgentWorkspace() {
       active = false;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [missionId, missionStatus, pollRevision]);
+  }, [pcapView, missionId, missionStatus, pollRevision]);
 
   const parsedMaxFiles = Number(maxFiles);
   const validMaxFiles = /^\d+$/.test(maxFiles) && Number.isInteger(parsedMaxFiles) && parsedMaxFiles >= 1 && parsedMaxFiles <= maxBatchSize;
@@ -342,6 +345,11 @@ export function PcapSuperAgentWorkspace() {
 
   return (
     <section className="pcap-superagent" aria-label="PCAP 证据分诊工作区" aria-busy={loading || actionPending}>
+      <div className="pcap-mode-switch" role="group" aria-label="PCAP 工作模式">
+        <button type="button" aria-pressed={pcapView === "triage"} onClick={() => setPcapView("triage")}>批量分诊</button>
+        <button type="button" aria-pressed={pcapView === "recon"} onClick={() => setPcapView("recon")}>数据勘察</button>
+      </div>
+      {pcapView === "recon" ? <PcapReconWorkspace /> : <>
       <div className="pcap-authorization-track">
         <section className="pcap-overview-stage">
           <div className="pcap-stage-index"><span>阶段 1</span><strong>范围概览</strong></div>
@@ -403,6 +411,7 @@ export function PcapSuperAgentWorkspace() {
           <Network size={25} /><strong>等待有界批次任务</strong><span>范围概览与执行授权保持分离。</span>
         </section>
       )}
+      </>}
     </section>
   );
 }

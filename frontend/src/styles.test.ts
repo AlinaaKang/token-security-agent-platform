@@ -17,4 +17,8 @@ describe("responsive motion styles", () => {
       /@media \(prefers-reduced-motion: reduce\) \{\s*\.superagent-spinner,\s*\.superagent-reasoning-node,\s*\.superagent-reasoning-overview > li:not\(:last-child\)::after \{ animation: none; \}\s*\}/,
     );
   });
+
+  it("keeps reconnaissance profile single-column on narrow screens", () => {
+    expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*\.pcap-recon-profile \{ grid-template-columns: 1fr; \}[\s\S]*\.pcap-recon-bar \{ grid-template-columns:/);
+  });
 });

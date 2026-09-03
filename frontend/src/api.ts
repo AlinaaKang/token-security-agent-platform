@@ -18,6 +18,11 @@ import type {
   PcapMissionRequest,
   PcapMissionResult,
   PcapOverview,
+  PcapReconOverview,
+  PcapReconAuthorizationRequest,
+  PcapReconAuthorizationReceipt,
+  PcapReconMissionRequest,
+  PcapReconMissionResult,
   SuperAgentCapabilities,
   SuperAgentMissionRequest,
   SuperAgentMissionResult,
@@ -32,7 +37,9 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       payload?.error?.message ??
       payload?.detail ??
       "请求失败（HTTP " + (response.status ?? "unknown") + "）";
-    throw new Error(message);
+    const error = new Error(message) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
   return payload as T;
 }
@@ -108,6 +115,20 @@ export const api = {
     requestJson<PcapOverview>("/api/v1/superagent/pcap/capabilities"),
   pcapOverview: () =>
     requestJson<PcapOverview>("/api/v1/superagent/pcap/overview"),
+  pcapReconOverview: () =>
+    requestJson<PcapReconOverview>("/api/v1/superagent/pcap/reconnaissance/overview"),
+  authorizePcapRecon: (payload: PcapReconAuthorizationRequest) =>
+    requestJson<PcapReconAuthorizationReceipt>("/api/v1/superagent/pcap/reconnaissance/authorizations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  createPcapReconMission: (payload: PcapReconMissionRequest) =>
+    requestJson<PcapReconMissionResult>("/api/v1/superagent/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
   authorizePcapBatch: (payload: PcapAuthorizationRequest) =>
     requestJson<PcapAuthorizationReceipt>("/api/v1/superagent/pcap/authorizations", {
       method: "POST",
