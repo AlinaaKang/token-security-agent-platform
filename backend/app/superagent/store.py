@@ -7,6 +7,7 @@ from threading import RLock
 
 from app.lab.models import assert_public_payload
 from app.pcap.models import PcapMissionResult, PcapMissionStatus
+from app.pcap.recon_models import PcapReconMissionResult
 from app.superagent.models import SuperAgentStoredMission
 
 
@@ -45,9 +46,10 @@ class SuperAgentMissionStore:
         with self._lock:
             now = self._clock()
             self._purge_expired(now)
-            self._missions.pop(mission.mission_id, None)
-            self._forget_expired(mission.mission_id)
-            self._missions[mission.mission_id] = (now, mission)
+            mission_id = _mission_id(mission)
+            self._missions.pop(mission_id, None)
+            self._forget_expired(mission_id)
+            self._missions[mission_id] = (now, mission)
             while len(self._missions) > self.capacity:
                 eviction_id = next(
                     (
@@ -57,8 +59,8 @@ class SuperAgentMissionStore:
                     ),
                     None,
                 )
-                if eviction_id is None or eviction_id == mission.mission_id:
-                    self._missions.pop(mission.mission_id, None)
+                if eviction_id is None or eviction_id == mission_id:
+                    self._missions.pop(mission_id, None)
                     raise ValueError(
                         "mission store capacity is occupied by active PCAP missions"
                     )
@@ -108,7 +110,12 @@ class SuperAgentMissionStore:
 
 
 def _is_active_pcap_mission(mission: SuperAgentStoredMission) -> bool:
-    return isinstance(mission, PcapMissionResult) and mission.status in {
+    return isinstance(mission, (PcapMissionResult, PcapReconMissionResult)) and mission.status in {
         PcapMissionStatus.QUEUED,
         PcapMissionStatus.RUNNING,
     }
+
+
+def _mission_id(mission: SuperAgentStoredMission) -> str:
+    mission_id = getattr(mission, "mission_id", None)
+    return mission_id if mission_id is not None else mission.recon_id

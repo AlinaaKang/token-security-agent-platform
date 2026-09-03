@@ -7,12 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.lab.models import LabToolId, assert_public_payload, safer_action
 from app.pcap.models import PcapMissionResult
+from app.pcap.recon_models import PcapReconMissionResult
 from app.schemas import Decision, NonEmptyText
 
 
 class SuperAgentObjective(StrEnum):
     INVESTIGATE_AND_RESPOND = "investigate_and_respond"
     TRIAGE_PCAP_EVIDENCE = "triage_pcap_evidence"
+    RECONNOITER_PCAP_DATASET = "reconnoiter_pcap_dataset"
 
 
 class SuperAgentFinalStatus(StrEnum):
@@ -65,10 +67,11 @@ class PcapTriageMissionRequest(BaseModel):
     authorization_id: str = Field(pattern=r"^pcap_auth_[0-9a-f]{32}$")
 
 
-SuperAgentCreateMissionRequest = Annotated[
-    SuperAgentMissionRequest | PcapTriageMissionRequest,
-    Field(discriminator="objective"),
-]
+class PcapReconMissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    objective: Literal[SuperAgentObjective.RECONNOITER_PCAP_DATASET]
+    authorization_id: str = Field(pattern=r"^pcap_auth_[0-9a-f]{32}$")
 
 
 class SuperAgentPlanStep(_FrozenPublicModel):
@@ -141,4 +144,10 @@ class SuperAgentCapabilities(_FrozenPublicModel):
     replanning_limit: Literal[1] = 1
 
 
-SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult
+SuperAgentCreateMissionRequest = Annotated[
+    SuperAgentMissionRequest | PcapTriageMissionRequest | PcapReconMissionRequest,
+    Field(discriminator="objective"),
+]
+
+
+SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult | PcapReconMissionResult

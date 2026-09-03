@@ -74,11 +74,11 @@ class PcapMissionCoordinator:
         with self._lock:
             if self._closed:
                 raise RuntimeError("pcap_coordinator_closed")
-            self._authorization_store.assert_usable(request.authorization_id)
+            self._authorization_store.assert_usable(request.authorization_id, purpose="triage")
             if self._active_mission_ids:
                 raise RuntimeError("pcap_mission_capacity_reached")
             authorization = self._authorization_store.consume(
-                request.authorization_id
+                request.authorization_id, purpose="triage"
             )
             mission_id = f"mission_{uuid.uuid4().hex}"
             batch_id = f"batch_{uuid.uuid4().hex}"

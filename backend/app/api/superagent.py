@@ -10,8 +10,10 @@ from app.pcap.authorization import (
     PcapAuthorizationAlreadyUsed,
     PcapAuthorizationExpired,
     PcapAuthorizationUnknown,
+    PcapAuthorizationPurposeMismatch,
 )
 from app.superagent.models import (
+    PcapReconMissionRequest,
     PcapTriageMissionRequest,
     SuperAgentCreateMissionRequest,
 )
@@ -81,12 +83,29 @@ def _pcap_batch_failed() -> JSONResponse:
     )
 
 
+def _pcap_recon_unavailable() -> JSONResponse:
+    return _error(status_code=503, code="pcap_reconnaissance_unavailable", message="pcap reconnaissance is unavailable")
+
+
+def _pcap_recon_failed() -> JSONResponse:
+    return _error(status_code=500, code="pcap_reconnaissance_failed", message="pcap reconnaissance failed")
+
+
 def _pcap_components(request: Request) -> tuple[Any, Any, Any] | None:
     authorization_store = getattr(
         request.app.state, "pcap_authorization_store", None
     )
     executor = getattr(request.app.state, "pcap_executor", None)
     coordinator = getattr(request.app.state, "pcap_coordinator", None)
+    if authorization_store is None or executor is None or coordinator is None:
+        return None
+    return authorization_store, executor, coordinator
+
+
+def _pcap_recon_components(request: Request) -> tuple[Any, Any, Any] | None:
+    authorization_store = getattr(request.app.state, "pcap_authorization_store", None)
+    executor = getattr(request.app.state, "pcap_recon_executor", None)
+    coordinator = getattr(request.app.state, "pcap_recon_coordinator", None)
     if authorization_store is None or executor is None or coordinator is None:
         return None
     return authorization_store, executor, coordinator
@@ -135,14 +154,68 @@ def authorize_pcap(
         return _pcap_batch_failed()
 
 
+class _PcapReconAuthorizationPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: Literal[True]
+    sample_limit: Literal[20]
+
+
+@router.get("/pcap/reconnaissance/overview")
+def pcap_reconnaissance_overview(request: Request) -> Any:
+    components = _pcap_recon_components(request)
+    if components is None:
+        return _pcap_recon_unavailable()
+    try:
+        return components[1].overview()
+    except Exception:
+        return _pcap_recon_failed()
+
+
+@router.post("/pcap/reconnaissance/authorizations", status_code=201)
+def authorize_pcap_reconnaissance(payload: _PcapReconAuthorizationPayload, request: Request) -> Any:
+    components = _pcap_recon_components(request)
+    if components is None:
+        return _pcap_recon_unavailable()
+    try:
+        return components[0].issue(payload.sample_limit, purpose="reconnaissance")
+    except Exception:
+        return _pcap_recon_failed()
+
+
 @router.post("/missions", status_code=201)
 def create_mission(payload: _ApiCreateMissionRequest, request: Request) -> Any:
+    if isinstance(payload, PcapReconMissionRequest):
+        components = _pcap_recon_components(request)
+        if components is None:
+            return _pcap_recon_unavailable()
+        try:
+            return components[2].start(payload)
+        except PcapAuthorizationPurposeMismatch:
+            return _error(status_code=403, code="pcap_authorization_purpose_mismatch", message="pcap authorization purpose mismatch")
+        except PcapAuthorizationUnknown:
+            return _error(status_code=403, code="pcap_authorization_required", message="pcap authorization is required")
+        except PcapAuthorizationExpired:
+            return _error(status_code=410, code="pcap_authorization_expired", message="pcap authorization expired")
+        except PcapAuthorizationAlreadyUsed:
+            return _error(status_code=409, code="pcap_authorization_used", message="pcap authorization was already used")
+        except RuntimeError as exc:
+            if str(exc) == "pcap_reconnaissance_active":
+                return _error(status_code=409, code="pcap_reconnaissance_active", message="pcap reconnaissance is already active")
+            return _pcap_recon_failed()
+        except Exception:
+            return _pcap_recon_failed()
     if isinstance(payload, PcapTriageMissionRequest):
         components = _pcap_components(request)
         if components is None:
             return _pcap_unavailable()
         try:
             return components[2].start(payload)
+        except PcapAuthorizationPurposeMismatch:
+            return _error(
+                status_code=403,
+                code="pcap_authorization_purpose_mismatch",
+                message="pcap authorization purpose mismatch",
+            )
         except PcapAuthorizationUnknown:
             return _error(
                 status_code=403,
@@ -183,9 +256,13 @@ def get_mission(mission_id: str, request: Request) -> Any:
         mission_store = service.mission_store
     else:
         components = _pcap_components(request)
-        if components is None:
+        recon_components = _pcap_recon_components(request)
+        if components is not None:
+            mission_store = components[2].mission_store
+        elif recon_components is not None:
+            mission_store = recon_components[2].mission_store
+        else:
             return _service(request)[1]
-        mission_store = components[2].mission_store
     try:
         return mission_store.get(mission_id)
     except SuperAgentMissionExpired:
@@ -205,8 +282,25 @@ def get_mission(mission_id: str, request: Request) -> Any:
 @router.post("/missions/{mission_id}/cancel")
 def cancel_pcap_mission(mission_id: str, request: Request) -> Any:
     components = _pcap_components(request)
+    recon_components = _pcap_recon_components(request)
+    if mission_id.startswith("recon_"):
+        if recon_components is None:
+            return _pcap_recon_unavailable()
+        try:
+            return recon_components[2].cancel(mission_id)
+        except (SuperAgentMissionExpired, SuperAgentMissionNotFound):
+            return _error(status_code=409, code="pcap_mission_not_cancellable", message="pcap mission is not cancellable")
+        except Exception:
+            return _pcap_recon_failed()
     if components is None:
-        return _pcap_unavailable()
+        if recon_components is None:
+            return _pcap_unavailable()
+        try:
+            return recon_components[2].cancel(mission_id)
+        except (SuperAgentMissionExpired, SuperAgentMissionNotFound):
+            return _error(status_code=409, code="pcap_mission_not_cancellable", message="pcap mission is not cancellable")
+        except Exception:
+            return _pcap_recon_failed()
     try:
         return components[2].cancel(mission_id)
     except (SuperAgentMissionExpired, SuperAgentMissionNotFound):
