@@ -173,8 +173,9 @@ class PcapReconMissionResult(_FrozenPcapReconPublicModel):
 
 class PcapReconOverview(_FrozenPcapReconPublicModel):
     enabled: bool
-    max_sample_count: Literal[20] = 20
-    max_trace_events: Literal[10] = 10
+    eligible_file_count: _Count
+    sample_limit: Literal[20] = 20
+    sampling_method: Literal["size_quartile_v1"] = "size_quartile_v1"
 
 
 def bucket_size(size_bytes: int) -> PcapSizeBucket:
