@@ -2942,6 +2942,8 @@ td:first-child { min-width: 128px; }
 .pcap-detection-confirm button:nth-last-child(2) { border-color: var(--line-strong); color: var(--ink); background: var(--surface); }
 .pcap-detection-status { min-width: 0; margin-top: 14px; padding: 10px 13px; border: 1px solid #9ccfc2; border-top: 2px solid var(--trusted); background: var(--trusted-soft); display: flex; align-items: center; gap: 10px; }
 .pcap-detection-status code { min-width: 0; margin-right: auto; overflow-wrap: anywhere; color: var(--muted); font-size: 9px; }
+.pcap-detection-current { color: var(--review); font-size: 10px; font-weight: 800; animation: pcap-current-sample-in 180ms ease-out; }
+@keyframes pcap-current-sample-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .pcap-detection-findings { min-width: 0; margin-top: 14px; display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.2fr); gap: 14px; }
 .pcap-detection-findings > div, .pcap-detection-timeline, .pcap-detection-empty { min-width: 0; border: 1px solid var(--line); background: var(--surface); }
 .pcap-detection-findings > div > strong, .pcap-detection-timeline > header { min-height: 42px; padding: 9px 13px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
