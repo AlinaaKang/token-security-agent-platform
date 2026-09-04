@@ -127,6 +127,9 @@ def test_recon_public_summary_is_aggregate_only(tmp_path: Path):
     result=run(root,fake_inspector(tmp_path)); assert result.returncode==0, result.stdout+result.stderr
     summary=json.loads((root/'output'/f'pcap-recon-{RECON_ID}.json').read_text())
     assert set(summary)=={'schema_version','sampled_count','succeeded_count','failed_count','quartile_counts','size_bucket_counts','packet_bucket_counts','duration_bucket_counts','protocol_presence_counts','plaintext_sample_count','encrypted_sample_count','sequence_candidate_count'}
+    assert set(summary['size_bucket_counts']) == {'under_2_kib', '2_kib_to_64_kib', '64_kib_to_1_mib', 'at_least_1_mib'}
+    assert set(summary['packet_bucket_counts']) == {'empty', '1_to_15', '16_to_63', 'at_least_64'}
+    assert set(summary['duration_bucket_counts']) == {'zero', 'under_1_second', '1_to_10_seconds', 'over_10_seconds'}
     assert 'PRIVATE_SENTINEL' not in json.dumps(summary)
 
 def test_recon_required_population_sizes_are_bounded_and_unique(tmp_path: Path):

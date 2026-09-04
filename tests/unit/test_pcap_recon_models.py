@@ -186,6 +186,16 @@ def test_recon_summary_rejects_inconsistent_aggregate_counts(
         PcapReconSummary.model_validate(public_summary_payload() | summary_update)
 
 
+def test_recon_summary_allows_ip_only_as_an_aggregate_protocol_label() -> None:
+    payload = public_summary_payload()
+    payload["protocol_presence_counts"] = {"ip": 2}
+    assert PcapReconSummary.model_validate(payload).protocol_presence_counts == {"ip": 2}
+
+    payload["ip"] = "PRIVATE_SENTINEL"
+    with pytest.raises(ValidationError):
+        PcapReconSummary.model_validate(payload)
+
+
 def test_recon_mission_has_closed_identifier_trace_and_objective_contract() -> None:
     result = PcapReconMissionResult.model_validate(public_mission_payload())
 

@@ -232,6 +232,8 @@ def _require_nonnegative_integer(value: int, label: str) -> None:
 def _assert_public_payload(payload: Any) -> None:
     if isinstance(payload, dict):
         for key, value in payload.items():
+            if key == "protocol_presence_counts":
+                continue
             if key in _FORBIDDEN_PUBLIC_KEYS:
                 raise ValueError(f"PCAP reconnaissance payload contains forbidden field: {key}")
             _assert_public_payload(value)
