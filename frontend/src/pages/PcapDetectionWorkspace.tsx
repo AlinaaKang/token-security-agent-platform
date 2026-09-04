@@ -8,7 +8,7 @@ const TERMINAL = new Set<PcapMissionStatus>(["completed", "cancelled", "degraded
 const DETECTION_MISSION_KEY = "token-security-superagent-pcap-detection-id";
 
 const candidateLabels: Record<PcapLocalizedEvidence["attack_candidate"], string> = {
-  sql_injection: "SQL 注入候选", command_injection: "命令注入候选", path_traversal: "路径穿越候选", none: "未发现攻击候选",
+  sql_injection: "SQL 注入候选", command_injection: "命令注入候选", path_traversal: "路径穿越候选", web_injection: "Web 注入候选", none: "未发现攻击候选",
 };
 
 function DetectionMascots({ mission }: { mission: PcapDetectionMissionResult }) {

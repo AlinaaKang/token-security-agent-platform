@@ -53,6 +53,24 @@ _RULES = (
         re.compile(r"(?:\.\.[/\\]){2,}", re.I),
         0.96,
     ),
+    (
+        "web_injection",
+        "xss_pattern",
+        re.compile(r"(?:<\s*script\b|javascript\s*:|on(?:error|load|click)\s*=)", re.I),
+        0.91,
+    ),
+    (
+        "web_injection",
+        "template_injection_pattern",
+        re.compile(r"(?:\{\{[^{}]{1,80}\}\}|\$\{[^{}]{1,80}\}|<%[^%]{1,80}%>)", re.I),
+        0.89,
+    ),
+    (
+        "web_injection",
+        "ssrf_pattern",
+        re.compile(r"(?:https?://(?:127\.0\.0\.1|localhost|0\.0\.0\.0|169\.254\.169\.254))", re.I),
+        0.9,
+    ),
 )
 
 
@@ -174,7 +192,7 @@ def _parse_http_requests(text: str) -> tuple[HttpRequestRecord, ...]:
     try:
         for line in text.splitlines():
             fields = line.split("\t")
-            if len(fields) not in (3, 4):
+            if len(fields) < 3:
                 raise ValueError
             packet_number = int(fields[0])
             offset_ms = int(Decimal(fields[1]) * 1000)
@@ -185,7 +203,7 @@ def _parse_http_requests(text: str) -> tuple[HttpRequestRecord, ...]:
                     packet_number,
                     offset_ms,
                     fields[2],
-                    fields[3] if len(fields) == 4 else "",
+                    "\n".join(fields[3:]),
                 )
             )
     except (InvalidOperation, ValueError) as exc:
@@ -255,6 +273,8 @@ def detect_capture(
             "http.request.uri",
             "-e",
             "http.file_data",
+            "-e",
+            "urlencoded-form.value",
         )
     )
     requests = _parse_http_requests(request_output)

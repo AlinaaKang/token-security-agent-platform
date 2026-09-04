@@ -176,3 +176,17 @@ def test_detect_capture_matches_attack_pattern_in_http_request_body(
     report = DETECTOR.detect_capture(fixture, run_tshark=fake_tshark)
 
     assert report["evidence"][0]["attack_candidate"] == "sql_injection"
+
+
+@pytest.mark.parametrize("body", ["<script>alert(1)</script>", "{{7*7}}", "http://169.254.169.254/latest"])
+def test_detect_capture_matches_common_web_anomaly_patterns(tmp_path: Path, body: str) -> None:
+    fixture = tmp_path / "web-anomaly.pcap"
+    fixture.write_bytes(b"pcap")
+
+    def fake_tshark(arguments: tuple[str, ...]) -> str:
+        if "http.request" in arguments:
+            return f"2\t0.100000000\t/submit\t{body}\n"
+        return "1\n2\n3\n"
+
+    report = DETECTOR.detect_capture(fixture, run_tshark=fake_tshark)
+    assert report["evidence"][0]["attack_candidate"] == "web_injection"

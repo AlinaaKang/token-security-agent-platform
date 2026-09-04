@@ -461,8 +461,8 @@ export interface PcapDetectionMissionRequest {
   authorization_id: string;
 }
 export type PcapDetectionGranularity = "packet" | "request" | "flow_event" | "llm_token";
-export type PcapDetectionCandidate = "sql_injection" | "command_injection" | "path_traversal" | "none";
-export type PcapDetectionSignal = "sql_syntax_pattern" | "command_syntax_pattern" | "path_traversal_pattern" | "request_boundary" | "connection_rate_increase" | "destination_density_increase" | "change_point_detected" | "semantic_risk_detected";
+export type PcapDetectionCandidate = "sql_injection" | "command_injection" | "path_traversal" | "web_injection" | "none";
+export type PcapDetectionSignal = "sql_syntax_pattern" | "command_syntax_pattern" | "path_traversal_pattern" | "request_boundary" | "connection_rate_increase" | "destination_density_increase" | "change_point_detected" | "semantic_risk_detected" | "xss_pattern" | "template_injection_pattern" | "ssrf_pattern" | "http_anomaly_pattern";
 export interface PcapLocalizedEvidence {
   evidence_id: string;
   granularity: PcapDetectionGranularity;
