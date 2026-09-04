@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -112,7 +113,26 @@ class PcapDetectionMissionCoordinator:
                     created_at=created_at,
                 )
             )
-            summary = self._executor.execute(detection_id, max_files)
+            def publish_progress(progress: PcapDetectionSummary) -> None:
+                self._mission_store.put(
+                    _snapshot(
+                        detection_id=detection_id,
+                        status=PcapMissionStatus.RUNNING,
+                        events=(
+                            _event(1, PcapDetectionNarrative.AUTHORIZATION_ACCEPTED, "succeeded"),
+                            _event(2, PcapDetectionNarrative.ISOLATED_HTTP_SCAN_RUNNING, "running"),
+                        ),
+                        summary=progress,
+                        report=_report(progress),
+                        created_at=created_at,
+                    )
+                )
+
+            execute = self._executor.execute
+            if "on_progress" in inspect.signature(execute).parameters:
+                summary = execute(detection_id, max_files, on_progress=publish_progress)
+            else:
+                summary = execute(detection_id, max_files)
             if not isinstance(summary, PcapDetectionSummary):
                 raise ValueError("pcap_detection_failed")
             with self._lock:

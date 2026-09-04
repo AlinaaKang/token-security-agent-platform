@@ -5,7 +5,7 @@ import os
 import re
 import stat
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Callable
 from pathlib import Path
 from threading import RLock
@@ -58,7 +58,12 @@ class PcapDetectionExecutor:
         except Exception:
             raise PcapDetectionToolFailed() from None
 
-    def execute(self, detection_id: str, max_files: int) -> PcapDetectionSummary:
+    def execute(
+        self,
+        detection_id: str,
+        max_files: int,
+        on_progress: Callable[[PcapDetectionSummary], None] | None = None,
+    ) -> PcapDetectionSummary:
         _validate_detection_id(detection_id)
         _validate_max_files(max_files)
         try:
@@ -68,8 +73,6 @@ class PcapDetectionExecutor:
         except Exception:
             raise PcapDetectionToolFailed() from None
 
-        evidence: list[PcapLocalizedEvidence] = []
-        evidence_ids: set[str] = set()
         results: list[tuple[bool, tuple[PcapLocalizedEvidence, ...]]] = []
         try:
             # A small fixed pool keeps Docker resource use bounded while avoiding
@@ -79,46 +82,30 @@ class PcapDetectionExecutor:
                     max_workers=min(_MAX_WORKERS, len(capture_paths)),
                     thread_name_prefix="pcap-file",
                 ) as pool:
-                    futures = [pool.submit(self._inspect_capture, path) for path in capture_paths]
-                    for future in futures:
+                    futures = {
+                        pool.submit(self._inspect_capture, path): index
+                        for index, path in enumerate(capture_paths)
+                    }
+                    completed: dict[int, tuple[bool, tuple[PcapLocalizedEvidence, ...]]] = {}
+                    for future in as_completed(futures):
+                        index = futures[future]
                         if self._is_cancel_requested(detection_id):
                             break
                         try:
-                            results.append((True, future.result()))
+                            completed[index] = (True, future.result())
                         except Exception:
-                            results.append((False, ()))
+                            completed[index] = (False, ())
+                        results = [completed[item] for item in sorted(completed)]
+                        if on_progress is not None:
+                            try:
+                                on_progress(_summary_from_results(results))
+                            except Exception:
+                                pass
         finally:
             with self._lock:
                 self._cancel_requested.discard(detection_id)
 
-        succeeded_count = sum(success for success, _ in results)
-        failed_count = len(results) - succeeded_count
-        for success, report_evidence in results:
-            if not success:
-                continue
-            report_ids = {item.evidence_id for item in report_evidence}
-            if report_ids.intersection(evidence_ids):
-                failed_count += 1
-                succeeded_count -= 1
-                continue
-            evidence.extend(report_evidence)
-            evidence_ids.update(report_ids)
-
-        return PcapDetectionSummary(
-            analyzed_count=succeeded_count + failed_count,
-            succeeded_count=succeeded_count,
-            failed_count=failed_count,
-            evidence=tuple(evidence),
-            processed_samples=tuple(
-                PcapProcessedSample(
-                    sample_index=index,
-                    status="succeeded" if success else "failed",
-                    evidence_count=len(items) if success else 0,
-                    failure_code=None if success else PcapDetectionFailureCode.TOOL_FAILED,
-                )
-                for index, (success, items) in enumerate(results, 1)
-            ),
-        )
+        return _summary_from_results(results)
 
     def _inspect_capture(self, capture_path: Path) -> tuple[PcapLocalizedEvidence, ...]:
         completed = self._runner(
@@ -183,6 +170,37 @@ def _parse_detection_report(raw: str) -> tuple[PcapLocalizedEvidence, ...]:
     ):
         raise ValueError("invalid detection report")
     return evidence
+
+
+def _summary_from_results(
+    results: list[tuple[bool, tuple[PcapLocalizedEvidence, ...]]],
+) -> PcapDetectionSummary:
+    evidence: list[PcapLocalizedEvidence] = []
+    evidence_ids: set[str] = set()
+    succeeded_count = 0
+    failed_count = 0
+    processed_samples: list[PcapProcessedSample] = []
+    for index, (success, report_evidence) in enumerate(results, 1):
+        if not success:
+            failed_count += 1
+            processed_samples.append(PcapProcessedSample(sample_index=index, status="failed", evidence_count=0, failure_code=PcapDetectionFailureCode.TOOL_FAILED))
+            continue
+        report_ids = {item.evidence_id for item in report_evidence}
+        if report_ids.intersection(evidence_ids):
+            failed_count += 1
+            processed_samples.append(PcapProcessedSample(sample_index=index, status="failed", evidence_count=0, failure_code=PcapDetectionFailureCode.TOOL_FAILED))
+            continue
+        succeeded_count += 1
+        evidence.extend(report_evidence)
+        evidence_ids.update(report_ids)
+        processed_samples.append(PcapProcessedSample(sample_index=index, status="succeeded", evidence_count=len(report_evidence)))
+    return PcapDetectionSummary(
+        analyzed_count=len(results),
+        succeeded_count=succeeded_count,
+        failed_count=failed_count,
+        evidence=tuple(evidence),
+        processed_samples=tuple(processed_samples),
+    )
 
 
 def _capture_paths(input_root: Path, max_files: int) -> tuple[Path, ...]:

@@ -85,6 +85,27 @@ def test_detection_executor_preserves_valid_evidence_across_partial_failure(
     assert "PRIVATE" not in summary.model_dump_json()
 
 
+def test_detection_executor_publishes_each_processed_sample_incrementally(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    (config.quarantine_root / "input" / "first.pcap").write_bytes(b"pcap-one")
+    (config.quarantine_root / "input" / "second.pcap").write_bytes(b"pcap-two")
+
+    def runner(_command: list[str], **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout=json.dumps({**_detection_report(), "evidence": []}), stderr="")
+
+    progress: list[int] = []
+    summary = PcapDetectionExecutor(config=config, runner=runner).execute(
+        "detection_0123456789abcdef0123456789abcdef",
+        max_files=2,
+        on_progress=lambda snapshot: progress.append(len(snapshot.processed_samples)),
+    )
+
+    assert progress == [1, 2]
+    assert len(summary.processed_samples) == 2
+
+
 def test_detection_executor_overview_counts_only_regular_capture_files(
     tmp_path: Path,
 ) -> None:

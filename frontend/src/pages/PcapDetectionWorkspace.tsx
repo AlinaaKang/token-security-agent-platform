@@ -48,7 +48,7 @@ export function PcapDetectionWorkspace() {
         const result = await api.getSuperAgentMission(mission.detection_id);
         if (!active || result.objective !== "detect_pcap_anomalies") return;
         setMission(result);
-        if (!TERMINAL.has(result.status)) timer = window.setTimeout(poll, 1200);
+        if (!TERMINAL.has(result.status)) timer = window.setTimeout(poll, 500);
       } catch {
         if (active) {
           setError("无法刷新异常检测状态，请稍后重试");
@@ -61,20 +61,14 @@ export function PcapDetectionWorkspace() {
   }, [mission?.detection_id, mission?.status]);
   useEffect(() => {
     const samples = mission?.summary?.processed_samples ?? [];
-    if (!samples.length || mission?.status !== "completed") return;
-    setActiveSample(0);
-    let index = 0;
-    const timer = window.setInterval(() => {
-      index += 1;
-      if (index >= samples.length) {
-        window.clearInterval(timer);
-        return;
-      }
-      setActiveSample(index);
-      sampleRefs.current[samples[index].sample_index]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 650);
-    return () => window.clearInterval(timer);
-  }, [mission?.detection_id, mission?.status, mission?.summary?.processed_samples]);
+    if (!samples.length) return;
+    const latestIndex = samples.length - 1;
+    setActiveSample(latestIndex);
+    const frame = window.requestAnimationFrame(() => {
+      sampleRefs.current[samples[latestIndex].sample_index]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mission?.detection_id, mission?.summary?.processed_samples?.length]);
   const active = mission && !TERMINAL.has(mission.status);
   async function start() { if (!overview || !confirming || busy) return; setBusy(true); setError(null); try { const receipt = await api.authorizePcapDetection({ confirmed: true, max_files: Number(maxFiles) }); const result = await api.createPcapDetectionMission({ objective: "detect_pcap_anomalies", authorization_id: receipt.authorization_id }); setMission(result); window.sessionStorage.setItem(DETECTION_MISSION_KEY, result.detection_id); setConfirming(false); } catch { setError("无法启动异常检测，请重试"); } finally { setBusy(false); } }
   async function cancel() { if (!mission || !active || busy) return; setBusy(true); try { const result = await api.cancelPcapDetectionMission(mission.detection_id); setMission(result); } finally { setBusy(false); } }
