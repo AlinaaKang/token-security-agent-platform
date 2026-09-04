@@ -89,6 +89,8 @@ describe("PcapDetectionWorkspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
     fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
     expect(await screen.findByText("未发现可定位异常")).toBeInTheDocument();
-    expect(screen.getByText(/成功 1 · 失败 0 · 证据 0/)).toBeInTheDocument();
+    expect(screen.getByLabelText("检测统计")).toHaveTextContent("成功 1");
+    expect(screen.getByLabelText("检测统计")).toHaveTextContent("失败 0");
+    expect(screen.getByLabelText("检测统计")).toHaveTextContent("证据 0");
   });
 });
