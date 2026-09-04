@@ -1,5 +1,5 @@
 import { Activity, ArrowRight, BadgeCheck, CircleAlert, FileSearch, KeyRound, LoaderCircle, Network, Play, ShieldCheck, Square } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
 import type { PcapDetectionMissionResult, PcapLocalizedEvidence, PcapMissionStatus } from "../types";
@@ -36,6 +36,8 @@ export function PcapDetectionWorkspace() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [maxFiles, setMaxFiles] = useState("20");
+  const [activeSample, setActiveSample] = useState(0);
+  const sampleRefs = useRef<Record<number, HTMLSpanElement | null>>({});
   useEffect(() => { let active = true; api.pcapDetectionOverview().then((value) => { if (active) { setOverview(value); setBusy(false); } }).catch(() => { if (active) { setError("PCAP 异常检测暂不可用"); setBusy(false); } }); return () => { active = false; }; }, []);
   useEffect(() => {
     if (!mission || TERMINAL.has(mission.status)) return;
@@ -57,12 +59,28 @@ export function PcapDetectionWorkspace() {
     timer = window.setTimeout(poll, 300);
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
   }, [mission?.detection_id, mission?.status]);
+  useEffect(() => {
+    const samples = mission?.summary?.processed_samples ?? [];
+    if (!samples.length || mission?.status !== "completed") return;
+    setActiveSample(0);
+    let index = 0;
+    const timer = window.setInterval(() => {
+      index += 1;
+      if (index >= samples.length) {
+        window.clearInterval(timer);
+        return;
+      }
+      setActiveSample(index);
+      sampleRefs.current[samples[index].sample_index]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 650);
+    return () => window.clearInterval(timer);
+  }, [mission?.detection_id, mission?.status, mission?.summary?.processed_samples]);
   const active = mission && !TERMINAL.has(mission.status);
   async function start() { if (!overview || !confirming || busy) return; setBusy(true); setError(null); try { const receipt = await api.authorizePcapDetection({ confirmed: true, max_files: Number(maxFiles) }); const result = await api.createPcapDetectionMission({ objective: "detect_pcap_anomalies", authorization_id: receipt.authorization_id }); setMission(result); window.sessionStorage.setItem(DETECTION_MISSION_KEY, result.detection_id); setConfirming(false); } catch { setError("无法启动异常检测，请重试"); } finally { setBusy(false); } }
   async function cancel() { if (!mission || !active || busy) return; setBusy(true); try { const result = await api.cancelPcapDetectionMission(mission.detection_id); setMission(result); } finally { setBusy(false); } }
   return <section className="pcap-detection-workspace" aria-label="PCAP 异常检测工作区" aria-busy={busy}>
     <div className="pcap-detection-authorization"><div><FileSearch size={19} /><strong>{overview ? `可选 PCAP ${overview.eligible_file_count}` : "读取检测目录"}</strong></div><label>最多处理 <input type="number" min="1" max="20" value={maxFiles} onChange={(event) => setMaxFiles(event.target.value)} disabled={Boolean(active)} /> 个文件</label>{confirming ? <div className="pcap-detection-confirm"><KeyRound size={18} /><span>仅在确认后进入 Docker 隔离检测</span><button type="button" onClick={() => setConfirming(false)}>返回</button><button type="button" onClick={start} disabled={busy}><ShieldCheck size={14} />确认并开始</button></div> : <button type="button" onClick={() => setConfirming(true)} disabled={!overview?.enabled || Boolean(active) || busy}><Play size={15} />准备异常检测</button>}</div>
     {error ? <div className="superagent-error" role="alert"><CircleAlert size={16} />{error}</div> : null}
-    {mission ? <><section className={`pcap-detection-status is-${mission.status}`}><strong>{mission.status === "completed" ? "检测完成" : mission.status === "cancelled" ? "检测已取消" : mission.status === "degraded" ? "检测降级完成" : "检测运行中"}</strong>{mission.status === "completed" ? <strong>{mission.summary?.evidence.length ? "发现异常证据" : "未发现可定位异常"}</strong> : null}<code>{mission.detection_id}</code>{active ? <button type="button" onClick={cancel} disabled={busy}><Square size={13} />取消</button> : null}</section>{mission.summary?.processed_samples?.length ? <section className="pcap-detection-samples"><strong>已检测样本</strong><div>{mission.summary.processed_samples.map((sample) => <span key={sample.sample_index} className={`is-${sample.status}`}>样本 {String(sample.sample_index).padStart(2, "0")} · {sample.status === "succeeded" ? `完成 · 证据 ${sample.evidence_count}` : `失败 · ${sample.failure_code ?? "tool_failed"}`}</span>)}</div></section> : null}<div className="pcap-detection-findings"><div>{mission.summary ? <p className="pcap-detection-counts">成功 {mission.summary.succeeded_count} · 失败 {mission.summary.failed_count} · 证据 {mission.summary.evidence.length}</p> : null}<strong>局部证据</strong>{mission.summary?.evidence.length ? mission.summary.evidence.map((item) => <article key={item.evidence_id}><span>{candidateLabels[item.attack_candidate]}</span><code>{item.evidence_id}</code><small>Packet {item.start_packet}-{item.end_packet} · {item.start_offset_ms}ms · 置信度 {Math.round(item.confidence * 100)}%</small></article>) : <p>证据不足，保持允许。</p>}</div><DetectionTimeline evidence={mission.summary?.evidence ?? []} /></div><DetectionMascots mission={mission} /></> : <div className="pcap-detection-empty"><ArrowRight size={22} /><strong>规则侦探等待授权</strong><span>检测结果只展示局部证据，不恢复原始请求。</span></div>}
+    {mission ? <><section className={`pcap-detection-status is-${mission.status}`}><strong>{mission.status === "completed" ? "检测完成" : mission.status === "cancelled" ? "检测已取消" : mission.status === "degraded" ? "检测降级完成" : "检测运行中"}</strong>{mission.status === "completed" ? <strong>{mission.summary?.evidence.length ? "发现异常证据" : "未发现可定位异常"}</strong> : null}<code>{mission.detection_id}</code>{active ? <button type="button" onClick={cancel} disabled={busy}><Square size={13} />取消</button> : null}</section>{mission.summary?.processed_samples?.length ? <section className="pcap-detection-samples"><strong>已检测样本</strong><div>{mission.summary.processed_samples.map((sample, index) => <span ref={(node) => { sampleRefs.current[sample.sample_index] = node; }} key={sample.sample_index} className={`is-${sample.status}${index === activeSample ? " is-active" : ""}`}>样本 {String(sample.sample_index).padStart(2, "0")} · {sample.status === "succeeded" ? `完成 · 证据 ${sample.evidence_count}` : `失败 · ${sample.failure_code ?? "tool_failed"}`}</span>)}</div></section> : null}<div className="pcap-detection-findings"><div>{mission.summary ? <p className="pcap-detection-counts">成功 {mission.summary.succeeded_count} · 失败 {mission.summary.failed_count} · 证据 {mission.summary.evidence.length}</p> : null}<strong>局部证据</strong>{mission.summary?.evidence.length ? mission.summary.evidence.map((item) => <article key={item.evidence_id}><span>{candidateLabels[item.attack_candidate]}</span><code>{item.evidence_id}</code><small>Packet {item.start_packet}-{item.end_packet} · {item.start_offset_ms}ms · 置信度 {Math.round(item.confidence * 100)}%</small></article>) : <p>证据不足，保持允许。</p>}</div><DetectionTimeline evidence={mission.summary?.evidence ?? []} /></div><DetectionMascots mission={mission} /></> : <div className="pcap-detection-empty"><ArrowRight size={22} /><strong>规则侦探等待授权</strong><span>检测结果只展示局部证据，不恢复原始请求。</span></div>}
   </section>;
 }
