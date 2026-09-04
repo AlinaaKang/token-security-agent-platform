@@ -130,4 +130,25 @@ describe("PCAP reconnaissance workspace", () => {
     await screen.findByText("四分位覆盖");
     expect(screen.getByRole("region", { name: "PCAP 数据勘察工作区" }).textContent).not.toContain("PRIVATE_UNKNOWN_TRACE");
   });
+
+  it("shows a deterministic retry action for a degraded reconnaissance mission", async () => {
+    const degraded = { ...reconMission, status: "degraded", summary: null };
+    window.sessionStorage.setItem("token-security-superagent-pcap-recon-mission-id", reconMission.recon_id);
+    cleanup(); vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/pcap/reconnaissance/overview")) return response(reconOverview);
+      if (url.endsWith(`/missions/${reconMission.recon_id}`)) return response(degraded);
+      if (url.endsWith("/pcap/reconnaissance/authorizations")) return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 });
+      if (url === "/api/v1/superagent/missions" && init?.method === "POST") return response(reconMission);
+      if (url === "/api/v1/lab/scenarios") return response([]);
+      if (url === "/api/v1/superagent/capabilities") return response({ ready: true, internal_only: true, objectives: ["investigate_and_respond"], actors: ["coordinator"], max_tool_calls: 3, max_trace_events: 12, replanning_limit: 1 });
+      if (url === "/api/v1/superagent/pcap/overview") return response({ enabled: true, pending_file_count: 17, tool_id: "pcap_batch_triage", max_batch_size: 20, max_trace_events: 12, actors: ["coordinator"] });
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    render(<App />); fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" })); fireEvent.click(await screen.findByRole("button", { name: "数据勘察" }));
+    expect(await screen.findByText("勘察未完成，可重新授权重试")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "重新授权勘察" }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/reconnaissance/authorizations")).length).toBe(1));
+  });
 });

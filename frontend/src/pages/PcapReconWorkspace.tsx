@@ -81,13 +81,23 @@ export function PcapReconWorkspace() {
     } catch { setError("无法启动数据勘察，请重试。"); } finally { setPending(false); }
   }
 
+  async function retry() {
+    if (pending || restorePending) return;
+    setPending(true); setError(null);
+    try {
+      const receipt = await api.authorizePcapRecon({ confirmed: true, sample_limit: 20 });
+      const result = await api.createPcapReconMission({ objective: "reconnoiter_pcap_dataset", authorization_id: receipt.authorization_id });
+      setMission(result); try { window.sessionStorage.setItem(PCAP_RECON_MISSION_STORAGE_KEY, result.recon_id); } catch { /* optional persistence */ }
+    } catch { setError("无法重新启动数据勘察，请重试。"); } finally { setPending(false); }
+  }
+
   return <section className="pcap-recon-workspace" aria-label="PCAP 数据勘察工作区">
     <div className="pcap-recon-authorization">
       <div><strong>数据勘察范围</strong>{loading ? <p>正在读取勘察范围</p> : <><p>按文件大小四分位抽取 20 个代表样本</p><small>可选文件 {overview?.eligible_file_count ?? 0}</small></>}</div>
     {!confirmOpen ? <button type="button" onClick={() => setConfirmOpen(true)} disabled={loading || restorePending || !overview?.enabled || Boolean(mission && !terminal.has(mission.status))}><Play size={16} />准备开始勘察</button> : <div className="pcap-recon-consent" role="region" aria-label="PCAP 勘察授权确认"><KeyRound size={20} /><p>本次将在无网络只读容器中完整扫描 20 个分层样本，仅返回聚合画像，不检测攻击，不展示文件身份或载荷。</p><button type="button" className="secondary-button" onClick={() => setConfirmOpen(false)}>返回</button><button type="button" onClick={start} disabled={pending}>{pending ? <LoaderCircle className="superagent-spinner" size={16} /> : <ShieldCheck size={16} />}确认并开始勘察</button></div>}
     </div>
     {error ? <div role="alert"><CircleAlert size={16} />{error}</div> : null}
-    {mission?.summary ? <><div className="pcap-recon-phase"><strong>当前阶段：认识数据</strong><span>下一阶段：根据真实画像选择规则、Request 定位、行为异常或可选 CPD</span></div><Profile summary={mission.summary} /></> : <section className="pcap-recon-empty"><BarChart3 size={24} /><strong>{mission ? "正在形成聚合画像" : "等待开始数据勘察"}</strong></section>}
+    {mission?.status === "degraded" ? <section className="pcap-recon-empty is-degraded" role="alert"><CircleAlert size={24} /><strong>勘察未完成，可重新授权重试</strong><button type="button" onClick={retry} disabled={pending || restorePending}>{pending ? "正在重新授权" : "重新授权勘察"}</button></section> : mission?.summary ? <><div className="pcap-recon-phase"><strong>当前阶段：认识数据</strong><span>下一阶段：根据真实画像选择规则、Request 定位、行为异常或可选 CPD</span></div><Profile summary={mission.summary} /></> : <section className="pcap-recon-empty"><BarChart3 size={24} /><strong>{mission ? "正在形成聚合画像" : "等待开始数据勘察"}</strong></section>}
     {mission && !terminal.has(mission.status) ? <div role="status">{mission.status === "running" ? "勘察运行中" : "勘察排队中"}</div> : null}
     {mission?.events?.length ? <ol className="pcap-recon-events">{mission.events.filter((event) => allowedNarratives.has(event.summary)).map((event) => <li key={event.sequence}>{narrativeLabels[event.summary]}</li>)}</ol> : null}
   </section>;
