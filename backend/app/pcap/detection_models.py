@@ -48,6 +48,7 @@ class PcapAttackCandidate(StrEnum):
     SQL_INJECTION = "sql_injection"
     COMMAND_INJECTION = "command_injection"
     PATH_TRAVERSAL = "path_traversal"
+    WEB_INJECTION = "web_injection"
     NONE = "none"
 
 
@@ -67,6 +68,10 @@ class PcapSupportingSignal(StrEnum):
     DESTINATION_DENSITY_INCREASE = "destination_density_increase"
     CHANGE_POINT_DETECTED = "change_point_detected"
     SEMANTIC_RISK_DETECTED = "semantic_risk_detected"
+    XSS_PATTERN = "xss_pattern"
+    TEMPLATE_INJECTION_PATTERN = "template_injection_pattern"
+    SSRF_PATTERN = "ssrf_pattern"
+    HTTP_ANOMALY_PATTERN = "http_anomaly_pattern"
 
 
 class PcapDetectionNarrative(StrEnum):
