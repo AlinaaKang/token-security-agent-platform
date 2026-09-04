@@ -5,6 +5,7 @@ import os
 import re
 import stat
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable
 from pathlib import Path
 from threading import RLock
@@ -23,6 +24,7 @@ _DETECTION_ID = re.compile(r"^detection_[0-9a-f]{32}$")
 _PCAP_EXTENSIONS = frozenset({".pcap", ".pcapng"})
 _MAX_FILES = 20
 _MAX_OUTPUT_BYTES = 256 * 1024
+_MAX_WORKERS = 3
 
 
 class PcapDetectionToolFailed(RuntimeError):
@@ -64,40 +66,41 @@ class PcapDetectionExecutor:
         except Exception:
             raise PcapDetectionToolFailed() from None
 
-        succeeded_count = 0
-        failed_count = 0
         evidence: list[PcapLocalizedEvidence] = []
         evidence_ids: set[str] = set()
+        results: list[tuple[bool, tuple[PcapLocalizedEvidence, ...]]] = []
         try:
-            for capture_path in capture_paths:
-                if self._is_cancel_requested(detection_id):
-                    break
-                try:
-                    completed = self._runner(
-                        self._command(capture_path),
-                        capture_output=True,
-                        check=False,
-                        encoding="utf-8",
-                        shell=False,
-                        timeout=160,
-                    )
-                    if getattr(completed, "returncode", None) != 0:
-                        raise ValueError("tool failed")
-                    raw = getattr(completed, "stdout", None)
-                    if not isinstance(raw, str) or len(raw.encode("utf-8")) > _MAX_OUTPUT_BYTES:
-                        raise ValueError("invalid output")
-                    report_evidence = _parse_detection_report(raw)
-                    report_ids = {item.evidence_id for item in report_evidence}
-                    if report_ids.intersection(evidence_ids):
-                        raise ValueError("duplicate evidence identifier")
-                    evidence.extend(report_evidence)
-                    evidence_ids.update(report_ids)
-                    succeeded_count += 1
-                except Exception:
-                    failed_count += 1
+            # A small fixed pool keeps Docker resource use bounded while avoiding
+            # paying container startup cost serially for every capture.
+            if capture_paths:
+                with ThreadPoolExecutor(
+                    max_workers=min(_MAX_WORKERS, len(capture_paths)),
+                    thread_name_prefix="pcap-file",
+                ) as pool:
+                    futures = [pool.submit(self._inspect_capture, path) for path in capture_paths]
+                    for future in futures:
+                        if self._is_cancel_requested(detection_id):
+                            break
+                        try:
+                            results.append((True, future.result()))
+                        except Exception:
+                            results.append((False, ()))
         finally:
             with self._lock:
                 self._cancel_requested.discard(detection_id)
+
+        succeeded_count = sum(success for success, _ in results)
+        failed_count = len(results) - succeeded_count
+        for success, report_evidence in results:
+            if not success:
+                continue
+            report_ids = {item.evidence_id for item in report_evidence}
+            if report_ids.intersection(evidence_ids):
+                failed_count += 1
+                succeeded_count -= 1
+                continue
+            evidence.extend(report_evidence)
+            evidence_ids.update(report_ids)
 
         return PcapDetectionSummary(
             analyzed_count=succeeded_count + failed_count,
@@ -105,6 +108,22 @@ class PcapDetectionExecutor:
             failed_count=failed_count,
             evidence=tuple(evidence),
         )
+
+    def _inspect_capture(self, capture_path: Path) -> tuple[PcapLocalizedEvidence, ...]:
+        completed = self._runner(
+            self._command(capture_path),
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+            shell=False,
+            timeout=160,
+        )
+        if getattr(completed, "returncode", None) != 0:
+            raise ValueError("tool failed")
+        raw = getattr(completed, "stdout", None)
+        if not isinstance(raw, str) or len(raw.encode("utf-8")) > _MAX_OUTPUT_BYTES:
+            raise ValueError("invalid output")
+        return _parse_detection_report(raw)
 
     def request_cancel(self, detection_id: str) -> None:
         _validate_detection_id(detection_id)
@@ -184,3 +203,15 @@ def _validate_detection_id(detection_id: str) -> None:
 def _validate_max_files(max_files: int) -> None:
     if type(max_files) is not int or not 1 <= max_files <= _MAX_FILES:
         raise ValueError("max_files must be an integer between 1 and 20")
+        succeeded_count = sum(success for success, _ in results)
+        failed_count = len(results) - succeeded_count
+        for success, report_evidence in results:
+            if not success:
+                continue
+            report_ids = {item.evidence_id for item in report_evidence}
+            if report_ids.intersection(evidence_ids):
+                failed_count += 1
+                succeeded_count -= 1
+                continue
+            evidence.extend(report_evidence)
+            evidence_ids.update(report_ids)
