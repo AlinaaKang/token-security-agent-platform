@@ -74,9 +74,10 @@ def _write_fake_docker(
     return fake
 
 
-def _run_launcher(path: Path, root: Path, fake_docker: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
+def _run_launcher(
+    path: Path, root: Path, fake_docker: Path, *, mode: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    arguments = [
             str(WINDOWS_POWERSHELL),
             "-NoProfile",
             "-NonInteractive",
@@ -90,11 +91,37 @@ def _run_launcher(path: Path, root: Path, fake_docker: Path) -> subprocess.Compl
             str(root),
             "-DockerExecutable",
             str(fake_docker),
-        ],
+        ]
+    if mode is not None:
+        arguments.extend(["-Mode", mode])
+    return subprocess.run(
+        arguments,
         capture_output=True,
         check=False,
         encoding="utf-8",
     )
+
+
+def _valid_detection_report() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "verified_packet_count": 3,
+        "evidence": [
+            {
+                "evidence_id": "evidence_0123456789abcdef0123456789abcdef",
+                "granularity": "request",
+                "verified_packet_count": 3,
+                "start_packet": 2,
+                "end_packet": 2,
+                "start_offset_ms": 100,
+                "end_offset_ms": 100,
+                "attack_candidate": "sql_injection",
+                "detector": "http_rule",
+                "confidence": 0.95,
+                "supporting_signals": ["sql_syntax_pattern", "request_boundary"],
+            }
+        ],
+    }
 
 
 def _make_directory_junction(link: Path, target: Path) -> None:
@@ -291,3 +318,54 @@ def test_launcher_runs_under_windows_powershell_5_1(tmp_path: Path) -> None:
     result = _run_launcher(capture, root, _write_fake_docker(tmp_path, _valid_report(capture)))
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_http_detection_mode_dispatches_inside_the_same_sandbox(tmp_path: Path) -> None:
+    root, capture = _make_quarantine_capture(tmp_path)
+    report = _valid_detection_report()
+
+    result = _run_launcher(
+        capture,
+        root,
+        _write_fake_docker(tmp_path, report),
+        mode="HttpDetection",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = (tmp_path / "docker-args.txt").read_text(encoding="utf-8").splitlines()
+    assert args[-2:] == ["token-security-pcap-preflight:local", "detect-http"]
+    output_files = list((root / "output").glob("pcap-detection-*.json"))
+    assert len(output_files) == 1
+    assert json.loads(output_files[0].read_text(encoding="utf-8")) == report
+    assert json.loads(result.stdout) == report
+
+
+@pytest.mark.parametrize(
+    ("nested_path", "private_key"),
+    [
+        ((), "payload"),
+        (("evidence", 0), "uri"),
+        (("evidence", 0), "Prompt"),
+        (("evidence", 0), "ip_address"),
+    ],
+)
+def test_http_detection_mode_rejects_private_report_fields(
+    tmp_path: Path, nested_path: tuple[str | int, ...], private_key: str
+) -> None:
+    root, capture = _make_quarantine_capture(tmp_path)
+    report = _valid_detection_report()
+    target = report
+    for segment in nested_path:
+        target = target[segment]  # type: ignore[assignment,index]
+    target[private_key] = "PRIVATE_SENTINEL"
+
+    result = _run_launcher(
+        capture,
+        root,
+        _write_fake_docker(tmp_path, report),
+        mode="HttpDetection",
+    )
+
+    assert result.returncode != 0
+    assert "pcap_preflight_error=invalid_report_schema" in result.stdout
+    assert "PRIVATE_SENTINEL" not in result.stdout + result.stderr

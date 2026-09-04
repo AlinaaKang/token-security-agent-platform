@@ -1,0 +1,214 @@
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from collections.abc import Callable, Sequence
+from typing import NamedTuple
+from urllib.parse import unquote
+from uuid import uuid4
+
+
+class HttpRequestRecord(NamedTuple):
+    packet_number: int
+    offset_ms: int
+    request_target: str
+
+
+class DetectionError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
+_RULES = (
+    (
+        "sql_injection",
+        "sql_syntax_pattern",
+        re.compile(r"(?:\bunion\s+(?:all\s+)?select\b|['\"]\s*or\s+\d+\s*=\s*\d+)", re.I),
+        0.95,
+    ),
+    (
+        "command_injection",
+        "command_syntax_pattern",
+        re.compile(
+            r"(?:;|\|\||&&|\|)\s*(?:id|whoami|cat|curl|wget|sh|bash|cmd|powershell)\b",
+            re.I,
+        ),
+        0.94,
+    ),
+    (
+        "path_traversal",
+        "path_traversal_pattern",
+        re.compile(r"(?:\.\.[/\\]){2,}", re.I),
+        0.96,
+    ),
+)
+
+
+def _decode_request_target(value: str) -> str:
+    decoded = value
+    for _ in range(2):
+        next_value = unquote(decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    return decoded[:8192]
+
+
+def analyze_http_requests(
+    *, verified_packet_count: int, requests: tuple[HttpRequestRecord, ...]
+) -> dict[str, object]:
+    if isinstance(verified_packet_count, bool) or verified_packet_count < 0:
+        raise ValueError("verified_packet_count must be a nonnegative integer")
+    evidence: list[dict[str, object]] = []
+    for request in requests:
+        if request.packet_number < 1 or request.packet_number > verified_packet_count:
+            raise ValueError("request is outside the verified packet range")
+        if request.offset_ms < 0:
+            raise ValueError("request offset must be nonnegative")
+        normalized_target = _decode_request_target(request.request_target)
+        for candidate, signal, pattern, confidence in _RULES:
+            if pattern.search(normalized_target) is None:
+                continue
+            evidence.append(
+                {
+                    "evidence_id": f"evidence_{uuid4().hex}",
+                    "granularity": "request",
+                    "verified_packet_count": verified_packet_count,
+                    "start_packet": request.packet_number,
+                    "end_packet": request.packet_number,
+                    "start_offset_ms": request.offset_ms,
+                    "end_offset_ms": request.offset_ms,
+                    "attack_candidate": candidate,
+                    "detector": "http_rule",
+                    "confidence": confidence,
+                    "supporting_signals": [signal, "request_boundary"],
+                }
+            )
+            break
+    return {
+        "schema_version": 1,
+        "verified_packet_count": verified_packet_count,
+        "evidence": evidence,
+    }
+
+
+def _run_tshark(arguments: Sequence[str]) -> str:
+    try:
+        result = subprocess.run(
+            list(arguments),
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DetectionError("tshark_failed") from exc
+    if result.returncode != 0:
+        raise DetectionError("tshark_failed")
+    if len(result.stdout) > 4 * 1024 * 1024:
+        raise DetectionError("tshark_output_too_large")
+    return result.stdout
+
+
+def _parse_packet_count(text: str) -> int:
+    if not text.strip():
+        return 0
+    try:
+        packet_numbers = tuple(int(line) for line in text.splitlines())
+    except ValueError as exc:
+        raise DetectionError("invalid_tshark_output") from exc
+    if any(number < 1 for number in packet_numbers):
+        raise DetectionError("invalid_tshark_output")
+    return max(packet_numbers)
+
+
+def _parse_http_requests(text: str) -> tuple[HttpRequestRecord, ...]:
+    requests: list[HttpRequestRecord] = []
+    try:
+        for line in text.splitlines():
+            fields = line.split("\t")
+            if len(fields) != 3:
+                raise ValueError
+            packet_number = int(fields[0])
+            offset_ms = int(Decimal(fields[1]) * 1000)
+            if packet_number < 1 or offset_ms < 0 or not fields[2]:
+                raise ValueError
+            requests.append(HttpRequestRecord(packet_number, offset_ms, fields[2]))
+    except (InvalidOperation, ValueError) as exc:
+        raise DetectionError("invalid_tshark_output") from exc
+    return tuple(requests)
+
+
+def detect_capture(
+    capture: Path,
+    *,
+    run_tshark: Callable[[Sequence[str]], str] = _run_tshark,
+) -> dict[str, object]:
+    packet_output = run_tshark(
+        (
+            "tshark",
+            "-n",
+            "-r",
+            str(capture),
+            "-c",
+            "100000",
+            "-T",
+            "fields",
+            "-e",
+            "frame.number",
+        )
+    )
+    verified_packet_count = _parse_packet_count(packet_output)
+    request_output = run_tshark(
+        (
+            "tshark",
+            "-n",
+            "-r",
+            str(capture),
+            "-c",
+            "100000",
+            "-Y",
+            "http.request",
+            "-T",
+            "fields",
+            "-E",
+            "separator=/t",
+            "-E",
+            "occurrence=f",
+            "-e",
+            "frame.number",
+            "-e",
+            "frame.time_relative",
+            "-e",
+            "http.request.uri",
+        )
+    )
+    requests = _parse_http_requests(request_output)
+    return analyze_http_requests(
+        verified_packet_count=verified_packet_count,
+        requests=requests,
+    )
+
+
+def main() -> int:
+    try:
+        report = detect_capture(Path("/input/capture"))
+    except DetectionError as exc:
+        print(f"pcap_detection_error={exc.code}", file=sys.stderr)
+        return 2
+    except Exception:
+        print("pcap_detection_error=unexpected_failure", file=sys.stderr)
+        return 2
+    print(json.dumps(report, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

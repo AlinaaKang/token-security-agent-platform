@@ -12,6 +12,7 @@ RUN apt-get update \
 
 COPY --chown=65532:65532 scripts/pcap_preflight.py /opt/pcap/pcap_preflight.py
 COPY --chown=65532:65532 pcap-inspector/inspect.py /opt/pcap/inspect.py
+COPY --chown=65532:65532 pcap-inspector/detect_http.py /opt/pcap/detect_http.py
 
 USER 65532:65532
 WORKDIR /opt/pcap

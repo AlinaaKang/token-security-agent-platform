@@ -5,7 +5,10 @@ param(
 
     [string]$QuarantineRoot = 'E:\Codex\pcap-quarantine',
 
-    [string]$DockerExecutable
+    [string]$DockerExecutable,
+
+    [ValidateSet('Preflight', 'HttpDetection')]
+    [string]$Mode = 'Preflight'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -165,6 +168,22 @@ function Test-SortedUniqueStrings {
     return $true
 }
 
+function Test-UniqueStrings {
+    param([Parameter(Mandatory = $true)]$Value)
+
+    if ($Value -isnot [array] -or $Value.Count -lt 1) {
+        return $false
+    }
+    $seen = @{}
+    foreach ($item in $Value) {
+        if ($item -isnot [string] -or [string]::IsNullOrEmpty($item) -or $seen.ContainsKey($item)) {
+            return $false
+        }
+        $seen[$item] = $true
+    }
+    return $true
+}
+
 function Get-Policy {
     param(
         [Parameter(Mandatory = $true)][int64]$PacketCount,
@@ -262,6 +281,45 @@ function ConvertTo-ValidatedReport {
     return $report
 }
 
+function ConvertTo-ValidatedDetectionReport {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { Fail-Preflight 'invalid_report_schema' }
+    try {
+        $report = $Text | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        Fail-Preflight 'invalid_report_schema'
+    }
+    if (-not (Test-ExactPropertyNames (Get-PropertyNames $report) @('schema_version', 'verified_packet_count', 'evidence'))) {
+        Fail-Preflight 'invalid_report_schema'
+    }
+    if ($report.schema_version -ne 1 -or -not (Test-IntegerInRange $report.schema_version)) { Fail-Preflight 'invalid_report_schema' }
+    if (-not (Test-IntegerInRange $report.verified_packet_count)) { Fail-Preflight 'invalid_report_schema' }
+    if ($report.evidence -isnot [array] -or $report.evidence.Count -gt 160) { Fail-Preflight 'invalid_report_schema' }
+
+    $seenEvidence = @{}
+    foreach ($item in $report.evidence) {
+        $expectedKeys = @('evidence_id', 'granularity', 'verified_packet_count', 'start_packet', 'end_packet', 'start_offset_ms', 'end_offset_ms', 'attack_candidate', 'detector', 'confidence', 'supporting_signals')
+        if (-not (Test-ExactPropertyNames (Get-PropertyNames $item) $expectedKeys)) { Fail-Preflight 'invalid_report_schema' }
+        if ($item.evidence_id -isnot [string] -or $item.evidence_id -notmatch '^evidence_[0-9a-f]{32}$' -or $seenEvidence.ContainsKey($item.evidence_id)) { Fail-Preflight 'invalid_report_schema' }
+        $seenEvidence[$item.evidence_id] = $true
+        if ($item.granularity -ne 'request' -or $item.detector -ne 'http_rule') { Fail-Preflight 'invalid_report_schema' }
+        if (@('sql_injection', 'command_injection', 'path_traversal') -notcontains $item.attack_candidate) { Fail-Preflight 'invalid_report_schema' }
+        foreach ($integerField in @('verified_packet_count', 'start_packet', 'end_packet', 'start_offset_ms', 'end_offset_ms')) {
+            if (-not (Test-IntegerInRange $item.$integerField)) { Fail-Preflight 'invalid_report_schema' }
+        }
+        if ($item.verified_packet_count -ne $report.verified_packet_count -or $item.start_packet -lt 1 -or $item.start_packet -gt $item.end_packet -or $item.end_packet -gt $report.verified_packet_count) { Fail-Preflight 'invalid_report_schema' }
+        if ($item.start_offset_ms -gt $item.end_offset_ms) { Fail-Preflight 'invalid_report_schema' }
+        if (-not (Test-FiniteNonnegativeNumber $item.confidence) -or [double]$item.confidence -gt 1) { Fail-Preflight 'invalid_report_schema' }
+        if (-not (Test-UniqueStrings $item.supporting_signals) -or $item.supporting_signals.Count -gt 8) { Fail-Preflight 'invalid_report_schema' }
+        foreach ($signal in $item.supporting_signals) {
+            if (@('sql_syntax_pattern', 'command_syntax_pattern', 'path_traversal_pattern', 'request_boundary') -notcontains $signal) { Fail-Preflight 'invalid_report_schema' }
+        }
+    }
+    return $report
+}
+
 function Save-Report {
     param(
         [Parameter(Mandatory = $true)]$Report,
@@ -295,6 +353,39 @@ function Save-Report {
     [System.IO.File]::WriteAllText($OutputPath, $json, $utf8WithoutBom)
 }
 
+function Save-DetectionReport {
+    param(
+        [Parameter(Mandatory = $true)]$Report,
+        [Parameter(Mandatory = $true)][string]$OutputPath
+    )
+
+    $stableEvidence = @()
+    foreach ($item in $Report.evidence) {
+        $stableEvidence += [ordered]@{
+            evidence_id = $item.evidence_id
+            granularity = $item.granularity
+            verified_packet_count = $item.verified_packet_count
+            start_packet = $item.start_packet
+            end_packet = $item.end_packet
+            start_offset_ms = $item.start_offset_ms
+            end_offset_ms = $item.end_offset_ms
+            attack_candidate = $item.attack_candidate
+            detector = $item.detector
+            confidence = $item.confidence
+            supporting_signals = @($item.supporting_signals)
+        }
+    }
+    $stableReport = [ordered]@{
+        schema_version = $Report.schema_version
+        verified_packet_count = $Report.verified_packet_count
+        evidence = $stableEvidence
+    }
+    $json = $stableReport | ConvertTo-Json -Depth 5 -Compress
+    $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($OutputPath, $json, $utf8WithoutBom)
+    return $json
+}
+
 try {
     $fullPath = [System.IO.Path]::GetFullPath($Path)
     $fullRoot = [System.IO.Path]::GetFullPath($QuarantineRoot)
@@ -315,6 +406,7 @@ try {
     if ([System.IO.Path]::GetExtension($fullPath) -notin @('.pcap', '.pcapng')) { Fail-Preflight 'unsupported_capture_extension' }
 
     $dockerExecutable = Resolve-DockerExecutable $DockerExecutable
+    $preRunHash = Get-Sha256Hex $fullPath
     $dockerArgs = @(
         'run', '--rm',
         '--network', 'none',
@@ -328,6 +420,9 @@ try {
         '--mount', ("type=bind,source={0},target=/input/capture,readonly" -f $fullPath),
         'token-security-pcap-preflight:local'
     )
+    if ($Mode -eq 'HttpDetection') {
+        $dockerArgs += 'detect-http'
+    }
 
     $processExecutable = $dockerExecutable
     $processArguments = @($dockerArgs | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' }) -join ' '
@@ -388,14 +483,24 @@ try {
         if ($null -ne $stderrFile) { Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue }
     }
 
-    $report = ConvertTo-ValidatedReport $stdout
     $postRunHash = Get-Sha256Hex $fullPath
-    if ($postRunHash -ne $report.sha256) { Fail-Preflight 'input_changed' }
+    if ($postRunHash -ne $preRunHash) { Fail-Preflight 'input_changed' }
 
     $outputDirectory = [System.IO.Path]::Combine($fullRoot, 'output')
     Assert-NoReparsePoints $outputDirectory 'output_reparse_point'
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
     Assert-NoReparsePoints $outputDirectory 'output_reparse_point'
+    if ($Mode -eq 'HttpDetection') {
+        $report = ConvertTo-ValidatedDetectionReport $stdout
+        $reportPath = [System.IO.Path]::Combine($outputDirectory, ('pcap-detection-{0}.json' -f [guid]::NewGuid().ToString('N')))
+        Assert-NoReparsePoints $reportPath 'output_reparse_point'
+        $publicJson = Save-DetectionReport $report $reportPath
+        Write-Output $publicJson
+        exit 0
+    }
+
+    $report = ConvertTo-ValidatedReport $stdout
+    if ($postRunHash -ne $report.sha256) { Fail-Preflight 'input_changed' }
     $reportPath = [System.IO.Path]::Combine($outputDirectory, ('pcap-preflight-{0}.json' -f $report.sha256.Substring(0, 16)))
     Assert-NoReparsePoints $reportPath 'output_reparse_point'
     Save-Report $report $reportPath
