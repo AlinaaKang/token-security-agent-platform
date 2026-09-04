@@ -24,7 +24,7 @@ function detectionResult(status: "completed" | "queued" = "completed") {
     objective: "detect_pcap_anomalies",
     status,
     events: [],
-    summary: { schema_version: 1, analyzed_count: 1, succeeded_count: 1, failed_count: 0, evidence: [evidence] },
+    summary: { schema_version: 1, analyzed_count: 1, succeeded_count: 1, failed_count: 0, evidence: [evidence], processed_samples: [{ sample_index: 1, status: "succeeded", evidence_count: 1, failure_code: null }] },
     report: { confirmed_evidence_ids: [evidence.evidence_id], candidate_evidence_ids: [evidence.evidence_id], unknowns: [], recommended_actions: ["review_localized_requests"] },
     failure_code: null,
     created_at: "2026-09-04T00:00:00Z",
@@ -61,6 +61,7 @@ describe("PcapDetectionWorkspace", () => {
     expect(screen.getByText("短请求无需调用 CPD")).toBeInTheDocument();
     expect(screen.getByText("规则侦探")).toBeInTheDocument();
     expect(screen.getByText("小队队长")).toBeInTheDocument();
+    expect(screen.getByText(/样本 01/)).toHaveClass("is-alert");
   });
 
   it("polls a queued mission until the backend publishes the completed result", async () => {
