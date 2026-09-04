@@ -18,6 +18,12 @@ class HttpRequestRecord(NamedTuple):
     request_target: str
 
 
+class PacketRecord(NamedTuple):
+    packet_number: int
+    offset_ms: int
+    destination: str
+
+
 class DetectionError(RuntimeError):
     def __init__(self, code: str) -> None:
         self.code = code
@@ -97,6 +103,37 @@ def analyze_http_requests(
     }
 
 
+def analyze_behavior(
+    *, verified_packet_count: int, packets: tuple[PacketRecord, ...]
+) -> list[dict[str, object]]:
+    """Return a coarse, content-free signal for bursty multi-destination scans."""
+    if len(packets) < 20:
+        return []
+    ordered = tuple(sorted(packets, key=lambda item: item.packet_number))
+    if ordered[-1].offset_ms - ordered[0].offset_ms > 1000:
+        return []
+    if len({packet.destination for packet in ordered}) < 5:
+        return []
+    return [
+        {
+            "evidence_id": f"evidence_{uuid4().hex}",
+            "granularity": "packet",
+            "verified_packet_count": verified_packet_count,
+            "start_packet": ordered[0].packet_number,
+            "end_packet": ordered[-1].packet_number,
+            "start_offset_ms": ordered[0].offset_ms,
+            "end_offset_ms": ordered[-1].offset_ms,
+            "attack_candidate": "none",
+            "detector": "behavior_anomaly",
+            "confidence": 0.82,
+            "supporting_signals": [
+                "connection_rate_increase",
+                "destination_density_increase",
+            ],
+        }
+    ]
+
+
 def _run_tshark(arguments: Sequence[str]) -> str:
     try:
         result = subprocess.run(
@@ -146,6 +183,24 @@ def _parse_http_requests(text: str) -> tuple[HttpRequestRecord, ...]:
     return tuple(requests)
 
 
+def _parse_packet_records(text: str) -> tuple[PacketRecord, ...]:
+    records: list[PacketRecord] = []
+    try:
+        for line in text.splitlines():
+            fields = line.split("\t")
+            if len(fields) != 3:
+                raise ValueError
+            packet_number = int(fields[0])
+            offset_ms = int(Decimal(fields[1]) * 1000)
+            destination = fields[2]
+            if packet_number < 1 or offset_ms < 0 or not destination:
+                raise ValueError
+            records.append(PacketRecord(packet_number, offset_ms, destination))
+    except (InvalidOperation, ValueError) as exc:
+        raise DetectionError("invalid_tshark_output") from exc
+    return tuple(records)
+
+
 def detect_capture(
     capture: Path,
     *,
@@ -191,10 +246,25 @@ def detect_capture(
         )
     )
     requests = _parse_http_requests(request_output)
-    return analyze_http_requests(
+    report = analyze_http_requests(
         verified_packet_count=verified_packet_count,
         requests=requests,
     )
+    behavior_output = run_tshark(
+        (
+            "tshark", "-n", "-r", str(capture), "-c", "100000", "-T", "fields",
+            "-E", "separator=/t", "-E", "occurrence=f", "-e", "frame.number",
+            "-e", "frame.time_relative", "-e", "ip.dst",
+        )
+    )
+    if behavior_output.strip() and "\t" in behavior_output:
+        report["evidence"].extend(
+            analyze_behavior(
+                verified_packet_count=verified_packet_count,
+                packets=_parse_packet_records(behavior_output),
+            )
+        )
+    return report
 
 
 def main() -> int:

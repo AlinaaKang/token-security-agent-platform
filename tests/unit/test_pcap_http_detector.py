@@ -134,6 +134,29 @@ def test_detect_capture_fails_closed_on_malformed_tshark_rows(tmp_path: Path) ->
 
     with pytest.raises(DETECTOR.DetectionError) as error:
         DETECTOR.detect_capture(fixture, run_tshark=fake_tshark)
-
     assert error.value.code == "invalid_tshark_output"
     assert "PRIVATE_SENTINEL" not in str(error.value)
+
+
+def test_detect_capture_localizes_high_rate_multi_destination_behavior(
+    tmp_path: Path,
+) -> None:
+    fixture = tmp_path / "scan.pcap"
+    fixture.write_bytes(b"pcap")
+    packet_rows = "\n".join(
+        f"{index}\t{index / 1000:.3f}\t10.0.0.{index}" for index in range(1, 21)
+    )
+
+    def fake_tshark(arguments: tuple[str, ...]) -> str:
+        if "frame.number" in arguments and "http.request" not in arguments and "ip.dst" not in arguments:
+            return "\n".join(str(index) for index in range(1, 21))
+        if "http.request" in arguments:
+            return ""
+        return packet_rows
+
+    report = DETECTOR.detect_capture(fixture, run_tshark=fake_tshark)
+
+    assert len(report["evidence"]) == 1
+    assert report["evidence"][0]["detector"] == "behavior_anomaly"
+    assert report["evidence"][0]["granularity"] == "packet"
+    assert "connection_rate_increase" in report["evidence"][0]["supporting_signals"]
