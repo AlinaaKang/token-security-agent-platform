@@ -62,4 +62,19 @@ describe("PcapDetectionWorkspace", () => {
     expect(screen.getByText("规则侦探")).toBeInTheDocument();
     expect(screen.getByText("小队队长")).toBeInTheDocument();
   });
+
+  it("polls a queued mission until the backend publishes the completed result", async () => {
+    let reads = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      if (init?.method === "POST" && url.includes("authorizations")) return Promise.resolve(new Response(JSON.stringify({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 1 }), { status: 201 }));
+      if (init?.method === "POST") return Promise.resolve(new Response(JSON.stringify(detectionResult("queued")), { status: 201 }));
+      reads += 1;
+      return Promise.resolve(new Response(JSON.stringify(detectionResult(reads > 0 ? "completed" : "queued")), { status: 200 }));
+    }));
+    render(<PcapDetectionWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
+    fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
+    expect(await screen.findByText("检测完成")).toBeInTheDocument();
+  });
 });

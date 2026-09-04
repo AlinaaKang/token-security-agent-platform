@@ -37,6 +37,26 @@ export function PcapDetectionWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [maxFiles, setMaxFiles] = useState("20");
   useEffect(() => { let active = true; api.pcapDetectionOverview().then((value) => { if (active) { setOverview(value); setBusy(false); } }).catch(() => { if (active) { setError("PCAP 异常检测暂不可用"); setBusy(false); } }); return () => { active = false; }; }, []);
+  useEffect(() => {
+    if (!mission || TERMINAL.has(mission.status)) return;
+    let active = true;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const result = await api.getSuperAgentMission(mission.detection_id);
+        if (!active || result.objective !== "detect_pcap_anomalies") return;
+        setMission(result);
+        if (!TERMINAL.has(result.status)) timer = window.setTimeout(poll, 1200);
+      } catch {
+        if (active) {
+          setError("无法刷新异常检测状态，请稍后重试");
+          timer = window.setTimeout(poll, 2000);
+        }
+      }
+    };
+    timer = window.setTimeout(poll, 300);
+    return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
+  }, [mission?.detection_id, mission?.status]);
   const active = mission && !TERMINAL.has(mission.status);
   async function start() { if (!overview || !confirming || busy) return; setBusy(true); setError(null); try { const receipt = await api.authorizePcapDetection({ confirmed: true, max_files: Number(maxFiles) }); const result = await api.createPcapDetectionMission({ objective: "detect_pcap_anomalies", authorization_id: receipt.authorization_id }); setMission(result); window.sessionStorage.setItem(DETECTION_MISSION_KEY, result.detection_id); setConfirming(false); } catch { setError("无法启动异常检测，请重试"); } finally { setBusy(false); } }
   async function cancel() { if (!mission || !active || busy) return; setBusy(true); try { const result = await api.cancelPcapDetectionMission(mission.detection_id); setMission(result); } finally { setBusy(false); } }
