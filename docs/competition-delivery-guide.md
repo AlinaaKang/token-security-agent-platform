@@ -1,0 +1,85 @@
+# 深信服 AI 安全方向比赛对照与使用手册
+
+## 一句话定位
+
+本项目是“面向 AI 安全的 Token 流量异常检测智能体平台”：面向大模型应用入口，先用语义安全模型识别直接危险请求，再用 Token 熵变化点定位优化型后缀，并将结果交给一个有边界、可审计的安全智能体完成研判和处置。
+
+## 逐条对照
+
+| 比赛关注点 | 当前实现 | 可展示的功能 | 交付时的准确表述 |
+| --- | --- | --- | --- |
+| 单一明确安全痛点 | 聚焦大模型入口的危险请求与对抗后缀检测 | `/analyze` 分析、风险等级、异常起点、处置动作 | 解决“整句分类漏掉 Token 级异常、单一 CPD 放过平稳危险语义”的互补问题 |
+| 安全智能体形态 | 有目标、工具、状态、决策、动作和审计回执的闭环 | SuperAgent 任务状态、角色链路、确定性融合 | 是安全任务智能体，不是只生成文本的聊天机器人 |
+| 多模型/多工具协同 | Qwen3Guard 语义 Guard、Qwen2.5 logits、Entropy-CPD、固定融合策略 | 语义侦探、曲线侦探、队长总结 | 语义证据与 Token 分布证据相互补充，动作由固定策略决定 |
+| 可解释与可追溯 | 决策轨迹、证据代码、真实 `knowledge_id` 引用 | `/events`、分析决策链、RAG 报告 | 报告只能引用真实返回的知识 ID；失败时退回确定性模板 |
+| 进阶知识增强 | 离线安全知识库和受约束 RAG | 检索知识卡、来源、处置建议 | 知识层增强解释，不改写基础检测结果 |
+| 工具扩展/复杂协同 | `/lab` 安全实验舱、`/super-agent` 有界任务、交互式挑战 | 反事实执行、工具回执、三角色公仔流程 | 当前为平台内部可审计仿真；不宣称已接入外部防火墙、EDR、SIEM |
+| 数据安全与合规 | 原始 Prompt、suffix、Token 文本和思维链不进入公开边界；PCAP 只在 Docker 隔离容器读取 | 脱敏结果、局部证据 ID、沙箱门禁 | 展示证据链摘要，不展示敏感原文或模型私有思维过程 |
+| PCAP 数据适配 | 独立“异常检测”模式，输出 Request/Packet 局部证据 | 批量分诊、数据勘察、异常检测三种模式 | PCAP 结果是网络证据分诊；不能冒充 Prompt/Token 语义恢复 |
+| 可复现评测 | 合成 PCAP 的 precision、recall、F1、FPR、局部命中率及消融 | 评测脚本和 Docker 验证器 | 真实 PCAP 无审计标签时只报告聚合计数，不宣称正式 benchmark |
+
+## 创新点
+
+1. **双证据互补**：语义 Guard 负责“内容本身是否危险”，Entropy-CPD 负责“Token 分布在哪个局部发生异常”，避免把任一单路方法当成万能检测器。
+2. **证据粒度自适应**：明文 HTTP 规则命中时定位到 Request/Packet；长序列才考虑行为或 CPD；无法恢复内容时保留“证据不足”，不猜测原始语义。
+3. **可审计智能体而非黑盒编排**：每一步都有固定角色、状态、授权、证据 ID 和处置动作；未知引用、超时或 JSON 失败会安全降级。
+4. **安全优先的真实数据入口**：PCAP 默认关闭，必须通过 UI 两次确认；单文件只读挂载到无网络、非 root、资源受限的 Docker 容器。
+5. **有趣但不牺牲严谨性**：挑战页把 Guard、CPD、队长做成可回看、可重复点击的“侦探小队”，公仔动画只表达流程状态，结论仍来自真实结果。
+
+## 页面与功能
+
+- `/analyze`：基础任务。输入 Prompt，查看语义等级、Entropy-CPD 曲线、异常起点、融合动作和脱敏决策链。
+- `/evaluation`：查看冻结评测、工作点、分域结果和局限说明。
+- `/events`：查看事件审计和知识报告。报告引用真实 `knowledge_id`，失败自动使用模板。
+- `/lab`：进阶任务实验舱。创建受控调查，查看工具观察、反事实结果和处置回执。
+- `/challenge`：Token 侦探挑战。依次查看三个角色的脱敏报告，再提交判断；已完成角色可重复查看，不会重复执行检测。
+- `/super-agent`：选择 Prompt 安全任务或 PCAP SuperAgent。PCAP 模式包含批量分诊、数据勘察、异常检测。
+
+## 启动方式
+
+### 基础/进阶页面
+
+```powershell
+Set-Location E:\Codex\token-security-agent-platform
+$env:PYTHONPATH = (Resolve-Path backend).Path
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+另开终端：
+
+```powershell
+Set-Location E:\Codex\token-security-agent-platform\frontend
+npm.cmd run dev
+```
+
+浏览器打开 `http://127.0.0.1:5173/analyze`。
+
+### PCAP 异常检测
+
+1. 准备仓库外隔离目录，并在其中建立 `input` 子目录；不要把真实 PCAP 放进 Git 仓库。
+2. 设置 `TOKEN_SECURITY_PCAP_ENABLED=true`、隔离目录绝对路径和 PowerShell 可执行文件路径。
+3. 构建并验证 inspector 镜像：
+
+```powershell
+docker build -f pcap-inspector/Dockerfile -t token-security-pcap-preflight:local .
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/verify_pcap_sandbox.ps1
+```
+
+4. 打开 `/super-agent`，选择“异常检测”。第一次点击“准备开始”只显示确认区；确认文件数后，第二次点击“确认并开始”才签发一次性授权并启动任务。
+5. 等待任务进入 `completed`、`degraded` 或 `cancelled`。页面只显示聚合数量、攻击候选、Request/Packet 区间和证据 ID。
+
+## 比赛演示顺序
+
+1. 用一条直接危险 Prompt 演示语义 Guard 拦截。
+2. 用一条 Token 分布突变但语义不明显的样本演示 CPD 局部起点。
+3. 用一条无害分布突变样本演示“检测到变化不等于拦截”，说明权限边界。
+4. 进入 `/challenge`，依次点击语义侦探、曲线侦探和队长，展示脱敏思维链摘要与可回看交互。
+5. 进入 `/super-agent` 的 PCAP“异常检测”，完成两次授权，展示 Docker 隔离和 Request/Packet 局部证据。
+6. 最后打开 `/events` 或 `/evaluation`，展示真实知识引用、指标和限制。
+
+## 必须主动说明的边界
+
+- 当前自研 Web 平台和开源模型不是深信服平台本身；参赛前需要取得赛事方允许自研平台替代的书面确认并随材料归档。
+- PCAP 加密、非 HTTP 或缺少标签时，系统只能给出流量层证据或“证据不足”，不会伪造 Prompt、Token 或攻击结论。
+- `rule_only`、`behavior_only`、`fused` 指标来自合成评测；真实语料需要独立审计标签后才能形成正式比赛结论。
+- 页面展示的是可审计的推理摘要和证据链，不是模型私有 COT 原文，也不暴露原始 Prompt、suffix、Token、payload、IP 或路径。
