@@ -15,9 +15,6 @@ def main() -> int:
             from detect_http import main as detect_http_main
 
             return detect_http_main()
-        if sys.argv[1:]:
-            _emit_error("unexpected_failure")
-            return 2
         inspector_directory = str(Path(__file__).resolve().parent)
         sys.path[:] = [entry for entry in sys.path if entry != inspector_directory]
         import inspect as _standard_library_inspect

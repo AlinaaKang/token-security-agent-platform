@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.pcap.models import PcapActor, PcapMissionStatus
+
 
 _FORBIDDEN_PUBLIC_KEYS = frozenset(
     {
@@ -28,6 +30,11 @@ _FORBIDDEN_PUBLIC_KEYS = frozenset(
     }
 )
 _Count = Annotated[int, Field(ge=0, le=20, strict=True)]
+_EvidenceId = Annotated[str, Field(pattern=r"^evidence_[0-9a-f]{32}$")]
+_DetectionTimestamp = Annotated[
+    str,
+    Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"),
+]
 
 
 class PcapGranularity(StrEnum):
@@ -60,6 +67,30 @@ class PcapSupportingSignal(StrEnum):
     DESTINATION_DENSITY_INCREASE = "destination_density_increase"
     CHANGE_POINT_DETECTED = "change_point_detected"
     SEMANTIC_RISK_DETECTED = "semantic_risk_detected"
+
+
+class PcapDetectionNarrative(StrEnum):
+    AUTHORIZATION_ACCEPTED = "authorization_accepted"
+    ISOLATED_HTTP_SCAN_RUNNING = "isolated_http_scan_running"
+    LOCALIZED_EVIDENCE_VALIDATED = "localized_evidence_validated"
+    DETERMINISTIC_FUSION_READY = "deterministic_fusion_ready"
+
+
+class PcapDetectionUnknown(StrEnum):
+    NO_LOCALIZED_ATTACK_EVIDENCE = "no_localized_attack_evidence"
+    PARTIAL_FILE_FAILURE = "partial_file_failure"
+
+
+class PcapDetectionAction(StrEnum):
+    ALLOW_NO_RULE_EVIDENCE = "allow_no_rule_evidence"
+    REVIEW_LOCALIZED_REQUESTS = "review_localized_requests"
+    RETRY_FAILED_FILES = "retry_failed_files"
+
+
+class PcapDetectionFailureCode(StrEnum):
+    TOOL_FAILED = "tool_failed"
+    TOOL_TIMEOUT = "tool_timeout"
+    REPORT_INVALID = "report_invalid"
 
 
 class _FrozenPcapDetectionModel(BaseModel):
@@ -130,6 +161,69 @@ class PcapDetectionSummary(_FrozenPcapDetectionModel):
     def require_consistent_counts(self) -> PcapDetectionSummary:
         if self.succeeded_count + self.failed_count != self.analyzed_count:
             raise ValueError("succeeded_count and failed_count must equal analyzed_count")
+        return self
+
+
+class PcapDetectionOverview(_FrozenPcapDetectionModel):
+    enabled: bool
+    eligible_file_count: int = Field(ge=0, le=2_147_483_647, strict=True)
+    max_files: Literal[20] = 20
+    localization: Literal["request_or_packet"] = "request_or_packet"
+
+
+class PcapDetectionReport(_FrozenPcapDetectionModel):
+    confirmed_evidence_ids: tuple[_EvidenceId, ...] = Field(max_length=160)
+    candidate_evidence_ids: tuple[_EvidenceId, ...] = Field(max_length=160)
+    unknowns: tuple[PcapDetectionUnknown, ...] = Field(max_length=2)
+    recommended_actions: tuple[PcapDetectionAction, ...] = Field(max_length=3)
+
+    @model_validator(mode="after")
+    def require_unique_references(self) -> PcapDetectionReport:
+        for references in (
+            self.confirmed_evidence_ids,
+            self.candidate_evidence_ids,
+            self.unknowns,
+            self.recommended_actions,
+        ):
+            if len(references) != len(set(references)):
+                raise ValueError("PCAP detection report values must be unique")
+        return self
+
+
+class PcapDetectionTraceEvent(_FrozenPcapDetectionModel):
+    sequence: int = Field(ge=1, le=8, strict=True)
+    actor: PcapActor
+    status: Literal["queued", "running", "succeeded", "failed", "skipped"]
+    summary: PcapDetectionNarrative
+
+
+class PcapDetectionMissionResult(_FrozenPcapDetectionModel):
+    detection_id: str = Field(pattern=r"^detection_[0-9a-f]{32}$")
+    objective: Literal["detect_pcap_anomalies"] = "detect_pcap_anomalies"
+    status: PcapMissionStatus
+    events: tuple[PcapDetectionTraceEvent, ...] = Field(max_length=8)
+    summary: PcapDetectionSummary | None = None
+    report: PcapDetectionReport
+    failure_code: PcapDetectionFailureCode | None = None
+    created_at: _DetectionTimestamp
+
+    @model_validator(mode="after")
+    def require_ordered_events_and_real_evidence_references(
+        self,
+    ) -> PcapDetectionMissionResult:
+        sequences = tuple(event.sequence for event in self.events)
+        if sequences != tuple(sorted(sequences)) or len(sequences) != len(set(sequences)):
+            raise ValueError("PCAP detection events must be ordered by sequence")
+        available = (
+            {item.evidence_id for item in self.summary.evidence}
+            if self.summary is not None
+            else set()
+        )
+        referenced = set(self.report.confirmed_evidence_ids) | set(
+            self.report.candidate_evidence_ids
+        )
+        if not referenced.issubset(available):
+            raise ValueError("PCAP detection report references unknown evidence")
         return self
 
 

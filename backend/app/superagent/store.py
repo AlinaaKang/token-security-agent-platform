@@ -7,6 +7,7 @@ from threading import RLock
 
 from app.lab.models import assert_public_payload
 from app.pcap.models import PcapMissionResult, PcapMissionStatus
+from app.pcap.detection_models import PcapDetectionMissionResult
 from app.pcap.recon_models import PcapReconMissionResult
 from app.superagent.models import SuperAgentStoredMission
 
@@ -110,7 +111,10 @@ class SuperAgentMissionStore:
 
 
 def _is_active_pcap_mission(mission: SuperAgentStoredMission) -> bool:
-    return isinstance(mission, (PcapMissionResult, PcapReconMissionResult)) and mission.status in {
+    return isinstance(
+        mission,
+        (PcapMissionResult, PcapReconMissionResult, PcapDetectionMissionResult),
+    ) and mission.status in {
         PcapMissionStatus.QUEUED,
         PcapMissionStatus.RUNNING,
     }
@@ -118,4 +122,7 @@ def _is_active_pcap_mission(mission: SuperAgentStoredMission) -> bool:
 
 def _mission_id(mission: SuperAgentStoredMission) -> str:
     mission_id = getattr(mission, "mission_id", None)
-    return mission_id if mission_id is not None else mission.recon_id
+    if mission_id is not None:
+        return mission_id
+    recon_id = getattr(mission, "recon_id", None)
+    return recon_id if recon_id is not None else mission.detection_id

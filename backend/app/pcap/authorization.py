@@ -48,7 +48,7 @@ class ConsumedPcapAuthorization:
 class _Authorization:
     max_files: int
     expires_at: float
-    purpose: Literal["triage", "reconnaissance"] = "triage"
+    purpose: Literal["triage", "reconnaissance", "detection"] = "triage"
     used: bool = False
 
 
@@ -73,11 +73,11 @@ class PcapAuthorizationStore:
     def issue(
         self,
         max_files: int,
-        purpose: Literal["triage", "reconnaissance"] = "triage",
+        purpose: Literal["triage", "reconnaissance", "detection"] = "triage",
     ) -> PcapAuthorizationReceipt:
         _validate_max_files(max_files)
-        if purpose not in ("triage", "reconnaissance"):
-            raise ValueError("purpose must be triage or reconnaissance")
+        if purpose not in ("triage", "reconnaissance", "detection"):
+            raise ValueError("purpose must be triage, reconnaissance, or detection")
         if purpose == "reconnaissance" and max_files != _MAX_FILES:
             raise ValueError("reconnaissance max_files is fixed at 20")
         authorization_id = "pcap_auth_" + token_hex(16)
@@ -97,7 +97,7 @@ class PcapAuthorizationStore:
     def consume(
         self,
         authorization_id: str,
-        purpose: Literal["triage", "reconnaissance"] = "triage",
+        purpose: Literal["triage", "reconnaissance", "detection"] = "triage",
     ) -> ConsumedPcapAuthorization:
         with self._lock:
             authorization = self._require_usable(authorization_id, purpose=purpose)
@@ -110,7 +110,7 @@ class PcapAuthorizationStore:
     def assert_usable(
         self,
         authorization_id: str,
-        purpose: Literal["triage", "reconnaissance"] = "triage",
+        purpose: Literal["triage", "reconnaissance", "detection"] = "triage",
     ) -> None:
         with self._lock:
             self._require_usable(authorization_id, purpose=purpose)
@@ -119,7 +119,7 @@ class PcapAuthorizationStore:
         self,
         authorization_id: str,
         *,
-        purpose: Literal["triage", "reconnaissance"],
+        purpose: Literal["triage", "reconnaissance", "detection"],
     ) -> _Authorization:
         if (
             type(authorization_id) is not str

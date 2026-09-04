@@ -33,9 +33,11 @@ from app.lab.service import LabService
 from app.pcap.authorization import PcapAuthorizationStore
 from app.pcap.config import PcapConfig
 from app.pcap.executor import PcapBatchExecutor
+from app.pcap.detection_executor import PcapDetectionExecutor
 from app.pcap.recon_executor import PcapReconExecutor
 from app.superagent.pcap_coordinator import PcapMissionCoordinator
 from app.superagent.pcap_recon_coordinator import PcapReconMissionCoordinator
+from app.superagent.pcap_detection_coordinator import PcapDetectionMissionCoordinator
 from app.superagent.service import SuperAgentService
 from app.superagent.store import SuperAgentMissionStore
 
@@ -55,6 +57,8 @@ _LIFESPAN_STATE_NAMES = (
     "pcap_executor",
     "pcap_recon_coordinator",
     "pcap_recon_executor",
+    "pcap_detection_coordinator",
+    "pcap_detection_executor",
     "service_health",
     "superagent_service",
 )
@@ -115,6 +119,12 @@ async def lifespan(application: FastAPI):
                     pcap_recon_coordinator.close()
                 except Exception as exc:
                     logger.error("pcap reconnaissance coordinator cleanup failed error_type=%s", type(exc).__name__)
+            pcap_detection_coordinator = getattr(application.state, "pcap_detection_coordinator", None)
+            if pcap_detection_coordinator is not None:
+                try:
+                    pcap_detection_coordinator.close()
+                except Exception as exc:
+                    logger.error("pcap detection coordinator cleanup failed error_type=%s", type(exc).__name__)
         finally:
             try:
                 if lab_execution_store is not None:
@@ -272,6 +282,7 @@ def _initialize_lifespan_services(
     pcap_health = {"enabled": False, "ready": False, "reason": "disabled"}
     pcap_coordinator = None
     pcap_recon_coordinator = None
+    pcap_detection_coordinator = None
     try:
         pcap_config = PcapConfig.from_environ(os.environ)
         if pcap_config is not None:
@@ -297,6 +308,17 @@ def _initialize_lifespan_services(
                 application.state.pcap_recon_coordinator = pcap_recon_coordinator
             except Exception as exc:
                 logger.error("pcap reconnaissance initialization failed error_type=%s", type(exc).__name__)
+            try:
+                detection_executor = PcapDetectionExecutor(config=pcap_config)
+                pcap_detection_coordinator = PcapDetectionMissionCoordinator(
+                    authorization_store=authorization_store,
+                    executor=detection_executor,
+                    mission_store=mission_store,
+                )
+                application.state.pcap_detection_executor = detection_executor
+                application.state.pcap_detection_coordinator = pcap_detection_coordinator
+            except Exception as exc:
+                logger.error("pcap detection initialization failed error_type=%s", type(exc).__name__)
             pcap_health = {
                 "enabled": True,
                 "ready": True,
@@ -323,6 +345,7 @@ def _initialize_lifespan_services(
                 lab_service=lab_service,
                 pcap_coordinator=pcap_coordinator,
                 pcap_recon_coordinator=pcap_recon_coordinator,
+                pcap_detection_coordinator=pcap_detection_coordinator,
             )
             superagent_health = {
                 "ready": True,

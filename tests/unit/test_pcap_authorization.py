@@ -11,6 +11,7 @@ from app.pcap.authorization import (
     PcapAuthorizationAlreadyUsed,
     PcapAuthorizationExpired,
     PcapAuthorizationStore,
+    PcapAuthorizationPurposeMismatch,
     PcapAuthorizationUnknown,
 )
 
@@ -118,3 +119,16 @@ def test_authorization_receipt_is_opaque_and_contains_no_location_data() -> None
     assert re.fullmatch(r"pcap_auth_[0-9a-f]{32}", receipt.authorization_id)
     assert payload["max_files"] == 1
     assert not {"root", "path", "quarantine_root", "batch_script"}.intersection(payload)
+
+
+def test_detection_authorization_is_purpose_bound_and_single_use() -> None:
+    store = PcapAuthorizationStore()
+    receipt = store.issue(max_files=4, purpose="detection")
+
+    with pytest.raises(PcapAuthorizationPurposeMismatch):
+        store.consume(receipt.authorization_id, purpose="triage")
+
+    consumed = store.consume(receipt.authorization_id, purpose="detection")
+    assert consumed.max_files == 4
+    with pytest.raises(PcapAuthorizationAlreadyUsed):
+        store.consume(receipt.authorization_id, purpose="detection")

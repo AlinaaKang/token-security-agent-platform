@@ -13,6 +13,7 @@ from app.pcap.authorization import (
     PcapAuthorizationPurposeMismatch,
 )
 from app.superagent.models import (
+    PcapDetectionMissionRequest,
     PcapReconMissionRequest,
     PcapTriageMissionRequest,
     SuperAgentCreateMissionRequest,
@@ -91,6 +92,22 @@ def _pcap_recon_failed() -> JSONResponse:
     return _error(status_code=500, code="pcap_reconnaissance_failed", message="pcap reconnaissance failed")
 
 
+def _pcap_detection_unavailable() -> JSONResponse:
+    return _error(
+        status_code=503,
+        code="pcap_detection_unavailable",
+        message="pcap detection is unavailable",
+    )
+
+
+def _pcap_detection_failed() -> JSONResponse:
+    return _error(
+        status_code=500,
+        code="pcap_detection_failed",
+        message="pcap detection failed",
+    )
+
+
 def _pcap_components(request: Request) -> tuple[Any, Any, Any] | None:
     authorization_store = getattr(
         request.app.state, "pcap_authorization_store", None
@@ -106,6 +123,15 @@ def _pcap_recon_components(request: Request) -> tuple[Any, Any, Any] | None:
     authorization_store = getattr(request.app.state, "pcap_authorization_store", None)
     executor = getattr(request.app.state, "pcap_recon_executor", None)
     coordinator = getattr(request.app.state, "pcap_recon_coordinator", None)
+    if authorization_store is None or executor is None or coordinator is None:
+        return None
+    return authorization_store, executor, coordinator
+
+
+def _pcap_detection_components(request: Request) -> tuple[Any, Any, Any] | None:
+    authorization_store = getattr(request.app.state, "pcap_authorization_store", None)
+    executor = getattr(request.app.state, "pcap_detection_executor", None)
+    coordinator = getattr(request.app.state, "pcap_detection_coordinator", None)
     if authorization_store is None or executor is None or coordinator is None:
         return None
     return authorization_store, executor, coordinator
@@ -160,6 +186,36 @@ class _PcapReconAuthorizationPayload(BaseModel):
     sample_limit: Literal[20]
 
 
+class _PcapDetectionAuthorizationPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: Literal[True]
+    max_files: int = Field(ge=1, le=20, strict=True)
+
+
+@router.get("/pcap/detection/overview")
+def pcap_detection_overview(request: Request) -> Any:
+    components = _pcap_detection_components(request)
+    if components is None:
+        return _pcap_detection_unavailable()
+    try:
+        return components[1].overview()
+    except Exception:
+        return _pcap_detection_failed()
+
+
+@router.post("/pcap/detection/authorizations", status_code=201)
+def authorize_pcap_detection(
+    payload: _PcapDetectionAuthorizationPayload, request: Request
+) -> Any:
+    components = _pcap_detection_components(request)
+    if components is None:
+        return _pcap_detection_unavailable()
+    try:
+        return components[0].issue(payload.max_files, purpose="detection")
+    except Exception:
+        return _pcap_detection_failed()
+
+
 @router.get("/pcap/reconnaissance/overview")
 def pcap_reconnaissance_overview(request: Request) -> Any:
     components = _pcap_recon_components(request)
@@ -184,6 +240,26 @@ def authorize_pcap_reconnaissance(payload: _PcapReconAuthorizationPayload, reque
 
 @router.post("/missions", status_code=201)
 def create_mission(payload: _ApiCreateMissionRequest, request: Request) -> Any:
+    if isinstance(payload, PcapDetectionMissionRequest):
+        components = _pcap_detection_components(request)
+        if components is None:
+            return _pcap_detection_unavailable()
+        try:
+            return components[2].start(payload)
+        except PcapAuthorizationPurposeMismatch:
+            return _error(status_code=403, code="pcap_authorization_purpose_mismatch", message="pcap authorization purpose mismatch")
+        except PcapAuthorizationUnknown:
+            return _error(status_code=403, code="pcap_authorization_required", message="pcap authorization is required")
+        except PcapAuthorizationExpired:
+            return _error(status_code=410, code="pcap_authorization_expired", message="pcap authorization expired")
+        except PcapAuthorizationAlreadyUsed:
+            return _error(status_code=409, code="pcap_authorization_used", message="pcap authorization was already used")
+        except RuntimeError as exc:
+            if str(exc) == "pcap_detection_active":
+                return _error(status_code=409, code="pcap_detection_active", message="pcap detection is already active")
+            return _pcap_detection_failed()
+        except Exception:
+            return _pcap_detection_failed()
     if isinstance(payload, PcapReconMissionRequest):
         components = _pcap_recon_components(request)
         if components is None:
@@ -283,6 +359,16 @@ def get_mission(mission_id: str, request: Request) -> Any:
 def cancel_pcap_mission(mission_id: str, request: Request) -> Any:
     components = _pcap_components(request)
     recon_components = _pcap_recon_components(request)
+    detection_components = _pcap_detection_components(request)
+    if mission_id.startswith("detection_"):
+        if detection_components is None:
+            return _pcap_detection_unavailable()
+        try:
+            return detection_components[2].cancel(mission_id)
+        except (SuperAgentMissionExpired, SuperAgentMissionNotFound):
+            return _error(status_code=409, code="pcap_mission_not_cancellable", message="pcap mission is not cancellable")
+        except Exception:
+            return _pcap_detection_failed()
     if mission_id.startswith("recon_"):
         if recon_components is None:
             return _pcap_recon_unavailable()
