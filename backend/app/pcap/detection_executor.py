@@ -87,15 +87,19 @@ class PcapDetectionExecutor:
                         pool.submit(self._inspect_capture, path): index
                         for index, path in enumerate(capture_paths)
                     }
-                    completed: dict[int, tuple[bool, tuple[PcapLocalizedEvidence, ...]]] = {}
+                    completed: dict[int, tuple[bool, tuple[PcapLocalizedEvidence, ...], PcapDetectionFailureCode | None]] = {}
                     for future in as_completed(futures):
                         index = futures[future]
                         if self._is_cancel_requested(detection_id):
                             break
                         try:
-                            completed[index] = (True, future.result())
+                            completed[index] = (True, future.result(), None)
+                        except subprocess.TimeoutExpired:
+                            completed[index] = (False, (), PcapDetectionFailureCode.TOOL_TIMEOUT)
+                        except json.JSONDecodeError:
+                            completed[index] = (False, (), PcapDetectionFailureCode.REPORT_INVALID)
                         except Exception:
-                            completed[index] = (False, ())
+                            completed[index] = (False, (), PcapDetectionFailureCode.TOOL_FAILED)
                         results = [completed[item] for item in sorted(completed)]
                         if on_progress is not None:
                             try:
@@ -174,22 +178,22 @@ def _parse_detection_report(raw: str) -> tuple[PcapLocalizedEvidence, ...]:
 
 
 def _summary_from_results(
-    results: list[tuple[bool, tuple[PcapLocalizedEvidence, ...]]],
+    results: list[tuple[bool, tuple[PcapLocalizedEvidence, ...], PcapDetectionFailureCode | None]],
 ) -> PcapDetectionSummary:
     evidence: list[PcapLocalizedEvidence] = []
     evidence_ids: set[str] = set()
     succeeded_count = 0
     failed_count = 0
     processed_samples: list[PcapProcessedSample] = []
-    for index, (success, report_evidence) in enumerate(results, 1):
+    for index, (success, report_evidence, failure_code) in enumerate(results, 1):
         if not success:
             failed_count += 1
-            processed_samples.append(PcapProcessedSample(sample_index=index, status="failed", evidence_count=0, failure_code=PcapDetectionFailureCode.TOOL_FAILED))
+            processed_samples.append(PcapProcessedSample(sample_index=index, status="failed", evidence_count=0, failure_code=failure_code or PcapDetectionFailureCode.TOOL_FAILED))
             continue
         report_ids = {item.evidence_id for item in report_evidence}
         if report_ids.intersection(evidence_ids):
             failed_count += 1
-            processed_samples.append(PcapProcessedSample(sample_index=index, status="failed", evidence_count=0, failure_code=PcapDetectionFailureCode.TOOL_FAILED))
+            processed_samples.append(PcapProcessedSample(sample_index=index, status="failed", evidence_count=0, failure_code=PcapDetectionFailureCode.REPORT_INVALID))
             continue
         succeeded_count += 1
         evidence.extend(report_evidence)

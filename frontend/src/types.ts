@@ -481,7 +481,7 @@ export interface PcapLocalizedEvidence {
 }
 export type PcapDetectionNarrative = "authorization_accepted" | "isolated_http_scan_running" | "localized_evidence_validated" | "deterministic_fusion_ready";
 export interface PcapDetectionTraceEvent { sequence: number; actor: PcapActor; status: PcapEventStatus; summary: PcapDetectionNarrative; }
-export interface PcapProcessedSample { sample_index: number; status: "succeeded" | "failed"; evidence_count: number; failure_code: "tool_failed" | "tool_timeout" | "report_invalid" | null; }
+export interface PcapProcessedSample { sample_index: number; status: "succeeded" | "failed"; evidence_count: number; failure_code: "tool_failed" | "tool_timeout" | "report_invalid" | "capture_invalid" | null; }
 export interface PcapDetectionSummary { schema_version: 1; analyzed_count: number; succeeded_count: number; failed_count: number; evidence: PcapLocalizedEvidence[]; processed_samples: PcapProcessedSample[]; }
 export interface PcapDetectionReport { confirmed_evidence_ids: string[]; candidate_evidence_ids: string[]; unknowns: ("no_localized_attack_evidence" | "partial_file_failure")[]; recommended_actions: ("allow_no_rule_evidence" | "review_localized_requests" | "retry_failed_files")[]; }
 export interface PcapDetectionMissionResult { detection_id: string; objective: "detect_pcap_anomalies"; status: PcapMissionStatus; events: PcapDetectionTraceEvent[]; summary: PcapDetectionSummary | null; report: PcapDetectionReport; failure_code: "tool_failed" | "tool_timeout" | "report_invalid" | null; created_at: string; }

@@ -105,6 +105,7 @@ class PcapDetectionFailureCode(StrEnum):
     TOOL_FAILED = "tool_failed"
     TOOL_TIMEOUT = "tool_timeout"
     REPORT_INVALID = "report_invalid"
+    CAPTURE_INVALID = "capture_invalid"
 
 
 class _FrozenPcapDetectionModel(BaseModel):
