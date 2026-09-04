@@ -462,6 +462,7 @@ export interface PcapDetectionMissionRequest {
 }
 export type PcapDetectionGranularity = "packet" | "request" | "flow_event" | "llm_token";
 export type PcapDetectionCandidate = "sql_injection" | "command_injection" | "path_traversal" | "web_injection" | "none";
+export type PcapPurposeCandidate = "auth_bypass" | "data_probing" | "data_extraction" | "blind_probing" | "internal_access" | "script_execution";
 export type PcapDetectionSignal = "sql_syntax_pattern" | "command_syntax_pattern" | "path_traversal_pattern" | "request_boundary" | "connection_rate_increase" | "destination_density_increase" | "change_point_detected" | "semantic_risk_detected" | "xss_pattern" | "template_injection_pattern" | "ssrf_pattern" | "http_anomaly_pattern";
 export interface PcapLocalizedEvidence {
   evidence_id: string;
@@ -475,6 +476,7 @@ export interface PcapLocalizedEvidence {
   detector: "http_rule" | "behavior_anomaly" | "cpd" | "semantic_token";
   confidence: number;
   supporting_signals: PcapDetectionSignal[];
+  purpose_candidates: PcapPurposeCandidate[];
 }
 export type PcapDetectionNarrative = "authorization_accepted" | "isolated_http_scan_running" | "localized_evidence_validated" | "deterministic_fusion_ready";
 export interface PcapDetectionTraceEvent { sequence: number; actor: PcapActor; status: PcapEventStatus; summary: PcapDetectionNarrative; }

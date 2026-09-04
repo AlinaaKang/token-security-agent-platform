@@ -55,6 +55,7 @@ def test_http_rules_localize_synthetic_attack_to_request_packet(
     assert evidence["attack_candidate"] == expected_candidate
     assert evidence["detector"] == "http_rule"
     assert expected_signal in evidence["supporting_signals"]
+    assert evidence["purpose_candidates"]
 
 
 def test_http_rules_allow_benign_synthetic_request(tmp_path: Path) -> None:

@@ -74,6 +74,25 @@ _RULES = (
 )
 
 
+def _purpose_candidates(candidate: str, target: str) -> list[str]:
+    """Return bounded intent hypotheses without exposing the matched request text."""
+    purposes: list[str] = []
+    if candidate == "sql_injection":
+        if re.search(r"['\"]\s*or\s+\d+\s*=\s*\d+", target, re.I):
+            purposes.append("auth_bypass")
+        if re.search(r"\bunion\s+(?:all\s+)?select\b", target, re.I):
+            purposes.append("data_extraction")
+        if re.search(r"\b(?:sleep|benchmark)\s*\(", target, re.I):
+            purposes.append("blind_probing")
+        if not purposes:
+            purposes.append("data_probing")
+    elif candidate == "command_injection":
+        purposes.append("script_execution")
+    elif candidate == "web_injection" and re.search(r"https?://(?:127\.0\.0\.1|localhost|0\.0\.0\.0|169\.254\.169\.254)", target, re.I):
+        purposes.append("internal_access")
+    return purposes
+
+
 def _decode_request_target(value: str) -> str:
     decoded = value
     for _ in range(2):
@@ -114,6 +133,7 @@ def analyze_http_requests(
                     "detector": "http_rule",
                     "confidence": confidence,
                     "supporting_signals": [signal, "request_boundary"],
+                    "purpose_candidates": _purpose_candidates(candidate, normalized_target),
                 }
             )
             break

@@ -74,6 +74,15 @@ class PcapSupportingSignal(StrEnum):
     HTTP_ANOMALY_PATTERN = "http_anomaly_pattern"
 
 
+class PcapPurposeCandidate(StrEnum):
+    AUTH_BYPASS = "auth_bypass"
+    DATA_PROBING = "data_probing"
+    DATA_EXTRACTION = "data_extraction"
+    BLIND_PROBING = "blind_probing"
+    INTERNAL_ACCESS = "internal_access"
+    SCRIPT_EXECUTION = "script_execution"
+
+
 class PcapDetectionNarrative(StrEnum):
     AUTHORIZATION_ACCEPTED = "authorization_accepted"
     ISOLATED_HTTP_SCAN_RUNNING = "isolated_http_scan_running"
@@ -131,6 +140,7 @@ class PcapLocalizedEvidence(_FrozenPcapDetectionModel):
     supporting_signals: tuple[PcapSupportingSignal, ...] = Field(
         min_length=1, max_length=8
     )
+    purpose_candidates: tuple[PcapPurposeCandidate, ...] = Field(default=(), max_length=4)
 
     @field_validator("supporting_signals")
     @classmethod
