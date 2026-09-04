@@ -107,6 +107,13 @@ class _FrozenPcapDetectionModel(BaseModel):
         return self
 
 
+class PcapProcessedSample(_FrozenPcapDetectionModel):
+    sample_index: int = Field(ge=1, le=20, strict=True)
+    status: Literal["succeeded", "failed"]
+    evidence_count: int = Field(ge=0, le=160, strict=True)
+    failure_code: PcapDetectionFailureCode | None = None
+
+
 class PcapLocalizedEvidence(_FrozenPcapDetectionModel):
     evidence_id: str = Field(
         default_factory=lambda: f"evidence_{uuid4().hex}",
@@ -151,6 +158,7 @@ class PcapDetectionSummary(_FrozenPcapDetectionModel):
     succeeded_count: _Count
     failed_count: _Count
     evidence: tuple[PcapLocalizedEvidence, ...] = Field(max_length=160)
+    processed_samples: tuple[PcapProcessedSample, ...] = Field(default=(), max_length=20)
 
     @field_validator("evidence")
     @classmethod

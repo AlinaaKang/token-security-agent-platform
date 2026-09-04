@@ -13,9 +13,11 @@ from typing import Any
 
 from app.pcap.config import PcapConfig
 from app.pcap.detection_models import (
+    PcapDetectionFailureCode,
     PcapDetectionOverview,
     PcapDetectionSummary,
     PcapLocalizedEvidence,
+    PcapProcessedSample,
 )
 from app.pcap.executor import _count_pending_files, _is_reparse_metadata
 
@@ -107,6 +109,15 @@ class PcapDetectionExecutor:
             succeeded_count=succeeded_count,
             failed_count=failed_count,
             evidence=tuple(evidence),
+            processed_samples=tuple(
+                PcapProcessedSample(
+                    sample_index=index,
+                    status="succeeded" if success else "failed",
+                    evidence_count=len(items) if success else 0,
+                    failure_code=None if success else PcapDetectionFailureCode.TOOL_FAILED,
+                )
+                for index, (success, items) in enumerate(results, 1)
+            ),
         )
 
     def _inspect_capture(self, capture_path: Path) -> tuple[PcapLocalizedEvidence, ...]:

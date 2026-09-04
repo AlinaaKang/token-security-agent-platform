@@ -2946,6 +2946,10 @@ td:first-child { min-width: 128px; }
 .pcap-detection-findings > div, .pcap-detection-timeline, .pcap-detection-empty { min-width: 0; border: 1px solid var(--line); background: var(--surface); }
 .pcap-detection-findings > div > strong, .pcap-detection-timeline > header { min-height: 42px; padding: 9px 13px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
 .pcap-detection-findings article { min-width: 0; padding: 10px 13px; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+.pcap-detection-samples { padding: 14px 16px; border: 1px solid var(--line); border-top: 0; background: var(--surface); }
+.pcap-detection-samples > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.pcap-detection-samples span { padding: 8px 10px; border: 1px solid var(--line); background: var(--surface-soft); font-size: 9px; }
+.pcap-detection-samples span.is-failed { border-color: var(--blocked); color: var(--blocked); }
 .pcap-detection-findings article span { color: var(--blocked); font-size: 10px; font-weight: 800; }
 .pcap-detection-findings article code { overflow-wrap: anywhere; color: var(--muted); font-size: 8px; }
 .pcap-detection-findings article small, .pcap-detection-findings p, .pcap-detection-timeline header span { color: var(--muted); font-size: 9px; }
