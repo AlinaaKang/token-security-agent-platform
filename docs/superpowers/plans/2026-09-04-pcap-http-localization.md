@@ -117,12 +117,12 @@
 - Produces aggregate precision, recall, F1, false-positive rate, localization hit rate, and rule-only versus behavior-only versus fused ablation metrics.
 - Extends privacy verification to every new response surface.
 
-- [ ] Write failing synthetic evaluation and recursive privacy tests.
-- [ ] Run focused tests and verify RED.
-- [ ] Implement deterministic aggregate evaluation and privacy checks.
-- [ ] Document that real-corpus labels remain weak until separately audited.
-- [ ] Run full backend and frontend suites, build, Docker verifier, and privacy verifier.
-- [ ] Commit `test: verify localized pcap detection`.
+- [x] Write failing synthetic evaluation and recursive privacy tests.
+- [x] Run focused tests and verify RED.
+- [x] Implement deterministic aggregate evaluation and privacy checks.
+- [x] Document that real-corpus labels remain weak until separately audited.
+- [x] Run full backend and frontend suites, build, Docker verifier, and privacy verifier.
+- [x] Commit `test: verify localized pcap detection`.
 
 ### Task 6: Real-data acceptance gate
 

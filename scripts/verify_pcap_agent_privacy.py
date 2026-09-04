@@ -35,6 +35,9 @@ _PCAP_ACTORS = [
 _RECON_OVERVIEW_KEYS = frozenset(
     {"enabled", "eligible_file_count", "sample_limit", "sampling_method"}
 )
+_DETECTION_OVERVIEW_KEYS = frozenset(
+    {"enabled", "eligible_file_count", "max_files", "localization"}
+)
 _FORBIDDEN_KEYS = frozenset(
     {
         "absolute_path",
@@ -143,6 +146,19 @@ def _valid_recon_overview(payload: object) -> bool:
     )
 
 
+def _valid_detection_overview(payload: object) -> bool:
+    if not isinstance(payload, dict) or set(payload) != _DETECTION_OVERVIEW_KEYS:
+        return False
+    return (
+        type(payload["enabled"]) is bool
+        and _is_strict_int(payload["eligible_file_count"])
+        and 0 <= payload["eligible_file_count"] <= 2_147_483_647
+        and payload["max_files"] == 20
+        and type(payload["max_files"]) is int
+        and payload["localization"] == "request_or_packet"
+    )
+
+
 def _fixed_error_validator(
     *, code: str, message: str
 ) -> Callable[[object], bool]:
@@ -187,6 +203,13 @@ def _endpoint_checks() -> tuple[_EndpointCheck, ...]:
             validate=_valid_recon_overview,
         ),
         _EndpointCheck(
+            method="GET",
+            path="/api/v1/superagent/pcap/detection/overview",
+            expected_status=200,
+            request_body=None,
+            validate=_valid_detection_overview,
+        ),
+        _EndpointCheck(
             method="POST",
             path="/api/v1/superagent/pcap/authorizations",
             expected_status=422,
@@ -202,12 +225,29 @@ def _endpoint_checks() -> tuple[_EndpointCheck, ...]:
         ),
         _EndpointCheck(
             method="POST",
+            path="/api/v1/superagent/pcap/detection/authorizations",
+            expected_status=422,
+            request_body={"confirmed": False, "max_files": 0},
+            validate=validation_error,
+        ),
+        _EndpointCheck(
+            method="POST",
             path="/api/v1/superagent/missions",
             expected_status=422,
             request_body={
                 "objective": "triage_pcap_evidence",
                 "authorization_id": _UNKNOWN_AUTHORIZATION,
                 "scenario_kind": "frozen",
+            },
+            validate=validation_error,
+        ),
+        _EndpointCheck(
+            method="POST",
+            path="/api/v1/superagent/missions",
+            expected_status=422,
+            request_body={
+                "objective": "detect_pcap_anomalies",
+                "authorization_id": _UNKNOWN_AUTHORIZATION,
             },
             validate=validation_error,
         ),

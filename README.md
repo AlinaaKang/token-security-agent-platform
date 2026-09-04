@@ -116,3 +116,7 @@ CPD 算法和首批数据唯一参考为 CPDonline，固定 commit：
 - [挑战任务：有界 SuperAgent](docs/challenge-task.md)
 - [PCAP 安全预检操作指南](docs/pcap-safe-preflight.md)
 - [PCAP SuperAgent 操作与演示指南](docs/pcap-superagent.md)
+
+PCAP 异常检测的合成评测只报告 precision、recall、F1、FPR、局部定位命中率及
+`rule_only`/`behavior_only`/`fused` 消融结果；真实 PCAP 没有经过审计的逐请求标签时，
+不把聚合结果表述为正式 benchmark，也不把网络证据表述为 Prompt、Token 或 jailbreak 检测。

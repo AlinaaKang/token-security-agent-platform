@@ -42,6 +42,15 @@ def valid_public_recon_overview() -> dict[str, object]:
     }
 
 
+def valid_public_detection_overview() -> dict[str, object]:
+    return {
+        "enabled": True,
+        "eligible_file_count": 2318,
+        "max_files": 20,
+        "localization": "request_or_packet",
+    }
+
+
 def _fixed_error(code: str, message: str) -> dict[str, object]:
     return {"error": {"code": code, "message": message}}
 
@@ -67,6 +76,10 @@ class PublicApiFixture:
                 200,
                 recon_summary or valid_public_recon_overview(),
             ),
+            ("GET", "/api/v1/superagent/pcap/detection/overview"): (
+                200,
+                valid_public_detection_overview(),
+            ),
             ("POST", "/api/v1/superagent/pcap/authorizations"): (
                 422,
                 _fixed_error(
@@ -74,6 +87,12 @@ class PublicApiFixture:
                 ),
             ),
             ("POST", "/api/v1/superagent/pcap/reconnaissance/authorizations"): (
+                422,
+                _fixed_error(
+                    "request_validation_failed", "request validation failed"
+                ),
+            ),
+            ("POST", "/api/v1/superagent/pcap/detection/authorizations"): (
                 422,
                 _fixed_error(
                     "request_validation_failed", "request validation failed"
@@ -147,7 +166,10 @@ class PublicApiFixture:
                     method == "POST"
                     and self.path == "/api/v1/superagent/missions"
                     and isinstance(body, dict)
-                    and body.get("objective") == "reconnoiter_pcap_dataset"
+                    and body.get("objective") in {
+                        "reconnoiter_pcap_dataset",
+                        "detect_pcap_anomalies",
+                    }
                 ):
                     status, payload = 422, _fixed_error(
                         "request_validation_failed", "request validation failed"
@@ -247,7 +269,7 @@ def test_verifier_accepts_redacted_pcap_agent_responses(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert result.stdout.splitlines() == [
         "pcap_agent_privacy_verification=passed",
-        "checked_endpoint_count=11",
+        "checked_endpoint_count=14",
         "privacy_violation_count=0",
         "tracked_private_artifact_count=0",
     ]
@@ -255,11 +277,14 @@ def test_verifier_accepts_redacted_pcap_agent_responses(tmp_path: Path) -> None:
     assert [(method, path) for method, path, _body in server.requests] == [
         ("GET", "/api/v1/superagent/pcap/capabilities"),
         ("GET", "/api/v1/superagent/pcap/overview"),
-        ("GET", "/api/v1/superagent/pcap/reconnaissance/overview"),
-        ("POST", "/api/v1/superagent/pcap/authorizations"),
-        ("POST", "/api/v1/superagent/pcap/reconnaissance/authorizations"),
-        ("POST", "/api/v1/superagent/missions"),
-        ("POST", "/api/v1/superagent/missions"),
+            ("GET", "/api/v1/superagent/pcap/reconnaissance/overview"),
+            ("GET", "/api/v1/superagent/pcap/detection/overview"),
+            ("POST", "/api/v1/superagent/pcap/authorizations"),
+            ("POST", "/api/v1/superagent/pcap/reconnaissance/authorizations"),
+            ("POST", "/api/v1/superagent/pcap/detection/authorizations"),
+            ("POST", "/api/v1/superagent/missions"),
+            ("POST", "/api/v1/superagent/missions"),
+            ("POST", "/api/v1/superagent/missions"),
         (
             "GET",
             "/api/v1/superagent/missions/mission_00000000000000000000000000000000",
@@ -277,14 +302,19 @@ def test_verifier_accepts_redacted_pcap_agent_responses(tmp_path: Path) -> None:
             "/api/v1/superagent/missions/recon_00000000000000000000000000000000/cancel",
         ),
     ]
-    assert server.requests[3][2] == {"confirmed": False, "max_files": 0}
-    assert server.requests[4][2] == {"confirmed": False, "sample_limit": 20}
-    assert server.requests[5][2] == {
+    assert server.requests[4][2] == {"confirmed": False, "max_files": 0}
+    assert server.requests[5][2] == {"confirmed": False, "sample_limit": 20}
+    assert server.requests[6][2] == {"confirmed": False, "max_files": 0}
+    assert server.requests[7][2] == {
         "objective": "triage_pcap_evidence",
         "authorization_id": "pcap_auth_00000000000000000000000000000000",
         "scenario_kind": "frozen",
     }
-    assert server.requests[6][2] == {
+    assert server.requests[8][2] == {
+        "objective": "detect_pcap_anomalies",
+        "authorization_id": "pcap_auth_00000000000000000000000000000000",
+    }
+    assert server.requests[9][2] == {
         "objective": "reconnoiter_pcap_dataset",
         "authorization_id": "pcap_auth_00000000000000000000000000000000",
         "scenario_kind": "frozen",
@@ -378,7 +408,7 @@ def test_verifier_rejects_server_accepting_prompt_only_pcap_fields(
     assert result.returncode == 1
     assert "privacy_violation_count=1" in result.stdout
     assert "pcap_auth_" not in result.stdout + result.stderr
-    assert server.requests[5][2] == {
+    assert server.requests[7][2] == {
         "objective": "triage_pcap_evidence",
         "authorization_id": "pcap_auth_00000000000000000000000000000000",
         "scenario_kind": "frozen",

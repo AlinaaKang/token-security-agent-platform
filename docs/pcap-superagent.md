@@ -92,6 +92,17 @@ tracked_private_artifact_count=0
 
 ## 结果含义
 
+## 合成评测与指标边界
+
+本仓库的 PCAP 检测指标只使用可复现的合成 HTTP 捕获和脱敏标签计算。评测输出包括
+precision、recall、F1、false-positive rate（FPR）以及 Request/Packet 局部定位命中率，
+并同时给出 `rule_only`、`behavior_only` 和 `fused` 三种消融结果。融合指标用于检查链路
+是否一致，不预设融合一定优于单一检测器。
+
+真实数据集的 PCAP 通常缺少逐请求攻击标签，且可能经过加密、截断或非 HTTP 封装；因此
+真实批次只能报告聚合计数、固定攻击候选和局部证据 ID，不能据此宣称总体 precision、
+recall 或 Token/Prompt 语义恢复能力。正式 benchmark 结论需要独立审计的标签和固定划分。
+
 | 公开类别/状态 | 可以说明的含义 | 不可以推导的结论 |
 | --- | --- | --- |
 | `token_eligible` | 明文应用协议候选；协议条件允许申请后续内容恢复 | 不是 LLM 流量证明，不是 jailbreak、CPD 或 Token 异常 |
