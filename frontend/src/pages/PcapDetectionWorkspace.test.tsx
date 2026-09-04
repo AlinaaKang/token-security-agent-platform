@@ -77,4 +77,17 @@ describe("PcapDetectionWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
     expect(await screen.findByText("检测完成")).toBeInTheDocument();
   });
+
+  it("states explicitly when a completed scan found no localized anomaly", async () => {
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 1, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      if (init?.method === "POST" && url.includes("authorizations")) return Promise.resolve(new Response(JSON.stringify({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 1 }), { status: 201 }));
+      return Promise.resolve(new Response(JSON.stringify({ ...detectionResult("completed"), summary: { schema_version: 1, analyzed_count: 1, succeeded_count: 1, failed_count: 0, evidence: [] }, report: { confirmed_evidence_ids: [], candidate_evidence_ids: [], unknowns: ["no_localized_attack_evidence"], recommended_actions: ["allow_no_rule_evidence"] } }), { status: init?.method === "POST" ? 201 : 200 }));
+    }));
+    render(<PcapDetectionWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
+    fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
+    expect(await screen.findByText("未发现可定位异常")).toBeInTheDocument();
+    expect(screen.getByText(/成功 1 · 失败 0 · 证据 0/)).toBeInTheDocument();
+  });
 });
