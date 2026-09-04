@@ -81,6 +81,7 @@ class PcapDetectionMissionRequest(BaseModel):
 
     objective: Literal[SuperAgentObjective.DETECT_PCAP_ANOMALIES]
     authorization_id: str = Field(pattern=r"^pcap_auth_[0-9a-f]{32}$")
+    start_index: int = Field(default=0, ge=0, le=2_147_483_647, strict=True)
 
 
 class SuperAgentPlanStep(_FrozenPublicModel):

@@ -63,12 +63,13 @@ class PcapDetectionExecutor:
         detection_id: str,
         max_files: int,
         on_progress: Callable[[PcapDetectionSummary], None] | None = None,
+        start_index: int = 0,
     ) -> PcapDetectionSummary:
         _validate_detection_id(detection_id)
         _validate_max_files(max_files)
         try:
             capture_paths = _capture_paths(
-                self._config.quarantine_root / "input", max_files
+                self._config.quarantine_root / "input", max_files, start_index
             )
         except Exception:
             raise PcapDetectionToolFailed() from None
@@ -203,7 +204,7 @@ def _summary_from_results(
     )
 
 
-def _capture_paths(input_root: Path, max_files: int) -> tuple[Path, ...]:
+def _capture_paths(input_root: Path, max_files: int, start_index: int = 0) -> tuple[Path, ...]:
     root_metadata = input_root.lstat()
     if _is_reparse_metadata(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
         raise ValueError("invalid input root")
@@ -221,7 +222,9 @@ def _capture_paths(input_root: Path, max_files: int) -> tuple[Path, ...]:
                 elif stat.S_ISREG(metadata.st_mode) and Path(entry.name).suffix.lower() in _PCAP_EXTENSIONS:
                     captures.append(Path(entry.path))
     captures.sort(key=lambda path: str(path.relative_to(input_root)).casefold())
-    return tuple(captures[:max_files])
+    if type(start_index) is not int or start_index < 0:
+        raise ValueError("start_index must be a nonnegative integer")
+    return tuple(captures[start_index : start_index + max_files])
 
 
 def _validate_detection_id(detection_id: str) -> None:

@@ -459,6 +459,7 @@ export interface PcapDetectionAuthorizationRequest { confirmed: true; max_files:
 export interface PcapDetectionMissionRequest {
   objective: "detect_pcap_anomalies";
   authorization_id: string;
+  start_index?: number;
 }
 export type PcapDetectionGranularity = "packet" | "request" | "flow_event" | "llm_token";
 export type PcapDetectionCandidate = "sql_injection" | "command_injection" | "path_traversal" | "web_injection" | "none";

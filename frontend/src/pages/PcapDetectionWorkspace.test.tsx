@@ -61,7 +61,7 @@ describe("PcapDetectionWorkspace", () => {
     expect(screen.getByText("短请求无需调用 CPD")).toBeInTheDocument();
     expect(screen.getByText("规则侦探")).toBeInTheDocument();
     expect(screen.getByText("小队队长")).toBeInTheDocument();
-    expect(screen.getByText(/样本 01/)).toHaveClass("is-alert");
+    expect(screen.getByText("样本 01 · 完成 · 证据 1")).toHaveClass("is-alert");
   });
 
   it("polls a queued mission until the backend publishes the completed result", async () => {

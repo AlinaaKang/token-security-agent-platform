@@ -73,6 +73,7 @@ class PcapDetectionMissionCoordinator:
                 detection_id,
                 queued.created_at,
                 authorization.max_files,
+                request.start_index,
             )
             return queued
 
@@ -100,7 +101,7 @@ class PcapDetectionMissionCoordinator:
                 pass
         self._pool.shutdown(wait=True, cancel_futures=False)
 
-    def _run(self, detection_id: str, created_at: str, max_files: int) -> None:
+    def _run(self, detection_id: str, created_at: str, max_files: int, start_index: int) -> None:
         try:
             self._mission_store.put(
                 _snapshot(
@@ -129,8 +130,12 @@ class PcapDetectionMissionCoordinator:
                 )
 
             execute = self._executor.execute
-            if "on_progress" in inspect.signature(execute).parameters:
-                summary = execute(detection_id, max_files, on_progress=publish_progress)
+            parameters = inspect.signature(execute).parameters
+            kwargs = {"on_progress": publish_progress} if "on_progress" in parameters else {}
+            if "start_index" in parameters:
+                kwargs["start_index"] = start_index
+            if kwargs:
+                summary = execute(detection_id, max_files, **kwargs)
             else:
                 summary = execute(detection_id, max_files)
             if not isinstance(summary, PcapDetectionSummary):
