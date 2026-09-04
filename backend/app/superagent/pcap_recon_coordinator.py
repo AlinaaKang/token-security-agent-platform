@@ -7,6 +7,7 @@ from typing import Any
 import uuid
 
 from app.pcap.recon_models import (
+    PcapReconFailureCode,
     PcapReconMissionResult,
     PcapReconNarrative,
     PcapReconSummary,
@@ -96,7 +97,7 @@ class PcapReconMissionCoordinator:
     def _run(self, recon_id: str, created_at: str, max_files: int) -> None:
         try:
             self._run_mission(recon_id, created_at, max_files)
-        except Exception:
+        except Exception as failure:
             with self._lock:
                 cancelled = recon_id in self._cancel_requested
             try:
@@ -106,6 +107,7 @@ class PcapReconMissionCoordinator:
                     status=PcapMissionStatus.CANCELLED if cancelled else PcapMissionStatus.DEGRADED,
                     events=_cancelled_events() if cancelled else _failed_events(),
                     summary=None,
+                    failure_code=getattr(failure, "code", PcapReconFailureCode.TOOL_FAILED),
                 )
             except Exception:
                 pass
@@ -152,6 +154,7 @@ class PcapReconMissionCoordinator:
         status: PcapMissionStatus,
         events: tuple[PcapReconTraceEvent, ...],
         summary: PcapReconSummary | None,
+        failure_code: PcapReconFailureCode | None = None,
     ) -> None:
         with self._lock:
             current = self._mission_store.get(recon_id)
@@ -163,15 +166,15 @@ class PcapReconMissionCoordinator:
             elif recon_id in self._cancel_failed:
                 status, events = PcapMissionStatus.DEGRADED, _failed_events()
             self._mission_store.put(
-                _snapshot(recon_id=recon_id, status=status, events=events, summary=summary, created_at=created_at)
+                _snapshot(recon_id=recon_id, status=status, events=events, summary=summary, failure_code=failure_code, created_at=created_at)
             )
             self._cancel_requested.discard(recon_id)
             self._cancel_failed.discard(recon_id)
             self._active_recon_ids.discard(recon_id)
 
 
-def _snapshot(*, recon_id: str, status: PcapMissionStatus, events: tuple[PcapReconTraceEvent, ...], summary: PcapReconSummary | None = None, created_at: str | None = None) -> PcapReconMissionResult:
-    return PcapReconMissionResult(recon_id=recon_id, status=status, events=events, summary=summary, created_at=created_at or _timestamp())
+def _snapshot(*, recon_id: str, status: PcapMissionStatus, events: tuple[PcapReconTraceEvent, ...], summary: PcapReconSummary | None = None, failure_code: PcapReconFailureCode | None = None, created_at: str | None = None) -> PcapReconMissionResult:
+    return PcapReconMissionResult(recon_id=recon_id, status=status, events=events, summary=summary, failure_code=failure_code, created_at=created_at or _timestamp())
 
 
 def _event(sequence: int, summary: PcapReconNarrative, status: str) -> PcapReconTraceEvent:

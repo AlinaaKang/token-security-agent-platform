@@ -62,6 +62,12 @@ class PcapReconNarrative(StrEnum):
     METHOD_SELECTION_CHECKPOINT_READY = "method_selection_checkpoint_ready"
 
 
+class PcapReconFailureCode(StrEnum):
+    TOOL_FAILED = "tool_failed"
+    TOOL_TIMEOUT = "tool_timeout"
+    REPORT_INVALID = "report_invalid"
+
+
 class _FrozenPcapReconPublicModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -161,6 +167,7 @@ class PcapReconMissionResult(_FrozenPcapReconPublicModel):
     status: PcapMissionStatus
     events: tuple[PcapReconTraceEvent, ...] = Field(max_length=10)
     summary: PcapReconSummary | None = None
+    failure_code: PcapReconFailureCode | None = None
     created_at: _ReconTimestamp
 
     @model_validator(mode="after")

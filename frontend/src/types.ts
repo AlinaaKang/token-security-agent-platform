@@ -445,6 +445,7 @@ export interface PcapReconMissionResult {
   status: PcapMissionStatus;
   events: PcapReconTraceEvent[];
   summary: PcapReconSummary | null;
+  failure_code: "tool_failed" | "tool_timeout" | "report_invalid" | null;
   created_at: string;
 }
 

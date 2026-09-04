@@ -29,7 +29,8 @@ _TIMEOUT_SECONDS = 20 * 160 + 30
 
 
 class PcapReconToolFailed(RuntimeError):
-    def __init__(self) -> None:
+    def __init__(self, code: str = "tool_failed") -> None:
+        self.code = code
         super().__init__("pcap_recon_failed")
 
 
@@ -110,8 +111,10 @@ class PcapReconExecutor:
                 _close_handle(root_handle)
         except PcapReconToolFailed:
             raise
+        except subprocess.TimeoutExpired:
+            raise PcapReconToolFailed("tool_timeout") from None
         except Exception:
-            raise PcapReconToolFailed() from None
+            raise PcapReconToolFailed("tool_failed") from None
 
     def request_cancel(self, recon_id: str) -> None:
         _validate_recon_id(recon_id)
