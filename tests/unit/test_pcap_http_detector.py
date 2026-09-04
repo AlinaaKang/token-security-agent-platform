@@ -160,3 +160,19 @@ def test_detect_capture_localizes_high_rate_multi_destination_behavior(
     assert report["evidence"][0]["detector"] == "behavior_anomaly"
     assert report["evidence"][0]["granularity"] == "packet"
     assert "connection_rate_increase" in report["evidence"][0]["supporting_signals"]
+
+
+def test_detect_capture_matches_attack_pattern_in_http_request_body(
+    tmp_path: Path,
+) -> None:
+    fixture = tmp_path / "body.pcap"
+    fixture.write_bytes(b"pcap")
+
+    def fake_tshark(arguments: tuple[str, ...]) -> str:
+        if "http.request" in arguments:
+            return "2\t0.100000000\t/submit\tname=%27%20or%201=1\n"
+        return "1\n2\n3\n"
+
+    report = DETECTOR.detect_capture(fixture, run_tshark=fake_tshark)
+
+    assert report["evidence"][0]["attack_candidate"] == "sql_injection"

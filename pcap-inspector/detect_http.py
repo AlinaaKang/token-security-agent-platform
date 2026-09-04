@@ -16,6 +16,7 @@ class HttpRequestRecord(NamedTuple):
     packet_number: int
     offset_ms: int
     request_target: str
+    request_body: str = ""
 
 
 class PacketRecord(NamedTuple):
@@ -76,7 +77,9 @@ def analyze_http_requests(
             raise ValueError("request is outside the verified packet range")
         if request.offset_ms < 0:
             raise ValueError("request offset must be nonnegative")
-        normalized_target = _decode_request_target(request.request_target)
+        normalized_target = _decode_request_target(
+            f"{request.request_target}\n{request.request_body}"
+        )
         for candidate, signal, pattern, confidence in _RULES:
             if pattern.search(normalized_target) is None:
                 continue
@@ -171,13 +174,20 @@ def _parse_http_requests(text: str) -> tuple[HttpRequestRecord, ...]:
     try:
         for line in text.splitlines():
             fields = line.split("\t")
-            if len(fields) != 3:
+            if len(fields) not in (3, 4):
                 raise ValueError
             packet_number = int(fields[0])
             offset_ms = int(Decimal(fields[1]) * 1000)
             if packet_number < 1 or offset_ms < 0 or not fields[2]:
                 raise ValueError
-            requests.append(HttpRequestRecord(packet_number, offset_ms, fields[2]))
+            requests.append(
+                HttpRequestRecord(
+                    packet_number,
+                    offset_ms,
+                    fields[2],
+                    fields[3] if len(fields) == 4 else "",
+                )
+            )
     except (InvalidOperation, ValueError) as exc:
         raise DetectionError("invalid_tshark_output") from exc
     return tuple(requests)
@@ -243,6 +253,8 @@ def detect_capture(
             "frame.time_relative",
             "-e",
             "http.request.uri",
+            "-e",
+            "http.file_data",
         )
     )
     requests = _parse_http_requests(request_output)
