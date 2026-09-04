@@ -2928,3 +2928,53 @@ td:first-child { min-width: 128px; }
 }
 
 @keyframes superagent-reasoning-connector-enter-vertical { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+/* PCAP localized detection: one bounded mission, three public-evidence roles. */
+.pcap-detection-workspace { min-width: 0; }
+.pcap-detection-authorization { min-width: 0; padding: 14px; border: 1px solid var(--line); border-top: 2px solid var(--ink); background: var(--surface); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.pcap-detection-authorization > div:first-child { margin-right: auto; color: var(--trusted); display: flex; align-items: center; gap: 8px; }
+.pcap-detection-authorization strong { color: var(--ink); font-size: 12px; }
+.pcap-detection-authorization label { color: var(--muted); font-size: 10px; }
+.pcap-detection-authorization input { width: 58px; height: 34px; margin-inline: 5px; border: 1px solid var(--line-strong); border-radius: 3px; padding: 0 7px; font: 700 11px Consolas, monospace; }
+.pcap-detection-authorization button, .pcap-detection-status button { min-height: 34px; border: 1px solid #0e6757; border-radius: 3px; padding: 0 10px; color: #fff; background: var(--trusted); display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 10px; font-weight: 800; }
+.pcap-detection-confirm { flex-basis: 100%; padding-top: 11px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; color: var(--review); }
+.pcap-detection-confirm span { color: var(--ink); font-size: 10px; }
+.pcap-detection-confirm button:nth-last-child(2) { border-color: var(--line-strong); color: var(--ink); background: var(--surface); }
+.pcap-detection-status { min-width: 0; margin-top: 14px; padding: 10px 13px; border: 1px solid #9ccfc2; border-top: 2px solid var(--trusted); background: var(--trusted-soft); display: flex; align-items: center; gap: 10px; }
+.pcap-detection-status code { min-width: 0; margin-right: auto; overflow-wrap: anywhere; color: var(--muted); font-size: 9px; }
+.pcap-detection-findings { min-width: 0; margin-top: 14px; display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.2fr); gap: 14px; }
+.pcap-detection-findings > div, .pcap-detection-timeline, .pcap-detection-empty { min-width: 0; border: 1px solid var(--line); background: var(--surface); }
+.pcap-detection-findings > div > strong, .pcap-detection-timeline > header { min-height: 42px; padding: 9px 13px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+.pcap-detection-findings article { min-width: 0; padding: 10px 13px; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+.pcap-detection-findings article span { color: var(--blocked); font-size: 10px; font-weight: 800; }
+.pcap-detection-findings article code { overflow-wrap: anywhere; color: var(--muted); font-size: 8px; }
+.pcap-detection-findings article small, .pcap-detection-findings p, .pcap-detection-timeline header span { color: var(--muted); font-size: 9px; }
+.pcap-detection-timeline > div { padding: 12px; display: grid; gap: 8px; }
+.pcap-detection-timeline button { min-width: 0; min-height: 54px; border: 1px solid var(--line); border-radius: 3px; padding: 8px; color: var(--ink); background: var(--surface-soft); display: grid; grid-template-columns: minmax(92px, auto) minmax(70px, 1fr) auto; align-items: center; gap: 8px; text-align: left; }
+.pcap-detection-timeline button b { max-width: 100%; height: 6px; background: var(--blocked); display: block; }
+.pcap-detection-timeline button small { overflow-wrap: anywhere; color: var(--muted); font-size: 8px; }
+.pcap-detection-mascots { margin-top: 14px; border: 1px solid var(--line); border-top: 2px solid var(--ink); background: var(--surface); }
+.pcap-detection-mascots > header { min-height: 42px; padding: 9px 13px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pcap-detection-mascots header strong { font-size: 11px; }
+.pcap-detection-mascots header span { color: var(--muted); font-size: 9px; }
+.pcap-detection-mascot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pcap-detection-mascot-grid article { min-width: 0; min-height: 110px; padding: 15px; border-right: 1px solid var(--line); display: grid; place-content: center; justify-items: center; gap: 7px; text-align: center; }
+.pcap-detection-mascot-grid article:last-child { border-right: 0; }
+.pcap-detection-mascot-grid svg { color: var(--trusted); }
+.pcap-detection-mascot-grid strong { font-size: 11px; }
+.pcap-detection-mascot-grid span { color: var(--muted); font-size: 9px; }
+.pcap-detection-empty { min-height: 210px; margin-top: 14px; color: var(--muted); display: grid; place-content: center; justify-items: center; gap: 7px; text-align: center; }
+.pcap-detection-empty strong { color: var(--ink); font-size: 12px; }
+.pcap-detection-empty span { font-size: 9px; }
+
+@media (max-width: 760px) {
+  .pcap-detection-authorization { align-items: stretch; flex-direction: column; }
+  .pcap-detection-authorization > div:first-child { margin-right: 0; }
+  .pcap-detection-confirm { grid-template-columns: 22px minmax(0, 1fr); }
+  .pcap-detection-confirm button { grid-column: span 1; }
+  .pcap-detection-findings { grid-template-columns: 1fr; }
+  .pcap-detection-timeline button { grid-template-columns: 1fr; }
+  .pcap-detection-mascot-grid { grid-template-columns: 1fr; }
+  .pcap-detection-mascot-grid article { min-height: 86px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .pcap-detection-mascot-grid article:last-child { border-bottom: 0; }
+}

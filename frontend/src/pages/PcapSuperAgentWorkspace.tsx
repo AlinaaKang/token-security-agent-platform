@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { PcapMascotTeam } from "../components/PcapMascotTeam";
 import { PcapReconWorkspace } from "./PcapReconWorkspace";
+import { PcapDetectionWorkspace } from "./PcapDetectionWorkspace";
 import type {
   PcapActor,
   PcapCaptureEvidence,
@@ -196,7 +197,7 @@ function MissionWorkspace({
 }
 
 export function PcapSuperAgentWorkspace() {
-  const [pcapView, setPcapView] = useState<"triage" | "recon">("triage");
+  const [pcapView, setPcapView] = useState<"triage" | "recon" | "detection">("triage");
   const [overviewEnabled, setOverviewEnabled] = useState<boolean | null>(null);
   const [pendingFileCount, setPendingFileCount] = useState<number | null>(null);
   const [maxBatchSize, setMaxBatchSize] = useState(20);
@@ -348,8 +349,9 @@ export function PcapSuperAgentWorkspace() {
       <div className="pcap-mode-switch" role="group" aria-label="PCAP 工作模式">
         <button type="button" aria-pressed={pcapView === "triage"} onClick={() => setPcapView("triage")}>批量分诊</button>
         <button type="button" aria-pressed={pcapView === "recon"} onClick={() => setPcapView("recon")}>数据勘察</button>
+        <button type="button" aria-pressed={pcapView === "detection"} onClick={() => setPcapView("detection")}>异常检测</button>
       </div>
-      {pcapView === "recon" ? <PcapReconWorkspace /> : <>
+      {pcapView === "recon" ? <PcapReconWorkspace /> : pcapView === "detection" ? <PcapDetectionWorkspace /> : <>
       <div className="pcap-authorization-track">
         <section className="pcap-overview-stage">
           <div className="pcap-stage-index"><span>阶段 1</span><strong>范围概览</strong></div>

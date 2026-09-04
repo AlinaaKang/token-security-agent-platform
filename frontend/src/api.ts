@@ -23,6 +23,10 @@ import type {
   PcapReconAuthorizationReceipt,
   PcapReconMissionRequest,
   PcapReconMissionResult,
+  PcapDetectionOverview,
+  PcapDetectionAuthorizationRequest,
+  PcapDetectionMissionRequest,
+  PcapDetectionMissionResult,
   SuperAgentCapabilities,
   SuperAgentMissionRequest,
   SuperAgentMissionResult,
@@ -117,6 +121,16 @@ export const api = {
     requestJson<PcapOverview>("/api/v1/superagent/pcap/overview"),
   pcapReconOverview: () =>
     requestJson<PcapReconOverview>("/api/v1/superagent/pcap/reconnaissance/overview"),
+  pcapDetectionOverview: () =>
+    requestJson<PcapDetectionOverview>("/api/v1/superagent/pcap/detection/overview"),
+  authorizePcapDetection: (payload: PcapDetectionAuthorizationRequest) =>
+    requestJson<PcapAuthorizationReceipt>("/api/v1/superagent/pcap/detection/authorizations", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }),
+  createPcapDetectionMission: (payload: PcapDetectionMissionRequest) =>
+    requestJson<PcapDetectionMissionResult>("/api/v1/superagent/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }),
   authorizePcapRecon: (payload: PcapReconAuthorizationRequest) =>
     requestJson<PcapReconAuthorizationReceipt>("/api/v1/superagent/pcap/reconnaissance/authorizations", {
       method: "POST",
@@ -147,6 +161,11 @@ export const api = {
     ),
   cancelPcapMission: (missionId: string) =>
     requestJson<PcapMissionResult>(
+      "/api/v1/superagent/missions/" + encodeURIComponent(missionId) + "/cancel",
+      { method: "POST" },
+    ),
+  cancelPcapDetectionMission: (missionId: string) =>
+    requestJson<PcapDetectionMissionResult>(
       "/api/v1/superagent/missions/" + encodeURIComponent(missionId) + "/cancel",
       { method: "POST" },
     ),

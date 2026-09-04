@@ -449,7 +449,40 @@ export interface PcapReconMissionResult {
   created_at: string;
 }
 
-export type SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult | PcapReconMissionResult;
+export interface PcapDetectionOverview {
+  enabled: boolean;
+  eligible_file_count: number;
+  max_files: 20;
+  localization: "request_or_packet";
+}
+export interface PcapDetectionAuthorizationRequest { confirmed: true; max_files: number; }
+export interface PcapDetectionMissionRequest {
+  objective: "detect_pcap_anomalies";
+  authorization_id: string;
+}
+export type PcapDetectionGranularity = "packet" | "request" | "flow_event" | "llm_token";
+export type PcapDetectionCandidate = "sql_injection" | "command_injection" | "path_traversal" | "none";
+export type PcapDetectionSignal = "sql_syntax_pattern" | "command_syntax_pattern" | "path_traversal_pattern" | "request_boundary" | "connection_rate_increase" | "destination_density_increase" | "change_point_detected" | "semantic_risk_detected";
+export interface PcapLocalizedEvidence {
+  evidence_id: string;
+  granularity: PcapDetectionGranularity;
+  verified_packet_count: number;
+  start_packet: number;
+  end_packet: number;
+  start_offset_ms: number;
+  end_offset_ms: number;
+  attack_candidate: PcapDetectionCandidate;
+  detector: "http_rule" | "behavior_anomaly" | "cpd" | "semantic_token";
+  confidence: number;
+  supporting_signals: PcapDetectionSignal[];
+}
+export type PcapDetectionNarrative = "authorization_accepted" | "isolated_http_scan_running" | "localized_evidence_validated" | "deterministic_fusion_ready";
+export interface PcapDetectionTraceEvent { sequence: number; actor: PcapActor; status: PcapEventStatus; summary: PcapDetectionNarrative; }
+export interface PcapDetectionSummary { schema_version: 1; analyzed_count: number; succeeded_count: number; failed_count: number; evidence: PcapLocalizedEvidence[]; }
+export interface PcapDetectionReport { confirmed_evidence_ids: string[]; candidate_evidence_ids: string[]; unknowns: ("no_localized_attack_evidence" | "partial_file_failure")[]; recommended_actions: ("allow_no_rule_evidence" | "review_localized_requests" | "retry_failed_files")[]; }
+export interface PcapDetectionMissionResult { detection_id: string; objective: "detect_pcap_anomalies"; status: PcapMissionStatus; events: PcapDetectionTraceEvent[]; summary: PcapDetectionSummary | null; report: PcapDetectionReport; failure_code: "tool_failed" | "tool_timeout" | "report_invalid" | null; created_at: string; }
+
+export type SuperAgentStoredMission = SuperAgentMissionResult | PcapMissionResult | PcapReconMissionResult | PcapDetectionMissionResult;
 
 export type LabRunRequest =
   | { scenario_kind: "custom"; custom_input: string; mode: Mode }
