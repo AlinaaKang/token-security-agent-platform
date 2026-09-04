@@ -2950,7 +2950,7 @@ td:first-child { min-width: 128px; }
 .pcap-detection-samples { padding: 14px 16px; border: 1px solid var(--line); border-top: 0; background: var(--surface); }
 .pcap-detection-samples > div { max-height: 154px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
 .pcap-detection-samples span { padding: 8px 10px; border: 1px solid var(--line); background: var(--surface-soft); font-size: 9px; }
-.pcap-detection-samples span.is-failed { border-color: var(--blocked); color: var(--blocked); }
+.pcap-detection-samples span.is-failed { border-color: var(--review); color: var(--review); background: var(--review-soft); }
 .pcap-detection-samples span.is-alert { border-color: var(--blocked); color: var(--blocked); background: var(--blocked-soft); }
 .pcap-detection-samples span.is-active { box-shadow: 0 0 0 2px color-mix(in srgb, var(--trusted) 22%, transparent); }
 .pcap-detection-samples span.is-active:not(.is-alert):not(.is-failed) { border-color: var(--trusted); }
