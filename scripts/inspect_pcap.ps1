@@ -301,12 +301,20 @@ function ConvertTo-ValidatedDetectionReport {
 
     $seenEvidence = @{}
     foreach ($item in $report.evidence) {
-        $expectedKeys = @('evidence_id', 'granularity', 'verified_packet_count', 'start_packet', 'end_packet', 'start_offset_ms', 'end_offset_ms', 'attack_candidate', 'detector', 'confidence', 'supporting_signals')
+        $baseKeys = @('evidence_id', 'granularity', 'verified_packet_count', 'start_packet', 'end_packet', 'start_offset_ms', 'end_offset_ms', 'attack_candidate', 'detector', 'confidence', 'supporting_signals')
+        $itemKeys = Get-PropertyNames $item
+        $hasPurposeCandidates = $itemKeys -contains 'purpose_candidates'
+        $expectedKeys = if ($hasPurposeCandidates) { @($baseKeys + 'purpose_candidates') } else { $baseKeys }
         if (-not (Test-ExactPropertyNames (Get-PropertyNames $item) $expectedKeys)) { Fail-Preflight 'invalid_report_schema' }
         if ($item.evidence_id -isnot [string] -or $item.evidence_id -notmatch '^evidence_[0-9a-f]{32}$' -or $seenEvidence.ContainsKey($item.evidence_id)) { Fail-Preflight 'invalid_report_schema' }
         $seenEvidence[$item.evidence_id] = $true
-        if ($item.granularity -ne 'request' -or $item.detector -ne 'http_rule') { Fail-Preflight 'invalid_report_schema' }
-        if (@('sql_injection', 'command_injection', 'path_traversal') -notcontains $item.attack_candidate) { Fail-Preflight 'invalid_report_schema' }
+        if ($item.granularity -eq 'request') {
+            if ($item.detector -ne 'http_rule' -or @('sql_injection', 'command_injection', 'path_traversal', 'web_injection') -notcontains $item.attack_candidate) { Fail-Preflight 'invalid_report_schema' }
+        }
+        elseif ($item.granularity -eq 'packet') {
+            if ($item.detector -ne 'behavior_anomaly' -or $item.attack_candidate -ne 'none' -or $hasPurposeCandidates) { Fail-Preflight 'invalid_report_schema' }
+        }
+        else { Fail-Preflight 'invalid_report_schema' }
         foreach ($integerField in @('verified_packet_count', 'start_packet', 'end_packet', 'start_offset_ms', 'end_offset_ms')) {
             if (-not (Test-IntegerInRange $item.$integerField)) { Fail-Preflight 'invalid_report_schema' }
         }
@@ -314,8 +322,22 @@ function ConvertTo-ValidatedDetectionReport {
         if ($item.start_offset_ms -gt $item.end_offset_ms) { Fail-Preflight 'invalid_report_schema' }
         if (-not (Test-FiniteNonnegativeNumber $item.confidence) -or [double]$item.confidence -gt 1) { Fail-Preflight 'invalid_report_schema' }
         if (-not (Test-UniqueStrings $item.supporting_signals) -or $item.supporting_signals.Count -gt 8) { Fail-Preflight 'invalid_report_schema' }
+        $allowedSignals = if ($item.detector -eq 'http_rule') {
+            @('sql_syntax_pattern', 'command_syntax_pattern', 'path_traversal_pattern', 'xss_pattern', 'template_injection_pattern', 'ssrf_pattern', 'request_boundary')
+        }
+        else {
+            @('connection_rate_increase', 'destination_density_increase')
+        }
         foreach ($signal in $item.supporting_signals) {
-            if (@('sql_syntax_pattern', 'command_syntax_pattern', 'path_traversal_pattern', 'request_boundary') -notcontains $signal) { Fail-Preflight 'invalid_report_schema' }
+            if ($allowedSignals -notcontains $signal) { Fail-Preflight 'invalid_report_schema' }
+        }
+        if ($hasPurposeCandidates) {
+            if ($item.purpose_candidates -isnot [array] -or $item.purpose_candidates.Count -gt 4) { Fail-Preflight 'invalid_report_schema' }
+            $seenPurposes = @{}
+            foreach ($purpose in $item.purpose_candidates) {
+                if (@('auth_bypass', 'data_probing', 'data_extraction', 'blind_probing', 'internal_access', 'script_execution') -notcontains $purpose -or $seenPurposes.ContainsKey($purpose)) { Fail-Preflight 'invalid_report_schema' }
+                $seenPurposes[$purpose] = $true
+            }
         }
     }
     return $report
@@ -362,7 +384,7 @@ function Save-DetectionReport {
 
     $stableEvidence = @()
     foreach ($item in $Report.evidence) {
-        $stableEvidence += [ordered]@{
+        $stableItem = [ordered]@{
             evidence_id = $item.evidence_id
             granularity = $item.granularity
             verified_packet_count = $item.verified_packet_count
@@ -375,6 +397,10 @@ function Save-DetectionReport {
             confidence = $item.confidence
             supporting_signals = @($item.supporting_signals)
         }
+        if (@($item.PSObject.Properties.Name) -contains 'purpose_candidates') {
+            $stableItem['purpose_candidates'] = @($item.purpose_candidates)
+        }
+        $stableEvidence += $stableItem
     }
     $stableReport = [ordered]@{
         schema_version = $Report.schema_version

@@ -137,6 +137,7 @@ printf 'memory_max=%s\n' $memory_max
 printf 'pids_max=%s\n' $pids_max
 printf 'cpu_max=%s_%s\n' $cpu_quota $cpu_period
 '@
+    $probeCommand = $probeCommand -replace "`r`n", "`n"
 
     $createArguments = @(
         'create', '--rm',

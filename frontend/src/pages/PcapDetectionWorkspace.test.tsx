@@ -93,4 +93,41 @@ describe("PcapDetectionWorkspace", () => {
     expect(screen.getByLabelText("检测统计")).toHaveTextContent("失败 0");
     expect(screen.getByLabelText("检测统计")).toHaveTextContent("证据 0");
   });
+
+  it("does not present an incomplete scan as an all-clear result", async () => {
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 2, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      if (init?.method === "POST" && url.includes("authorizations")) return Promise.resolve(new Response(JSON.stringify({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 2 }), { status: 201 }));
+      return Promise.resolve(new Response(JSON.stringify({
+        ...detectionResult("completed"),
+        summary: {
+          schema_version: 1,
+          analyzed_count: 2,
+          succeeded_count: 1,
+          failed_count: 1,
+          evidence: [],
+          processed_samples: [
+            { sample_index: 1, status: "succeeded", evidence_count: 0, failure_code: null },
+            { sample_index: 2, status: "failed", evidence_count: 0, failure_code: "tool_failed" },
+          ],
+        },
+        report: {
+          confirmed_evidence_ids: [],
+          candidate_evidence_ids: [],
+          unknowns: ["no_localized_attack_evidence", "partial_file_failure"],
+          recommended_actions: ["allow_no_rule_evidence", "retry_failed_files"],
+        },
+      }), { status: init?.method === "POST" ? 201 : 200 }));
+    }));
+
+    render(<PcapDetectionWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
+    fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
+
+    expect(await screen.findByText("检测不完整，存在未完成样本")).toBeInTheDocument();
+    expect(screen.queryByText("未发现可定位异常")).not.toBeInTheDocument();
+    expect(screen.queryByText("证据不足，保持允许。")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前样本保留为允许结果。")).not.toBeInTheDocument();
+    expect(screen.getAllByText("部分样本未完成，请重试失败样本。")).not.toHaveLength(0);
+  });
 });

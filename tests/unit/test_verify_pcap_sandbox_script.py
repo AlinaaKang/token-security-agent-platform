@@ -9,6 +9,12 @@ WINDOWS_POWERSHELL = Path(os.environ["SystemRoot"]) / "System32" / "WindowsPower
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "verify_pcap_sandbox.ps1"
 
 
+def test_verifier_normalizes_probe_command_for_the_linux_shell() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert '$probeCommand = $probeCommand -replace "`r`n", "`n"' in source
+
+
 def test_verifier_suppresses_native_stderr_on_fixture_failure(tmp_path: Path) -> None:
     fake_python = tmp_path / "python.cmd"
     fake_python.write_text(
