@@ -31,6 +31,7 @@ describe("GuidedTour", () => {
   it("opens once on the first route visit and stores the exact versioned route key", () => {
     const first = render(<Harness />);
     expect(screen.getByRole("dialog", { name: "输入区域" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开本页使用引导" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "跳过引导" }));
     expect(window.localStorage.getItem("token-sentinel-tour:/analyze:v1")).toBe("seen");
@@ -86,7 +87,7 @@ describe("GuidedTour", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(launcher).toHaveFocus();
+    expect(screen.getByRole("button", { name: "打开本页使用引导" })).toHaveFocus();
   });
 
   it("skips absent targets and closes harmlessly when none remain", () => {
@@ -128,5 +129,13 @@ describe("GuidedTour", () => {
     skip.focus();
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
     expect(next).toHaveFocus();
+  });
+
+  it("exposes non-interactive spotlight and bounded panel placement semantics", () => {
+    render(<Harness />);
+
+    expect(document.querySelector(".guided-tour-spotlight")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("dialog", { name: "输入区域" })).toHaveAttribute("data-placement", "below");
+    expect(screen.getByText("步骤 1 / 2")).toBeInTheDocument();
   });
 });

@@ -41,7 +41,16 @@ function canReadSeen(storage: Storage | undefined, key: string) {
   }
 }
 
-export function GuidedTour({ route, steps, storage = window.localStorage }: GuidedTourProps) {
+function browserStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+export function GuidedTour({ route, steps, storage: providedStorage }: GuidedTourProps) {
+  const storage = providedStorage ?? browserStorage();
   const storageKey = `token-sentinel-tour:${route}:v1`;
   const [open, setOpen] = useState(() => !canReadSeen(storage, storageKey));
   const [stepIndex, setStepIndex] = useState(0);
@@ -62,7 +71,6 @@ export function GuidedTour({ route, steps, storage = window.localStorage }: Guid
     markSeen();
     setOpen(false);
     setTargetBox(null);
-    (restoreFocusRef.current ?? launcherRef.current)?.focus();
   };
 
   const move = (direction: 1 | -1) => {
@@ -110,6 +118,14 @@ export function GuidedTour({ route, steps, storage = window.localStorage }: Guid
   }, [open, stepIndex]);
 
   useEffect(() => {
+    if (open || !restoreFocusRef.current) return;
+    const destination = restoreFocusRef.current.isConnected
+      ? restoreFocusRef.current
+      : launcherRef.current;
+    destination?.focus();
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
     const step = steps[stepIndex];
     if (!step?.advanceOnClick) return;
@@ -148,8 +164,11 @@ export function GuidedTour({ route, steps, storage = window.localStorage }: Guid
   const step = steps[stepIndex];
   const isLast = findAvailableStep(steps, stepIndex + 1) < 0;
   const hasPrevious = findAvailableStep(steps, stepIndex - 1, -1) >= 0;
+  const placement = targetBox && targetBox.top + targetBox.height + 12 + PANEL_HEIGHT_ESTIMATE <= window.innerHeight
+    ? "below"
+    : "above";
   const panelTop = targetBox
-    ? targetBox.top + targetBox.height + 12 + PANEL_HEIGHT_ESTIMATE <= window.innerHeight
+    ? placement === "below"
       ? targetBox.top + targetBox.height + 12
       : Math.max(EDGE_GAP, targetBox.top - PANEL_HEIGHT_ESTIMATE - 12)
     : EDGE_GAP;
@@ -159,7 +178,7 @@ export function GuidedTour({ route, steps, storage = window.localStorage }: Guid
 
   return (
     <>
-      <button
+      {!open ? <button
         ref={launcherRef}
         type="button"
         className="guided-tour-launcher"
@@ -168,7 +187,7 @@ export function GuidedTour({ route, steps, storage = window.localStorage }: Guid
         onClick={replay}
       >
         <CircleHelp size={20} aria-hidden="true" />
-      </button>
+      </button> : null}
       {open && step && targetBox ? (
         <div className="guided-tour-layer">
           <div
@@ -182,6 +201,7 @@ export function GuidedTour({ route, steps, storage = window.localStorage }: Guid
             role="dialog"
             aria-modal="false"
             aria-labelledby={`guided-tour-title-${step.id}`}
+            data-placement={placement}
             tabIndex={-1}
             style={{ top: panelTop, left: panelLeft }}
           >
