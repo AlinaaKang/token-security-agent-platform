@@ -38,10 +38,11 @@ class AnalysisRequest(BaseModel):
 
     @field_validator("prompt")
     @classmethod
-    def prompt_must_contain_text(cls, value: str) -> str:
-        if not value.strip():
+    def canonicalize_prompt(cls, value: str) -> str:
+        normalized = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not normalized:
             raise ValueError("prompt must contain non-whitespace text")
-        return value
+        return normalized
 
 
 class SuspiciousSpan(BaseModel):
