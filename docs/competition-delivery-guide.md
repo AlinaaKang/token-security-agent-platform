@@ -90,6 +90,17 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/
 5. 进入 `/super-agent` 的 PCAP“异常检测”，完成两次授权，展示 Docker 隔离和 Request/Packet 局部证据。
 6. 最后打开 `/events` 或 `/evaluation`，展示真实知识引用、指标和限制。
 
+## CTF 决赛使用方式
+
+本项目是参赛安全智能体，不是赛事方的账号、排行榜或 Flag 判题平台。决赛提供新 PCAP 时，推荐按以下链路使用：
+
+1. 将赛题 PCAP 放入仓库外隔离目录，由选手在 `/super-agent` 中选择匿名批次并完成两次授权。
+2. Agent 在 Docker 中逐文件解析，先回答“是否出现可定位异常证据”，再给出攻击类型候选、目的候选和 Packet/Request 区间。
+3. 选手根据局部区间回到赛题环境复核并提交赛事方要求的答案或 Flag；本项目不伪造、不保存赛事 Flag。
+4. 无 HTTP、加密或规则未命中的样本保留为“未命中/证据不足”；解析失败单独标黄，不混入“安全”结论。
+
+因此，现有 `/challenge` 适合作为赛前讲解和现场交互演示，真实 CTF 则使用 PCAP 检测工作区辅助定位。是否得分仍由赛事方判题系统决定。
+
 ## 完整使用手册
 
 ### 基础 Prompt 检测
@@ -124,7 +135,15 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/
 
 ## 必须主动说明的边界
 
-- 当前自研 Web 平台和开源模型不是深信服平台本身；参赛前需要取得赛事方允许自研平台替代的书面确认并随材料归档。
+- 当前自研 Web 平台和开源模型不是深信服平台本身；团队已确认赛事方批准采用自研平台替代不可用的官方平台，提交时应随材料归档该书面确认。
 - PCAP 加密、非 HTTP 或缺少标签时，系统只能给出流量层证据或“证据不足”，不会伪造 Prompt、Token 或攻击结论。
 - `rule_only`、`behavior_only`、`fused` 指标来自合成评测；真实语料需要独立审计标签后才能形成正式比赛结论。
 - 页面展示的是可审计的推理摘要和证据链，不是模型私有 COT 原文，也不暴露原始 Prompt、suffix、Token、payload、IP 或路径。
+
+## 2026-09-05 最终本地验收
+
+- 后端：`990 passed, 4 skipped`。跳过项为本机未配置真实 GPU 模型，以及当前 Windows 账户不允许创建文件符号链接；目录 junction 防护已覆盖。
+- 前端：25 个测试文件、242 个用例全部通过；生产构建成功，1624 modules transformed。
+- PCAP：Docker inspector 镜像重建成功；沙箱验证的网络隔离、只读、非 root、能力剥离、禁止提权、资源限制、零载荷泄漏全部通过。
+- 失败分类：可区分工具失败、处理超时、报告格式无效和容器确认的 PCAP 格式无效；私有 stderr 不进入 API 或页面。
+- 运行环境：本地 PCAP API 可用。AutoDL 模型服务仍需在演示前恢复 SSH 隧道并确认完整健康状态；本轮 SSH 入口在 banner 交换前被重置，因此不把远端运行态写成已通过。

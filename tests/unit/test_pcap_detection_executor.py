@@ -85,6 +85,38 @@ def test_detection_executor_preserves_valid_evidence_across_partial_failure(
     assert "PRIVATE" not in summary.model_dump_json()
 
 
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "expected_failure"),
+    [
+        (2, "pcap_preflight_error=capture_invalid", "capture_invalid"),
+        (2, "pcap_preflight_error=docker_timeout", "tool_timeout"),
+        (0, "not-json", "report_invalid"),
+    ],
+)
+def test_detection_executor_reports_public_failure_categories(
+    tmp_path: Path,
+    returncode: int,
+    stdout: str,
+    expected_failure: str,
+) -> None:
+    config = _config(tmp_path)
+    (config.quarantine_root / "input" / "capture.pcap").write_bytes(b"capture")
+
+    def runner(_command: list[str], **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            returncode=returncode,
+            stdout=stdout,
+            stderr="PRIVATE_PATH_AND_PAYLOAD",
+        )
+
+    summary = PcapDetectionExecutor(config=config, runner=runner).execute(
+        "detection_0123456789abcdef0123456789abcdef", max_files=1
+    )
+
+    assert summary.processed_samples[0].failure_code == expected_failure
+    assert "PRIVATE" not in summary.model_dump_json()
+
+
 def test_detection_executor_publishes_each_processed_sample_incrementally(
     tmp_path: Path,
 ) -> None:

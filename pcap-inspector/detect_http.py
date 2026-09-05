@@ -195,6 +195,22 @@ def _run_tshark(arguments: Sequence[str]) -> str:
     return result.stdout
 
 
+def _validate_capture_header(capture: Path) -> None:
+    try:
+        with capture.open("rb") as stream:
+            magic = stream.read(4)
+    except OSError as exc:
+        raise DetectionError("capture_invalid") from exc
+    if magic not in {
+        bytes.fromhex("a1b2c3d4"),
+        bytes.fromhex("d4c3b2a1"),
+        bytes.fromhex("a1b23c4d"),
+        bytes.fromhex("4d3cb2a1"),
+        bytes.fromhex("0a0d0d0a"),
+    }:
+        raise DetectionError("capture_invalid")
+
+
 def _parse_packet_count(text: str) -> int:
     if not text.strip():
         return 0
@@ -254,6 +270,7 @@ def detect_capture(
     *,
     run_tshark: Callable[[Sequence[str]], str] = _run_tshark,
 ) -> dict[str, object]:
+    _validate_capture_header(capture)
     packet_output = run_tshark(
         (
             "tshark",

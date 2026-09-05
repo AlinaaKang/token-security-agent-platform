@@ -51,11 +51,13 @@ def _write_fake_docker(
     exit_code: int = 0,
     *,
     write_private_stderr: bool = False,
+    stderr_text: str | None = None,
 ) -> Path:
     fake = tmp_path / "fake-docker.cmd"
     argument_capture = tmp_path / "docker-args.txt"
     argument_capture.unlink(missing_ok=True)
-    stderr = "echo PRIVATE_SENTINEL 1>&2\n" if write_private_stderr else ""
+    stderr_value = stderr_text or ("PRIVATE_SENTINEL" if write_private_stderr else "")
+    stderr = f"echo {stderr_value} 1>&2\n" if stderr_value else ""
     fake.write_text(
         "@echo off\n"
         "setlocal DisableDelayedExpansion\n"
@@ -207,6 +209,24 @@ def test_launcher_never_prints_private_docker_stderr(tmp_path: Path) -> None:
     result = _run_launcher(capture, root, fake)
 
     assert result.returncode != 0
+    assert "PRIVATE_SENTINEL" not in result.stdout + result.stderr
+
+
+def test_http_detection_maps_capture_error_without_leaking_private_stderr(
+    tmp_path: Path,
+) -> None:
+    root, capture = _make_quarantine_capture(tmp_path)
+    fake = _write_fake_docker(
+        tmp_path,
+        _valid_detection_report(),
+        exit_code=2,
+        stderr_text="pcap_detection_error=capture_invalid PRIVATE_SENTINEL",
+    )
+
+    result = _run_launcher(capture, root, fake, mode="HttpDetection")
+
+    assert result.returncode != 0
+    assert "pcap_preflight_error=capture_invalid" in result.stdout
     assert "PRIVATE_SENTINEL" not in result.stdout + result.stderr
 
 

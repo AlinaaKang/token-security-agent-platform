@@ -140,11 +140,26 @@ def test_detect_capture_fails_closed_on_malformed_tshark_rows(tmp_path: Path) ->
     assert "PRIVATE_SENTINEL" not in str(error.value)
 
 
+def test_detect_capture_rejects_invalid_capture_header_before_tshark(
+    tmp_path: Path,
+) -> None:
+    fixture = tmp_path / "invalid.pcap"
+    fixture.write_bytes(b"not-a-capture")
+
+    def unexpected_tshark(_arguments: Sequence[str]) -> str:
+        raise AssertionError("tshark must not run for an invalid capture header")
+
+    with pytest.raises(DETECTOR.DetectionError) as error:
+        DETECTOR.detect_capture(fixture, run_tshark=unexpected_tshark)
+
+    assert error.value.code == "capture_invalid"
+
+
 def test_detect_capture_localizes_high_rate_multi_destination_behavior(
     tmp_path: Path,
 ) -> None:
     fixture = tmp_path / "scan.pcap"
-    fixture.write_bytes(b"pcap")
+    fixture.write_bytes(bytes.fromhex("a1b2c3d4"))
     packet_rows = "\n".join(
         f"{index}\t{index / 1000:.3f}\t10.0.0.{index}" for index in range(1, 21)
     )
@@ -168,7 +183,7 @@ def test_detect_capture_matches_attack_pattern_in_http_request_body(
     tmp_path: Path,
 ) -> None:
     fixture = tmp_path / "body.pcap"
-    fixture.write_bytes(b"pcap")
+    fixture.write_bytes(bytes.fromhex("a1b2c3d4"))
 
     def fake_tshark(arguments: tuple[str, ...]) -> str:
         if "http.request" in arguments:
@@ -183,7 +198,7 @@ def test_detect_capture_matches_attack_pattern_in_http_request_body(
 @pytest.mark.parametrize("body", ["<script>alert(1)</script>", "{{7*7}}", "http://169.254.169.254/latest"])
 def test_detect_capture_matches_common_web_anomaly_patterns(tmp_path: Path, body: str) -> None:
     fixture = tmp_path / "web-anomaly.pcap"
-    fixture.write_bytes(b"pcap")
+    fixture.write_bytes(bytes.fromhex("a1b2c3d4"))
 
     def fake_tshark(arguments: tuple[str, ...]) -> str:
         if "http.request" in arguments:

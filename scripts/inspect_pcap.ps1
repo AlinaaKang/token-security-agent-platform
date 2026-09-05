@@ -15,6 +15,7 @@ $ErrorActionPreference = 'Stop'
 $script:PublicErrorCodes = @(
     'docker_failed',
     'docker_timeout',
+    'capture_invalid',
     'docker_unavailable',
     'input_changed',
     'input_not_regular_file',
@@ -468,12 +469,18 @@ try {
         [System.Threading.Tasks.Task]::WaitAll(@($stdoutCopy, $stderrCopy))
         $stdoutStream.Flush()
         $stderrStream.Flush()
-        if ($process.ExitCode -ne 0) { Fail-Preflight 'docker_failed' }
         $stdoutStream.Dispose()
         $stdoutStream = $null
         $stderrStream.Dispose()
         $stderrStream = $null
         $stdout = [System.IO.File]::ReadAllText($stdoutFile)
+        $stderr = [System.IO.File]::ReadAllText($stderrFile)
+        if ($process.ExitCode -ne 0) {
+            if ($Mode -eq 'HttpDetection' -and $stderr -match '(?m)^pcap_detection_error=capture_invalid\b') {
+                Fail-Preflight 'capture_invalid'
+            }
+            Fail-Preflight 'docker_failed'
+        }
     }
     finally {
         if ($null -ne $stdoutStream) { $stdoutStream.Dispose() }

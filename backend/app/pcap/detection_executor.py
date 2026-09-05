@@ -35,6 +35,12 @@ class PcapDetectionToolFailed(RuntimeError):
         super().__init__("pcap_detection_failed")
 
 
+class _PcapDetectionSampleFailed(RuntimeError):
+    def __init__(self, code: PcapDetectionFailureCode) -> None:
+        self.code = code
+        super().__init__("pcap_detection_sample_failed")
+
+
 class PcapDetectionExecutor:
     def __init__(
         self,
@@ -74,7 +80,13 @@ class PcapDetectionExecutor:
         except Exception:
             raise PcapDetectionToolFailed() from None
 
-        results: list[tuple[bool, tuple[PcapLocalizedEvidence, ...]]] = []
+        results: list[
+            tuple[
+                bool,
+                tuple[PcapLocalizedEvidence, ...],
+                PcapDetectionFailureCode | None,
+            ]
+        ] = []
         try:
             # A small fixed pool keeps Docker resource use bounded while avoiding
             # paying container startup cost serially for every capture.
@@ -94,10 +106,10 @@ class PcapDetectionExecutor:
                             break
                         try:
                             completed[index] = (True, future.result(), None)
+                        except _PcapDetectionSampleFailed as exc:
+                            completed[index] = (False, (), exc.code)
                         except subprocess.TimeoutExpired:
                             completed[index] = (False, (), PcapDetectionFailureCode.TOOL_TIMEOUT)
-                        except json.JSONDecodeError:
-                            completed[index] = (False, (), PcapDetectionFailureCode.REPORT_INVALID)
                         except Exception:
                             completed[index] = (False, (), PcapDetectionFailureCode.TOOL_FAILED)
                         results = [completed[item] for item in sorted(completed)]
@@ -122,11 +134,24 @@ class PcapDetectionExecutor:
             timeout=160,
         )
         if getattr(completed, "returncode", None) != 0:
-            raise ValueError("tool failed")
+            raw = getattr(completed, "stdout", None)
+            public_code = raw.strip() if isinstance(raw, str) else ""
+            if public_code == "pcap_preflight_error=capture_invalid":
+                raise _PcapDetectionSampleFailed(
+                    PcapDetectionFailureCode.CAPTURE_INVALID
+                )
+            if public_code == "pcap_preflight_error=docker_timeout":
+                raise _PcapDetectionSampleFailed(PcapDetectionFailureCode.TOOL_TIMEOUT)
+            raise _PcapDetectionSampleFailed(PcapDetectionFailureCode.TOOL_FAILED)
         raw = getattr(completed, "stdout", None)
         if not isinstance(raw, str) or len(raw.encode("utf-8")) > _MAX_OUTPUT_BYTES:
-            raise ValueError("invalid output")
-        return _parse_detection_report(raw)
+            raise _PcapDetectionSampleFailed(PcapDetectionFailureCode.REPORT_INVALID)
+        try:
+            return _parse_detection_report(raw)
+        except (json.JSONDecodeError, ValueError):
+            raise _PcapDetectionSampleFailed(
+                PcapDetectionFailureCode.REPORT_INVALID
+            ) from None
 
     def request_cancel(self, detection_id: str) -> None:
         _validate_detection_id(detection_id)
