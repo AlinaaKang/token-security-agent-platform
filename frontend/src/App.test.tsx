@@ -272,6 +272,39 @@ describe("competition security console", () => {
     vi.unstubAllGlobals();
   });
 
+  it("groups the platform navigation by user task without changing routes", () => {
+    render(<App />);
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const groups = within(navigation).getAllByRole("group");
+    expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual([
+      "检测与处置",
+      "验证与评测",
+      "互动演示",
+    ]);
+
+    expect(within(groups[0]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
+      "安全分析",
+      "自主处置",
+      "安全事件",
+    ]);
+    expect(within(groups[1]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
+      "攻防实验舱",
+      "评测中心",
+    ]);
+    expect(within(groups[2]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
+      "Token 侦探挑战",
+    ]);
+
+    expect(screen.getByRole("link", { name: "安全分析" })).toHaveAttribute("href", "/analyze");
+    expect(screen.getByRole("link", { name: "自主处置" })).toHaveAttribute("href", "/super-agent");
+    expect(screen.getByRole("link", { name: "安全事件" })).toHaveAttribute("href", "/events");
+    expect(screen.getByRole("link", { name: "攻防实验舱" })).toHaveAttribute("href", "/lab");
+    expect(screen.getByRole("link", { name: "评测中心" })).toHaveAttribute("href", "/evaluation");
+    expect(screen.getByRole("link", { name: "Token 侦探挑战" })).toHaveAttribute("href", "/challenge");
+    expect(screen.getByRole("link", { name: "安全分析" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("separates semantic blocking from a normal Token distribution", async () => {
     render(<App />);
     expect(await screen.findByText("检测服务已连接")).toBeInTheDocument();

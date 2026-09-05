@@ -9,14 +9,32 @@ import { LabPage } from "./pages/LabPage";
 import { SuperAgentPage } from "./pages/SuperAgentPage";
 import "./styles.css";
 
-const navigation = [
-  { to: "/analyze", label: "安全分析", icon: ScanLine },
-  { to: "/events", label: "安全事件", icon: FileWarning },
-  { to: "/evaluation", label: "评测中心", icon: BarChart3 },
-  { to: "/lab", label: "攻防实验舱", icon: FlaskConical },
-  { to: "/super-agent", label: "自主处置", icon: Workflow },
-  { to: "/challenge", label: "Token 侦探挑战", icon: Gamepad2 },
-];
+const navigationGroups = [
+  {
+    id: "detection-response",
+    label: "检测与处置",
+    items: [
+      { to: "/analyze", label: "安全分析", icon: ScanLine },
+      { to: "/super-agent", label: "自主处置", icon: Workflow },
+      { to: "/events", label: "安全事件", icon: FileWarning },
+    ],
+  },
+  {
+    id: "validation-evaluation",
+    label: "验证与评测",
+    items: [
+      { to: "/lab", label: "攻防实验舱", icon: FlaskConical },
+      { to: "/evaluation", label: "评测中心", icon: BarChart3 },
+    ],
+  },
+  {
+    id: "interactive-demo",
+    label: "互动演示",
+    items: [
+      { to: "/challenge", label: "Token 侦探挑战", icon: Gamepad2 },
+    ],
+  },
+] as const;
 
 function Shell() {
   return (
@@ -28,10 +46,17 @@ function Shell() {
         </div>
         <p className="product-name">面向AI安全的Token流量异常检测智能体平台</p>
         <nav aria-label="主导航">
-          {navigation.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => isActive ? "active" : undefined}>
-              <Icon size={18} /> <span>{label}</span>
-            </NavLink>
+          {navigationGroups.map((group) => (
+            <div className="nav-group" role="group" aria-label={group.label} key={group.id}>
+              <span className="nav-group-label" aria-hidden="true">{group.label}</span>
+              <div className="nav-group-links">
+                {group.items.map(({ to, label, icon: Icon }) => (
+                  <NavLink key={to} to={to} className={({ isActive }) => isActive ? "active" : undefined}>
+                    <Icon size={18} /> <span>{label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
         <div className="system-state"><span /> 研究原型 · 基础与进阶任务</div>
