@@ -264,6 +264,7 @@ function latestAnalyzeRequestBody() {
 describe("competition security console", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/analyze");
+    window.localStorage.clear();
     installFetch();
   });
 
@@ -303,6 +304,19 @@ describe("competition security console", () => {
     expect(screen.getByRole("link", { name: "评测中心" })).toHaveAttribute("href", "/evaluation");
     expect(screen.getByRole("link", { name: "Token 侦探挑战" })).toHaveAttribute("href", "/challenge");
     expect(screen.getByRole("link", { name: "安全分析" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("opens a replayable first-use guide only on supported routes", () => {
+    const view = render(<App />);
+    expect(screen.getByRole("dialog", { name: "准备待检测内容" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "跳过引导" }));
+    expect(screen.getByRole("button", { name: "打开本页使用引导" })).toBeInTheDocument();
+    view.unmount();
+
+    window.history.pushState({}, "", "/events");
+    render(<App />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开本页使用引导" })).not.toBeInTheDocument();
   });
 
   it("separates semantic blocking from a normal Token distribution", async () => {

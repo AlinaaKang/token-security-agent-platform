@@ -95,7 +95,7 @@ function KnowledgeModeControl({
   return (
     <div className="knowledge-mode-row">
       <span>知识增强模式</span>
-      <div className="segmented-control" role="group" aria-label="知识增强模式">
+      <div className="segmented-control" role="group" aria-label="知识增强模式" data-tour="analyze-knowledge">
         {options.map((option) => (
           <button
             type="button"
@@ -414,6 +414,7 @@ export function AnalyzePage() {
               <span>{prompt.length.toLocaleString()} / 32,768</span>
             </div>
             <textarea
+              data-tour="analyze-input"
               id="prompt"
               name="prompt"
               maxLength={32768}
@@ -423,11 +424,11 @@ export function AnalyzePage() {
             />
             <KnowledgeModeControl value={knowledgeMode} onChange={setKnowledgeMode} />
             <div className="form-actions">
-              <select aria-label="工作模式" value={mode} onChange={(event) => setMode(event.target.value as Mode)}>
+              <select data-tour="analyze-mode" aria-label="工作模式" value={mode} onChange={(event) => setMode(event.target.value as Mode)}>
                 <option value="analysis">安全分析</option>
                 <option value="gateway">在线防护</option>
               </select>
-              <button type="submit" disabled={!serviceReady || !prompt.trim() || loading}>
+              <button data-tour="analyze-command" type="submit" disabled={!serviceReady || !prompt.trim() || loading}>
                 <Radar size={17} /> {loading ? "检测中" : "开始检测"}
               </button>
             </div>

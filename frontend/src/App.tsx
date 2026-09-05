@@ -1,12 +1,14 @@
 import { BarChart3, FileWarning, FlaskConical, Gamepad2, ScanLine, ShieldCheck, Workflow } from "lucide-react";
-import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+import { GuidedTour } from "./components/GuidedTour";
 import { AnalyzePage } from "./pages/AnalyzePage";
 import { ChallengePage } from "./pages/ChallengePage";
 import { EvaluationPage } from "./pages/EvaluationPage";
 import { EventsPage } from "./pages/EventsPage";
 import { LabPage } from "./pages/LabPage";
 import { SuperAgentPage } from "./pages/SuperAgentPage";
+import { TOURS } from "./tourConfig";
 import "./styles.css";
 
 const navigationGroups = [
@@ -37,6 +39,9 @@ const navigationGroups = [
 ] as const;
 
 function Shell() {
+  const location = useLocation();
+  const tour = TOURS[location.pathname];
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -70,6 +75,7 @@ function Shell() {
         <Route path="/challenge" element={<ChallengePage />} />
         <Route path="*" element={<Navigate to="/analyze" replace />} />
       </Routes>
+      {tour ? <GuidedTour key={location.pathname} route={location.pathname} steps={tour} /> : null}
     </div>
   );
 }

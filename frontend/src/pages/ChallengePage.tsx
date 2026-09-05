@@ -281,13 +281,13 @@ export function ChallengePage() {
       </header>
 
       {session.phase === "setup" ? (
-        <section className="challenge-setup-layout" aria-label="挑战设置">
+        <section className="challenge-setup-layout" aria-label="挑战设置" data-tour="challenge-setup">
           <div className="challenge-setup-panel">
             <div className="challenge-section-title">
               <Gamepad2 size={18} aria-hidden="true" />
               <div><strong>选择挑战</strong><span>分数表示与当前系统结果的一致程度</span></div>
             </div>
-            <div className="challenge-mode-options" role="group" aria-label="挑战关卡组">
+            <div className="challenge-mode-options" role="group" aria-label="挑战关卡组" data-tour="challenge-rounds">
               <button
                 type="button"
                 aria-label="三关速战"
@@ -309,7 +309,7 @@ export function ChallengePage() {
                 <strong>五关完整挑战</strong><span>增加 GCG、AutoDAN、AdvPrompter</span>
               </button>
             </div>
-            <fieldset className="challenge-presentation-mode">
+            <fieldset className="challenge-presentation-mode" data-tour="challenge-method">
               <legend>调查方式</legend>
               <div role="group" aria-label="调查方式">
                 <button
@@ -334,7 +334,7 @@ export function ChallengePage() {
             {labReady && !full.ready && missingFull ? (
               <div className="challenge-availability"><CircleAlert size={17} aria-hidden="true" />完整挑战缺少：{missingFull}</div>
             ) : null}
-            <button className="challenge-begin-button" type="button" disabled={!canBegin} onClick={beginChallenge}>
+            <button className="challenge-begin-button" data-tour="challenge-command" type="button" disabled={!canBegin} onClick={beginChallenge}>
               <Play size={17} aria-hidden="true" />进入挑战
             </button>
           </div>

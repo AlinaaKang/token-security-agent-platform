@@ -227,7 +227,7 @@ export function SuperAgentPage() {
         </span>
       </header>
 
-      <div className="superagent-task-switch" role="group" aria-label="SuperAgent 任务类型">
+      <div className="superagent-task-switch" role="group" aria-label="SuperAgent 任务类型" data-tour="superagent-task">
         <button type="button" aria-pressed={taskKind === "prompt"} onClick={() => setTaskKind("prompt")}>
           <MessageSquareText size={16} /> Prompt 安全调查
         </button>
@@ -237,19 +237,19 @@ export function SuperAgentPage() {
       </div>
 
       {taskKind === "prompt" ? <>
-      <form className="superagent-control-band" onSubmit={startMission}>
+      <form className="superagent-control-band" onSubmit={startMission} data-tour="superagent-scope">
         <label><span>任务场景</span><select value={selectedScenario} onChange={(event) => setSelectedScenario(event.target.value)} disabled={loading}>
           {scenarios.map((item) => <option key={item.scenario_id} value={item.scenario_id}>{item.label}</option>)}
         </select></label>
         <label><span>工作模式</span><select value={mode} onChange={(event) => setMode(event.target.value as Mode)} disabled={loading}>
           <option value="analysis">安全分析</option><option value="gateway">在线防护</option>
         </select></label>
-        <div className="superagent-bounds" aria-label="任务边界">
+        <div className="superagent-bounds" aria-label="任务边界" data-tour="superagent-bounds">
           <span>最多 {capabilities?.max_tool_calls ?? 3} 次工具调用</span>
           <span>最多 1 次重规划</span>
           <span>{selected?.scenario_kind === "protected" ? "受保护冻结样本" : "合成安全样本"}</span>
         </div>
-        <button type="submit" disabled={!canStart} className="superagent-start-button">
+        <button type="submit" disabled={!canStart} className="superagent-start-button" data-tour="superagent-command">
           {loading ? <RotateCw className="superagent-spinner" size={17} /> : <Play size={17} />}
           {loading ? "任务执行中" : "启动自主任务"}
         </button>

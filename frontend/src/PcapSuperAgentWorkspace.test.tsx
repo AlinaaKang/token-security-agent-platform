@@ -193,6 +193,15 @@ describe("PCAP SuperAgent evidence workspace", () => {
     expect(document.body.textContent).not.toContain(PRIVATE_SENTINEL);
   });
 
+  it("keeps the SuperAgent guide anchored after switching from Prompt to PCAP", async () => {
+    render(<App />);
+    await openPcapMode();
+
+    expect(document.querySelector('[data-tour="superagent-scope"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-tour="superagent-bounds"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-tour="superagent-command"]')).toBeInTheDocument();
+  });
+
   it("disables preparation when PCAP capability is unavailable", async () => {
     cleanup();
     vi.unstubAllGlobals();

@@ -346,14 +346,14 @@ export function PcapSuperAgentWorkspace() {
 
   return (
     <section className="pcap-superagent" aria-label="PCAP 证据分诊工作区" aria-busy={loading || actionPending}>
-      <div className="pcap-mode-switch" role="group" aria-label="PCAP 工作模式">
+      <div className="pcap-mode-switch" role="group" aria-label="PCAP 工作模式" data-tour="superagent-scope">
         <button type="button" aria-pressed={pcapView === "triage"} onClick={() => setPcapView("triage")}>批量分诊</button>
         <button type="button" aria-pressed={pcapView === "recon"} onClick={() => setPcapView("recon")}>数据勘察</button>
         <button type="button" aria-pressed={pcapView === "detection"} onClick={() => setPcapView("detection")}>异常检测</button>
       </div>
       {pcapView === "recon" ? <PcapReconWorkspace /> : pcapView === "detection" ? <PcapDetectionWorkspace /> : <>
       <div className="pcap-authorization-track">
-        <section className="pcap-overview-stage">
+        <section className="pcap-overview-stage" data-tour="superagent-bounds">
           <div className="pcap-stage-index"><span>阶段 1</span><strong>范围概览</strong></div>
           <div className="pcap-overview-metric">
             <FileSearch size={20} />
@@ -382,7 +382,7 @@ export function PcapSuperAgentWorkspace() {
           </button>
         </section>
 
-        <section className={`pcap-consent-stage ${confirmationOpen ? "is-active" : ""}`}>
+        <section className={`pcap-consent-stage ${confirmationOpen ? "is-active" : ""}`} data-tour="superagent-command">
           <div className="pcap-stage-index"><span>阶段 2</span><strong>执行授权</strong></div>
           {confirmationOpen ? (
             <div className="pcap-consent-surface" role="region" aria-label="PCAP 执行授权确认">

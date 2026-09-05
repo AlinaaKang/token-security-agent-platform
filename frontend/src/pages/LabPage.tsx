@@ -342,7 +342,7 @@ export function LabPage() {
       <form className="lab-control-band" onSubmit={createRun}>
         <div className="lab-field lab-scenario-field">
           <label htmlFor="lab-scenario">实验场景</label>
-          <select id="lab-scenario" value={selectedScenario} onChange={(event) => setSelectedScenario(event.target.value)} disabled={!labReady}>
+          <select data-tour="lab-scenario" id="lab-scenario" value={selectedScenario} onChange={(event) => setSelectedScenario(event.target.value)} disabled={!labReady}>
             <option value="custom">自定义输入</option>
             {scenarios.map((scenario) => <option value={scenario.scenario_id} key={scenario.scenario_id}>{scenario.label}</option>)}
           </select>
@@ -350,6 +350,7 @@ export function LabPage() {
         <div className="lab-field lab-input-field">
           <label htmlFor="lab-custom-input">自定义 Prompt</label>
           <textarea
+            data-tour="lab-input"
             id="lab-custom-input"
             value={customInput}
             onChange={(event) => setCustomInput(event.target.value)}
@@ -360,7 +361,7 @@ export function LabPage() {
         </div>
         <div className="lab-mode-field">
           <span>工作模式</span>
-          <div className="lab-segmented" role="group" aria-label="实验舱工作模式">
+          <div className="lab-segmented" role="group" aria-label="实验舱工作模式" data-tour="lab-mode">
             {(["analysis", "gateway"] as Mode[]).map((item) => (
               <button type="button" key={item} aria-pressed={mode === item} className={mode === item ? "active" : ""} onClick={() => setMode(item)}>
                 {item === "analysis" ? "安全分析" : "在线防护"}
@@ -368,7 +369,7 @@ export function LabPage() {
             ))}
           </div>
         </div>
-        <button className="lab-run-button" type="submit" disabled={!canSubmit}>
+        <button className="lab-run-button" data-tour="lab-command" type="submit" disabled={!canSubmit}>
           <FlaskConical size={17} /> {loading ? "调查运行中" : "开始调查"}
         </button>
       </form>
