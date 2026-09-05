@@ -360,6 +360,65 @@ def test_http_detection_mode_dispatches_inside_the_same_sandbox(tmp_path: Path) 
     assert json.loads(result.stdout) == report
 
 
+def test_http_detection_accepts_current_request_evidence_contract(
+    tmp_path: Path,
+) -> None:
+    root, capture = _make_quarantine_capture(tmp_path)
+    report = _valid_detection_report()
+    evidence = report["evidence"][0]  # type: ignore[index]
+    evidence.update(  # type: ignore[union-attr]
+        {
+            "attack_candidate": "web_injection",
+            "supporting_signals": ["xss_pattern", "request_boundary"],
+            "purpose_candidates": ["internal_access"],
+        }
+    )
+
+    result = _run_launcher(
+        capture,
+        root,
+        _write_fake_docker(tmp_path, report),
+        mode="HttpDetection",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout) == report
+
+
+def test_http_detection_accepts_current_behavior_evidence_contract(
+    tmp_path: Path,
+) -> None:
+    root, capture = _make_quarantine_capture(tmp_path)
+    report = _valid_detection_report()
+    evidence = report["evidence"][0]  # type: ignore[index]
+    evidence.update(  # type: ignore[union-attr]
+        {
+            "granularity": "packet",
+            "start_packet": 1,
+            "end_packet": 3,
+            "start_offset_ms": 0,
+            "end_offset_ms": 250,
+            "attack_candidate": "none",
+            "detector": "behavior_anomaly",
+            "confidence": 0.82,
+            "supporting_signals": [
+                "connection_rate_increase",
+                "destination_density_increase",
+            ],
+        }
+    )
+
+    result = _run_launcher(
+        capture,
+        root,
+        _write_fake_docker(tmp_path, report),
+        mode="HttpDetection",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout) == report
+
+
 @pytest.mark.parametrize(
     ("nested_path", "private_key"),
     [
