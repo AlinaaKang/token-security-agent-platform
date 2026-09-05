@@ -262,6 +262,33 @@ def test_historical_correction_marks_action_invariance_unverified() -> None:
     } == original_bytes
 
 
+def test_historical_correction_accepts_windows_checkout_line_endings(
+    tmp_path: Path,
+) -> None:
+    artifact_names = (
+        "report-generation-config-v2.json",
+        "report-generation-development-report-v2.json",
+        "report-generation-test-report-v2.json",
+    )
+    copied_paths = []
+    for name in artifact_names:
+        source = Path("data") / name
+        destination = tmp_path / name
+        canonical_bytes = source.read_bytes().replace(b"\r\n", b"\n")
+        destination.write_bytes(canonical_bytes.replace(b"\n", b"\r\n"))
+        copied_paths.append(destination)
+    correction_source = Path("data/report-generation-correction-v2.json")
+    (tmp_path / correction_source.name).write_bytes(correction_source.read_bytes())
+
+    summary = grounded_report.load_effective_report_summary(
+        selected_config_path=copied_paths[0],
+        development_report_path=copied_paths[1],
+        test_report_path=copied_paths[2],
+    )
+
+    assert summary.source_artifacts_verified is True
+
+
 def test_historical_correction_rejects_changed_source_artifact(
     tmp_path: Path,
 ) -> None:

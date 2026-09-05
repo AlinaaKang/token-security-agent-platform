@@ -197,7 +197,8 @@ class ReportExperimentCorrection(_StrictModel):
 
 
 def _file_sha256(path: Path) -> str:
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    content = path.read_bytes().replace(b"\r\n", b"\n")
+    return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
 def _load_report_correction(
