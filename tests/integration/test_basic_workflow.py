@@ -16,9 +16,11 @@ class StaticRuntime:
     def __init__(self, entropies: list[float]) -> None:
         self.entropies = entropies
         self.calls = 0
+        self.seen_user_prompt: str | None = None
 
     def score_prompt(self, system_prompt: str, user_prompt: str) -> ModelObservation:
         self.calls += 1
+        self.seen_user_prompt = user_prompt
         tokens = tuple(
             ObservedUserToken(
                 user_index=index,
@@ -46,9 +48,11 @@ class StaticSemanticGuard:
     def __init__(self, assessment: SemanticAssessment) -> None:
         self.assessment = assessment
         self.calls = 0
+        self.seen_prompt: str | None = None
 
     def assess(self, prompt: str) -> SemanticAssessment:
         self.calls += 1
+        self.seen_prompt = prompt
         return self.assessment
 
 
@@ -96,6 +100,19 @@ def make_workflow(
     workflow._test_runtime = runtime
     workflow._test_semantic_guard = semantic_guard
     return workflow
+
+
+def test_workflow_sends_one_canonical_prompt_to_both_detectors() -> None:
+    workflow = make_workflow([0.1, 0.2])
+    request = AnalysisRequest(
+        prompt="\r\n\r\nsecurity review\r\n",
+        model_id="qwen-model",
+    )
+
+    workflow.analyze(request, request_id="req-normalized")
+
+    assert workflow._test_semantic_guard.seen_prompt == "security review"
+    assert workflow._test_runtime.seen_user_prompt == "security review"
 
 
 class StaticKnowledgeService:

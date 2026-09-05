@@ -31,6 +31,23 @@ def test_analysis_request_rejects_prompt_over_character_safety_limit() -> None:
         AnalysisRequest(prompt="x" * 32_769, model_id="qwen2.5-7b", mode="analysis")
 
 
+def test_analysis_request_canonicalizes_surrounding_whitespace_and_line_endings() -> None:
+    request = AnalysisRequest(
+        prompt="\r\n\r\nfirst\r\n\rsecond\nlast\r\n",
+        model_id="qwen2.5-7b",
+    )
+
+    assert request.prompt == "first\n\nsecond\nlast"
+
+
+def test_analysis_request_checks_raw_length_before_canonicalization() -> None:
+    with pytest.raises(ValidationError):
+        AnalysisRequest(
+            prompt=(" " * 32_768) + "x",
+            model_id="qwen2.5-7b",
+        )
+
+
 def test_analysis_result_requires_provenance() -> None:
     payload = {
         "request_id": "req-1",
