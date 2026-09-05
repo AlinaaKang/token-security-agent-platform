@@ -69,6 +69,20 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/
 5. 在“检测批次”下拉框选择要处理的匿名样本范围（例如样本 01–20、21–40）；每批最多 20 个文件，批次按隔离目录中的稳定排序生成。
 6. 等待任务进入 `completed`、`degraded` 或 `cancelled`。页面只显示聚合数量、攻击候选、Request/Packet 区间和证据 ID。
 
+### 同时连接 AutoDL 与本机 PCAP
+
+推荐保持两个独立后端：AutoDL 模型 API 通过 SSH 隧道映射到本机 `127.0.0.1:18001`，本机 Docker PCAP API 监听 `127.0.0.1:18000`。Vite 默认把 `/health`、`/api` 交给 AutoDL，把内部 `/pcap-api` 重写后交给本机 PCAP 后端。因此 Prompt、Challenge、Lab、知识库和 Prompt SuperAgent 使用远端 GPU，PCAP 文件只在本机 Docker 中读取。
+
+如需修改端口，在启动前端前设置：
+
+```powershell
+$env:TOKEN_SECURITY_REMOTE_API_TARGET = "http://127.0.0.1:18001"
+$env:TOKEN_SECURITY_PCAP_API_TARGET = "http://127.0.0.1:18000"
+npm.cmd run dev -- --host 127.0.0.1 --port 5173
+```
+
+生产部署也必须提供相同的 `/api` 与 `/pcap-api` 反向代理边界，不能把本机 PCAP 上传到 AutoDL 作为替代。
+
 ### PCAP 异常检测的结果含义
 
 - **绿色成功**：文件已完成检测；若证据数为 0，表示当前规则范围内未命中，不等于“全部安全”。
@@ -143,7 +157,8 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/
 ## 2026-09-05 最终本地验收
 
 - 后端：`990 passed, 4 skipped`。跳过项为本机未配置真实 GPU 模型，以及当前 Windows 账户不允许创建文件符号链接；目录 junction 防护已覆盖。
-- 前端：25 个测试文件、242 个用例全部通过；生产构建成功，1624 modules transformed。
+- 前端：26 个测试文件、244 个用例全部通过；生产构建成功，1624 modules transformed。
 - PCAP：Docker inspector 镜像重建成功；沙箱验证的网络隔离、只读、非 root、能力剥离、禁止提权、资源限制、零载荷泄漏全部通过。
 - 失败分类：可区分工具失败、处理超时、报告格式无效和容器确认的 PCAP 格式无效；私有 stderr 不进入 API 或页面。
-- 运行环境：本地 PCAP API 可用。AutoDL 模型服务仍需在演示前恢复 SSH 隧道并确认完整健康状态；本轮 SSH 入口在 banner 交换前被重置，因此不把远端运行态写成已通过。
+- 运行环境：AutoDL 模型 API 通过本机 `18001` 隧道返回 `status=ok`，模型、检测器、语义 Guard、知识库、Lab 和 SuperAgent 均就绪；本机 `18000` PCAP API 就绪并识别到 2318 个匿名样本。Vite `5173` 已完成双后端代理验收。
+- 在线冒烟：通过 Vite 对一个受保护 AdvPrompter ID 完成真实分析，返回 `unsafe`、`token_anomaly_candidate` 和 `block`；41 个公开信号的 Token 文本为空且 Token ID 为 0。

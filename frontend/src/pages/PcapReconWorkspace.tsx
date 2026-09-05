@@ -47,7 +47,7 @@ export function PcapReconWorkspace() {
     api.pcapReconOverview().then((nextOverview) => { if (active) setOverview(nextOverview); }).catch(() => active && setError("数据勘察暂不可用")).finally(() => active && setLoading(false));
     if (stored) {
       setRestorePending(true);
-      api.getSuperAgentMission(stored).then((storedMission) => {
+      api.getPcapMission(stored).then((storedMission) => {
       if (!active || storedMission.objective !== "reconnoiter_pcap_dataset") return;
       setMission(storedMission);
       if (terminal.has(storedMission.status)) { try { window.sessionStorage.removeItem(PCAP_RECON_MISSION_STORAGE_KEY); } catch { /* optional persistence */ } }
@@ -65,7 +65,7 @@ export function PcapReconWorkspace() {
     if (!mission || terminal.has(mission.status)) return;
     const timer = window.setTimeout(async () => {
       try {
-        const next = await api.getSuperAgentMission(mission.recon_id);
+        const next = await api.getPcapMission(mission.recon_id);
         if (next.objective === "reconnoiter_pcap_dataset") setMission(next);
       } catch { setError("无法刷新数据勘察状态，请重试。"); }
     }, 1000);

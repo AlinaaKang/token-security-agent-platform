@@ -48,6 +48,8 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+const PCAP_API = "/pcap-api/v1/superagent";
+
 export const api = {
   health: () => requestJson<HealthResponse>("/health"),
   analyze: (prompt: string, modelId: string, mode: Mode, knowledgeMode: KnowledgeMode = "off") =>
@@ -116,41 +118,41 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   pcapCapabilities: () =>
-    requestJson<PcapOverview>("/api/v1/superagent/pcap/capabilities"),
+    requestJson<PcapOverview>(PCAP_API + "/pcap/capabilities"),
   pcapOverview: () =>
-    requestJson<PcapOverview>("/api/v1/superagent/pcap/overview"),
+    requestJson<PcapOverview>(PCAP_API + "/pcap/overview"),
   pcapReconOverview: () =>
-    requestJson<PcapReconOverview>("/api/v1/superagent/pcap/reconnaissance/overview"),
+    requestJson<PcapReconOverview>(PCAP_API + "/pcap/reconnaissance/overview"),
   pcapDetectionOverview: () =>
-    requestJson<PcapDetectionOverview>("/api/v1/superagent/pcap/detection/overview"),
+    requestJson<PcapDetectionOverview>(PCAP_API + "/pcap/detection/overview"),
   authorizePcapDetection: (payload: PcapDetectionAuthorizationRequest) =>
-    requestJson<PcapAuthorizationReceipt>("/api/v1/superagent/pcap/detection/authorizations", {
+    requestJson<PcapAuthorizationReceipt>(PCAP_API + "/pcap/detection/authorizations", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }),
   createPcapDetectionMission: (payload: PcapDetectionMissionRequest) =>
-    requestJson<PcapDetectionMissionResult>("/api/v1/superagent/missions", {
+    requestJson<PcapDetectionMissionResult>(PCAP_API + "/missions", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }),
   authorizePcapRecon: (payload: PcapReconAuthorizationRequest) =>
-    requestJson<PcapReconAuthorizationReceipt>("/api/v1/superagent/pcap/reconnaissance/authorizations", {
+    requestJson<PcapReconAuthorizationReceipt>(PCAP_API + "/pcap/reconnaissance/authorizations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
   createPcapReconMission: (payload: PcapReconMissionRequest) =>
-    requestJson<PcapReconMissionResult>("/api/v1/superagent/missions", {
+    requestJson<PcapReconMissionResult>(PCAP_API + "/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
   authorizePcapBatch: (payload: PcapAuthorizationRequest) =>
-    requestJson<PcapAuthorizationReceipt>("/api/v1/superagent/pcap/authorizations", {
+    requestJson<PcapAuthorizationReceipt>(PCAP_API + "/pcap/authorizations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
   createPcapMission: (payload: PcapMissionRequest) =>
-    requestJson<PcapMissionResult>("/api/v1/superagent/missions", {
+    requestJson<PcapMissionResult>(PCAP_API + "/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -159,14 +161,18 @@ export const api = {
     requestJson<SuperAgentStoredMission>(
       "/api/v1/superagent/missions/" + encodeURIComponent(missionId),
     ),
+  getPcapMission: (missionId: string) =>
+    requestJson<SuperAgentStoredMission>(
+      PCAP_API + "/missions/" + encodeURIComponent(missionId),
+    ),
   cancelPcapMission: (missionId: string) =>
     requestJson<PcapMissionResult>(
-      "/api/v1/superagent/missions/" + encodeURIComponent(missionId) + "/cancel",
+      PCAP_API + "/missions/" + encodeURIComponent(missionId) + "/cancel",
       { method: "POST" },
     ),
   cancelPcapDetectionMission: (missionId: string) =>
     requestJson<PcapDetectionMissionResult>(
-      "/api/v1/superagent/missions/" + encodeURIComponent(missionId) + "/cancel",
+      PCAP_API + "/missions/" + encodeURIComponent(missionId) + "/cancel",
       { method: "POST" },
     ),
 };

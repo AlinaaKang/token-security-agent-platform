@@ -127,21 +127,21 @@ function installFetch(options: {
         replanning_limit: 1,
       });
     }
-    if (url === "/api/v1/superagent/pcap/overview") {
+    if (url === "/pcap-api/v1/superagent/pcap/overview") {
       return options.overviewResponse
         ? options.overviewResponse.then((payload) => response(payload))
         : response(options.overview ?? overview);
     }
-    if (url === "/api/v1/superagent/pcap/authorizations") {
+    if (url === "/pcap-api/v1/superagent/pcap/authorizations") {
       return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 }, true, 201);
     }
-    if (url === "/api/v1/superagent/missions") return response(runningMission, true, 201);
-    if (url === `/api/v1/superagent/missions/${missionId}/cancel`) {
+    if (url === "/pcap-api/v1/superagent/missions") return response(runningMission, true, 201);
+    if (url === `/pcap-api/v1/superagent/missions/${missionId}/cancel`) {
       return options.cancelResponse
         ? options.cancelResponse.then((payload) => response(payload))
         : response(runningMission);
     }
-    if (url === `/api/v1/superagent/missions/${missionId}`) {
+    if (url === `/pcap-api/v1/superagent/missions/${missionId}`) {
       const next = missions.shift() ?? completedMission;
       if (next instanceof Error) {
         return response({ error: { message: next.message } }, false, 500);
@@ -289,11 +289,11 @@ describe("PCAP SuperAgent evidence workspace", () => {
     render(<App />);
     await screen.findByLabelText("任务场景");
 
-    expect(requestUrls()).not.toContain(`/api/v1/superagent/missions/${missionId}`);
+    expect(requestUrls()).not.toContain(`/pcap-api/v1/superagent/missions/${missionId}`);
     fireEvent.click(screen.getByRole("button", { name: "PCAP 证据分诊" }));
 
     expect(await screen.findByText("任务已完成")).toBeVisible();
-    expect(requestUrls()).toContain(`/api/v1/superagent/missions/${missionId}`);
+    expect(requestUrls()).toContain(`/pcap-api/v1/superagent/missions/${missionId}`);
     expect(requestBodies("/pcap/authorizations")).toHaveLength(0);
   });
 

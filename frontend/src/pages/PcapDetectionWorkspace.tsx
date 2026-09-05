@@ -48,7 +48,7 @@ export function PcapDetectionWorkspace() {
     let timer: number | undefined;
     const poll = async () => {
       try {
-        const result = await api.getSuperAgentMission(mission.detection_id);
+        const result = await api.getPcapMission(mission.detection_id);
         if (!active || result.objective !== "detect_pcap_anomalies") return;
         setMission(result);
         if (!TERMINAL.has(result.status)) timer = window.setTimeout(poll, 500);

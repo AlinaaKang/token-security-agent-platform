@@ -47,11 +47,11 @@ function installFetch(options: { reconRestoreStatus?: number } = {}) {
     const url = String(input);
     if (url === "/api/v1/lab/scenarios") return response([]);
     if (url === "/api/v1/superagent/capabilities") return response({ ready: true, internal_only: true, objectives: ["investigate_and_respond"], actors: ["coordinator"], max_tool_calls: 3, max_trace_events: 12, replanning_limit: 1 });
-    if (url === "/api/v1/superagent/pcap/overview") return response({ enabled: true, pending_file_count: 17, tool_id: "pcap_batch_triage", max_batch_size: 20, max_trace_events: 12, actors: ["coordinator"] });
-    if (url === "/api/v1/superagent/pcap/reconnaissance/overview") return response(reconOverview);
-    if (url === "/api/v1/superagent/pcap/reconnaissance/authorizations") return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 }, true);
-    if (url === "/api/v1/superagent/missions" && init?.method === "POST") return response(reconMission);
-    if (url === "/api/v1/superagent/missions/recon_0123456789abcdef0123456789abcdef") return options.reconRestoreStatus ? response({ error: { message: "private" } }, false, options.reconRestoreStatus) : response(reconMission);
+    if (url === "/pcap-api/v1/superagent/pcap/overview") return response({ enabled: true, pending_file_count: 17, tool_id: "pcap_batch_triage", max_batch_size: 20, max_trace_events: 12, actors: ["coordinator"] });
+    if (url === "/pcap-api/v1/superagent/pcap/reconnaissance/overview") return response(reconOverview);
+    if (url === "/pcap-api/v1/superagent/pcap/reconnaissance/authorizations") return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 }, true);
+    if (url === "/pcap-api/v1/superagent/missions" && init?.method === "POST") return response(reconMission);
+    if (url === "/pcap-api/v1/superagent/missions/recon_0123456789abcdef0123456789abcdef") return options.reconRestoreStatus ? response({ error: { message: "private" } }, false, options.reconRestoreStatus) : response(reconMission);
     throw new Error(`Unexpected request: ${url}`);
   }));
 }
@@ -123,7 +123,7 @@ describe("PCAP reconnaissance workspace", () => {
       if (url.endsWith(`/missions/${reconMission.recon_id}`)) return response(missionWithUnknown);
       if (url === "/api/v1/lab/scenarios") return response([]);
       if (url === "/api/v1/superagent/capabilities") return response({ ready: true, internal_only: true, objectives: ["investigate_and_respond"], actors: ["coordinator"], max_tool_calls: 3, max_trace_events: 12, replanning_limit: 1 });
-      if (url === "/api/v1/superagent/pcap/overview") return response({ enabled: true, pending_file_count: 17, tool_id: "pcap_batch_triage", max_batch_size: 20, max_trace_events: 12, actors: ["coordinator"] });
+      if (url === "/pcap-api/v1/superagent/pcap/overview") return response({ enabled: true, pending_file_count: 17, tool_id: "pcap_batch_triage", max_batch_size: 20, max_trace_events: 12, actors: ["coordinator"] });
       throw new Error(`Unexpected request: ${url}`);
     }));
     render(<App />); fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" })); fireEvent.click(await screen.findByRole("button", { name: "数据勘察" }));
@@ -140,10 +140,10 @@ describe("PCAP reconnaissance workspace", () => {
       if (url.endsWith("/pcap/reconnaissance/overview")) return response(reconOverview);
       if (url.endsWith(`/missions/${reconMission.recon_id}`)) return response(degraded);
       if (url.endsWith("/pcap/reconnaissance/authorizations")) return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 });
-      if (url === "/api/v1/superagent/missions" && init?.method === "POST") return response(reconMission);
+      if (url === "/pcap-api/v1/superagent/missions" && init?.method === "POST") return response(reconMission);
       if (url === "/api/v1/lab/scenarios") return response([]);
       if (url === "/api/v1/superagent/capabilities") return response({ ready: true, internal_only: true, objectives: ["investigate_and_respond"], actors: ["coordinator"], max_tool_calls: 3, max_trace_events: 12, replanning_limit: 1 });
-      if (url === "/api/v1/superagent/pcap/overview") return response({ enabled: true, pending_file_count: 17, tool_id: "pcap_batch_triage", max_batch_size: 20, max_trace_events: 12, actors: ["coordinator"] });
+      if (url === "/pcap-api/v1/superagent/pcap/overview") return response({ enabled: true, pending_file_count: 17, tool_id: "pcap_batch_triage", max_batch_size: 20, max_trace_events: 12, actors: ["coordinator"] });
       throw new Error(`Unexpected request: ${url}`);
     }));
     render(<App />); fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" })); fireEvent.click(await screen.findByRole("button", { name: "数据勘察" }));

@@ -43,7 +43,7 @@ PCAP 分层侦察同样是阶段门禁，不是攻击检测器。最小文件优
 ## 当前验证
 
 - 后端：990 passed；1 个本机真实 GPU 集成测试因未配置模型而 skipped，3 个 Windows 符号链接用例因当前账户无相应权限而 skipped；无需该权限的目录 junction 边界测试已通过。
-- 前端：242 个自动化测试全部通过；TypeScript 与 Vite 生产构建通过，1624 modules transformed。
+- 前端：244 个自动化测试全部通过；TypeScript 与 Vite 生产构建通过，1624 modules transformed。
 - PCAP Docker：隔离镜像已重建；无网络、只读根文件系统、非 root、能力全丢弃、禁止提权、资源限制和零公开载荷泄漏门禁全部通过。
 - AutoDL：RTX 4090 D 24GB，Qwen2.5-7B-Instruct + Qwen3Guard-Gen-0.6B；模型、检测器、语义 Guard、知识库、审计、评测、样本服务、实验舱和 SuperAgent 全部 ready，部署校准一致。
 - 原始 CPD/NLL 基准：冻结测试 663 条，其中攻击 460、无害 203。
@@ -87,7 +87,7 @@ npm.cmd run build
 - `TOKEN_SECURITY_AGENT_ABLATION_MANIFEST_PATH`
 - `TOKEN_SECURITY_AGENT_ABLATION_REPORT_PATH`
 
-开发模式 Web 默认通过 Vite 将 `/health` 和 `/api` 代理到 `http://127.0.0.1:18000`。
+开发模式 Web 默认通过 Vite 将 `/health` 和 `/api` 代理到 AutoDL 隧道 `http://127.0.0.1:18001`，并将浏览器内部的 `/pcap-api` 重写为 `/api` 后代理到本机 Docker PCAP 后端 `http://127.0.0.1:18000`。可分别使用 `TOKEN_SECURITY_REMOTE_API_TARGET` 和 `TOKEN_SECURITY_PCAP_API_TARGET` 覆盖目标地址。这样 Prompt、Challenge、Lab 与 PCAP 可以在同一页面会话中使用，PCAP 文件仍不会离开本机。
 
 ## 数据与署名
 

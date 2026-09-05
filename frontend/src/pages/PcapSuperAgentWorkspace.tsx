@@ -216,7 +216,7 @@ export function PcapSuperAgentWorkspace() {
     let active = true;
     const storedMissionId = readStoredMissionId();
     const restoreMission = storedMissionId
-      ? api.getSuperAgentMission(storedMissionId)
+      ? api.getPcapMission(storedMissionId)
       : Promise.resolve(null);
 
     Promise.allSettled([api.pcapOverview(), restoreMission]).then(([overviewResult, missionResult]) => {
@@ -262,7 +262,7 @@ export function PcapSuperAgentWorkspace() {
     const pollMission = async () => {
       if (!isCurrentPoll()) return;
       try {
-        const result = await api.getSuperAgentMission(missionId);
+        const result = await api.getPcapMission(missionId);
         if (!isCurrentPoll()) return;
         if (result.objective !== "triage_pcap_evidence") throw new Error("unexpected mission type");
         setPollFailed(false);
