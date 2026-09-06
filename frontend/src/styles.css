@@ -294,13 +294,23 @@
   font-weight: 750;
   text-decoration: none;
   border: 0;
+  background: transparent;
   cursor: pointer;
+}
+
+.lab-input-switch button:not(.active):hover {
+  color: var(--ink);
+  background: #dfe8e5;
 }
 
 .lab-input-switch button.active {
   color: #153f38;
   background: #fff;
   box-shadow: 0 1px 4px rgba(35, 53, 70, 0.12);
+}
+
+.lab-input-switch button.active:not(:disabled):hover {
+  background: #f6fbf9;
 }
 
 .challenge-page { max-width: 1420px; }
