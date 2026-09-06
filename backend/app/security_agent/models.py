@@ -86,6 +86,7 @@ class AgentTaskStatus(StrEnum):
 class AgentIntent(_PublicModel):
     kind: Literal[
         "identity",
+        "smalltalk",
         "capabilities",
         "explain_attack",
         "explain_pcap",
@@ -255,4 +256,3 @@ class AgentCommandRequest(_PublicModel):
     message: str = Field(min_length=1, max_length=MAX_PROMPT_CHARACTERS)
     task_id: NonEmptyText | None = None
     data_source_refs: tuple[NonEmptyText, ...] = Field(default=(), max_length=20)
-
