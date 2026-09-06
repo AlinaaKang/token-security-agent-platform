@@ -51,6 +51,15 @@ def valid_public_detection_overview() -> dict[str, object]:
     }
 
 
+def test_upload_capability_shape_does_not_contain_private_data() -> None:
+    capability = {
+        "enabled": True,
+        "max_bytes": 536870912,
+        "accepted_formats": ["pcap", "pcapng"],
+    }
+    assert _contains_forbidden_data(capability) is False
+
+
 def _fixed_error(code: str, message: str) -> dict[str, object]:
     return {"error": {"code": code, "message": message}}
 

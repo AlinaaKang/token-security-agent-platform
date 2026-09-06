@@ -35,6 +35,7 @@ from app.pcap.config import PcapConfig
 from app.pcap.executor import PcapBatchExecutor
 from app.pcap.detection_executor import PcapDetectionExecutor
 from app.pcap.recon_executor import PcapReconExecutor
+from app.pcap.upload import PcapUploadService
 from app.superagent.pcap_coordinator import PcapMissionCoordinator
 from app.superagent.pcap_recon_coordinator import PcapReconMissionCoordinator
 from app.superagent.pcap_detection_coordinator import PcapDetectionMissionCoordinator
@@ -59,6 +60,8 @@ _LIFESPAN_STATE_NAMES = (
     "pcap_recon_executor",
     "pcap_detection_coordinator",
     "pcap_detection_executor",
+    "pcap_upload_service",
+    "pcap_upload_max_bytes",
     "service_health",
     "superagent_service",
 )
@@ -125,6 +128,12 @@ async def lifespan(application: FastAPI):
                     pcap_detection_coordinator.close()
                 except Exception as exc:
                     logger.error("pcap detection coordinator cleanup failed error_type=%s", type(exc).__name__)
+            pcap_upload_service = getattr(application.state, "pcap_upload_service", None)
+            if pcap_upload_service is not None:
+                try:
+                    pcap_upload_service.close()
+                except Exception as exc:
+                    logger.error("pcap upload cleanup failed error_type=%s", type(exc).__name__)
         finally:
             try:
                 if lab_execution_store is not None:
@@ -286,7 +295,9 @@ def _initialize_lifespan_services(
     try:
         pcap_config = PcapConfig.from_environ(os.environ)
         if pcap_config is not None:
-            authorization_store = PcapAuthorizationStore()
+            authorization_store = PcapAuthorizationStore(
+                upload_max_bytes=pcap_config.upload_max_bytes
+            )
             executor = PcapBatchExecutor(config=pcap_config)
             mission_store = SuperAgentMissionStore()
             pcap_coordinator = PcapMissionCoordinator(
@@ -310,13 +321,20 @@ def _initialize_lifespan_services(
                 logger.error("pcap reconnaissance initialization failed error_type=%s", type(exc).__name__)
             try:
                 detection_executor = PcapDetectionExecutor(config=pcap_config)
+                upload_service = PcapUploadService(
+                    pcap_config.quarantine_root,
+                    max_bytes=pcap_config.upload_max_bytes,
+                )
                 pcap_detection_coordinator = PcapDetectionMissionCoordinator(
                     authorization_store=authorization_store,
                     executor=detection_executor,
                     mission_store=mission_store,
+                    upload_service=upload_service,
                 )
                 application.state.pcap_detection_executor = detection_executor
                 application.state.pcap_detection_coordinator = pcap_detection_coordinator
+                application.state.pcap_upload_service = upload_service
+                application.state.pcap_upload_max_bytes = pcap_config.upload_max_bytes
             except Exception as exc:
                 logger.error("pcap detection initialization failed error_type=%s", type(exc).__name__)
             pcap_health = {

@@ -12,6 +12,12 @@ from app.pcap.authorization import (
     PcapAuthorizationUnknown,
     PcapAuthorizationPurposeMismatch,
 )
+from app.pcap.upload import (
+    PcapUploadInvalid,
+    PcapUploadTooLarge,
+    PcapUploadUnavailable,
+    PcapUploadUnsupported,
+)
 from app.superagent.models import (
     PcapDetectionMissionRequest,
     PcapReconMissionRequest,
@@ -108,6 +114,10 @@ def _pcap_detection_failed() -> JSONResponse:
     )
 
 
+def _pcap_upload_error(status_code: int, code: str, message: str) -> JSONResponse:
+    return _error(status_code=status_code, code=code, message=message)
+
+
 def _pcap_components(request: Request) -> tuple[Any, Any, Any] | None:
     authorization_store = getattr(
         request.app.state, "pcap_authorization_store", None
@@ -135,6 +145,15 @@ def _pcap_detection_components(request: Request) -> tuple[Any, Any, Any] | None:
     if authorization_store is None or executor is None or coordinator is None:
         return None
     return authorization_store, executor, coordinator
+
+
+def _pcap_upload_components(request: Request) -> tuple[Any, Any, Any, int] | None:
+    detection = _pcap_detection_components(request)
+    upload_service = getattr(request.app.state, "pcap_upload_service", None)
+    upload_max_bytes = getattr(request.app.state, "pcap_upload_max_bytes", None)
+    if detection is None or upload_service is None or type(upload_max_bytes) is not int:
+        return None
+    return detection[0], detection[2], upload_service, upload_max_bytes
 
 
 @router.get("/capabilities")
@@ -192,6 +211,12 @@ class _PcapDetectionAuthorizationPayload(BaseModel):
     max_files: int = Field(ge=1, le=20, strict=True)
 
 
+class _PcapUploadAuthorizationPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: Literal[True]
+    byte_count: int = Field(gt=0, strict=True)
+
+
 @router.get("/pcap/detection/overview")
 def pcap_detection_overview(request: Request) -> Any:
     components = _pcap_detection_components(request)
@@ -214,6 +239,132 @@ def authorize_pcap_detection(
         return components[0].issue(payload.max_files, purpose="detection")
     except Exception:
         return _pcap_detection_failed()
+
+
+@router.get("/pcap/detection/upload-capability")
+def pcap_upload_capability(request: Request) -> dict[str, object]:
+    components = _pcap_upload_components(request)
+    return {
+        "enabled": components is not None,
+        "max_bytes": components[3] if components is not None else 0,
+        "accepted_formats": ["pcap", "pcapng"],
+    }
+
+
+@router.post("/pcap/detection/upload-authorizations", status_code=201)
+def authorize_pcap_upload(
+    payload: _PcapUploadAuthorizationPayload, request: Request
+) -> Any:
+    components = _pcap_upload_components(request)
+    if components is None:
+        return _pcap_upload_error(
+            503, "pcap_upload_unavailable", "pcap upload is unavailable"
+        )
+    authorization_store, _coordinator, _upload_service, upload_max_bytes = components
+    if payload.byte_count > upload_max_bytes:
+        return _pcap_upload_error(
+            413, "pcap_upload_too_large", "pcap upload exceeds the size limit"
+        )
+    try:
+        return authorization_store.issue(
+            1,
+            purpose="upload_detection",
+            expected_byte_count=payload.byte_count,
+        )
+    except Exception:
+        return _pcap_upload_error(500, "pcap_upload_failed", "pcap upload failed")
+
+
+@router.post("/pcap/detection/uploads", status_code=201)
+async def upload_pcap_for_detection(request: Request) -> Any:
+    components = _pcap_upload_components(request)
+    if components is None:
+        return _pcap_upload_error(
+            503, "pcap_upload_unavailable", "pcap upload is unavailable"
+        )
+    authorization_id = request.headers.get("x-pcap-authorization")
+    if not authorization_id:
+        return _pcap_upload_error(
+            403,
+            "pcap_authorization_required",
+            "pcap authorization is required",
+        )
+    content_length_text = request.headers.get("content-length", "")
+    if not content_length_text.isascii() or not content_length_text.isdecimal():
+        return _pcap_upload_error(400, "pcap_upload_invalid", "pcap upload is invalid")
+    content_length = int(content_length_text)
+    if content_length < 1:
+        return _pcap_upload_error(400, "pcap_upload_invalid", "pcap upload is invalid")
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/octet-stream":
+        return _pcap_upload_error(
+            415, "pcap_format_unsupported", "pcap format is unsupported"
+        )
+
+    authorization_store, coordinator, upload_service, upload_max_bytes = components
+    if content_length > upload_max_bytes:
+        return _pcap_upload_error(
+            413, "pcap_upload_too_large", "pcap upload exceeds the size limit"
+        )
+    try:
+        authorization_store.consume(
+            authorization_id,
+            purpose="upload_detection",
+            expected_byte_count=content_length,
+        )
+        handle = await upload_service.accept(
+            request.stream(),
+            authorization_id=authorization_id,
+            content_length=content_length,
+        )
+        try:
+            return coordinator.start_uploaded(handle)
+        except Exception:
+            upload_service.discard(handle.handle_id)
+            raise
+    except PcapAuthorizationPurposeMismatch:
+        return _pcap_upload_error(
+            403,
+            "pcap_authorization_required",
+            "pcap authorization is required",
+        )
+    except PcapAuthorizationUnknown:
+        return _pcap_upload_error(
+            403,
+            "pcap_authorization_required",
+            "pcap authorization is required",
+        )
+    except PcapAuthorizationExpired:
+        return _pcap_upload_error(
+            410, "pcap_authorization_expired", "pcap authorization expired"
+        )
+    except PcapAuthorizationAlreadyUsed:
+        return _pcap_upload_error(
+            409, "pcap_authorization_used", "pcap authorization was already used"
+        )
+    except PcapUploadTooLarge:
+        return _pcap_upload_error(
+            413, "pcap_upload_too_large", "pcap upload exceeds the size limit"
+        )
+    except PcapUploadUnsupported:
+        return _pcap_upload_error(
+            415, "pcap_format_unsupported", "pcap format is unsupported"
+        )
+    except (PcapUploadInvalid, ValueError):
+        return _pcap_upload_error(400, "pcap_upload_invalid", "pcap upload is invalid")
+    except PcapUploadUnavailable:
+        return _pcap_upload_error(
+            503, "pcap_upload_unavailable", "pcap upload is unavailable"
+        )
+    except RuntimeError as exc:
+        if str(exc) == "pcap_detection_active":
+            return _error(
+                status_code=409,
+                code="pcap_detection_active",
+                message="pcap detection is already active",
+            )
+        return _pcap_upload_error(500, "pcap_upload_failed", "pcap upload failed")
+    except Exception:
+        return _pcap_upload_error(500, "pcap_upload_failed", "pcap upload failed")
 
 
 @router.get("/pcap/reconnaissance/overview")
