@@ -44,6 +44,29 @@ describe("API backend routing", () => {
     ]);
   });
 
+  it("exposes the unified agent task lifecycle on the main API", async () => {
+    const fetchMock = vi.fn((_url: string) => ok());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.agentCapabilities();
+    await api.createAgentTask("检测这批 PCAP");
+    await api.listAgentTasks(20, 0);
+    await api.getAgentTask("task_01");
+    await api.messageAgentTask("task_01", "解释 packet 4-4");
+    await api.authorizeAgentTask("task_01", ["pcap:read"]);
+    await api.cancelAgentTask("task_01");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/agent/capabilities",
+      "/api/v1/agent/tasks",
+      "/api/v1/agent/tasks?limit=20&offset=0",
+      "/api/v1/agent/tasks/task_01",
+      "/api/v1/agent/tasks/task_01/messages",
+      "/api/v1/agent/tasks/task_01/authorizations",
+      "/api/v1/agent/tasks/task_01/cancel",
+    ]);
+  });
+
   it("uploads the exact browser file through the local namespace without a filename header", async () => {
     class FakeXhr {
       static latest: FakeXhr;

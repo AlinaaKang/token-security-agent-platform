@@ -33,6 +33,11 @@ import type {
   SuperAgentMissionResult,
   SuperAgentStoredMission,
 } from "./types";
+import type {
+  AgentCapabilities,
+  AgentTaskPage,
+  AgentTaskSnapshot,
+} from "./agent/types";
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -88,6 +93,36 @@ function uploadPcapForDetection(
 
 export const api = {
   health: () => requestJson<HealthResponse>("/health"),
+  agentCapabilities: () =>
+    requestJson<AgentCapabilities>("/api/v1/agent/capabilities"),
+  createAgentTask: (message: string) =>
+    requestJson<AgentTaskSnapshot>("/api/v1/agent/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    }),
+  listAgentTasks: (limit = 20, offset = 0) =>
+    requestJson<AgentTaskPage>(`/api/v1/agent/tasks?limit=${limit}&offset=${offset}`),
+  getAgentTask: (taskId: string) =>
+    requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}`),
+  messageAgentTask: (taskId: string, message: string) =>
+    requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    }),
+  authorizeAgentTask: (taskId: string, scopes: string[]) =>
+    requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}/authorizations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed: true, scopes }),
+    }),
+  cancelAgentTask: (taskId: string) =>
+    requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: "POST",
+    }),
+  agentEventStreamUrl: (taskId: string) =>
+    `/api/v1/agent/tasks/${encodeURIComponent(taskId)}/events`,
   analyze: (prompt: string, modelId: string, mode: Mode, knowledgeMode: KnowledgeMode = "off") =>
     requestJson<AnalysisResult>("/api/v1/analyze", {
       method: "POST",
