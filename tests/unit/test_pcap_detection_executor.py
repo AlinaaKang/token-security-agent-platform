@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import app.pcap.detection_executor as detection_executor_module
 from app.pcap.config import PcapConfig
 from app.pcap.detection_executor import PcapDetectionExecutor, PcapDetectionToolFailed
 
@@ -187,4 +188,60 @@ def test_detection_executor_redacts_enumeration_failures(tmp_path: Path) -> None
     with pytest.raises(PcapDetectionToolFailed, match="pcap_detection_failed"):
         PcapDetectionExecutor(config=config).execute(
             "detection_0123456789abcdef0123456789abcdef", 1
+        )
+
+
+def test_detection_executor_inspects_exactly_one_uploaded_capture_without_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    uploads = config.quarantine_root / "uploads"
+    uploads.mkdir()
+    capture = uploads / "upload_private.pcap"
+    capture.write_bytes(bytes.fromhex("a1b2c3d4") + bytes(20))
+    commands: list[list[str]] = []
+
+    def runner(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        commands.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({**_detection_report(), "evidence": []}),
+            stderr="",
+        )
+
+    def forbid_discovery(*_args: object, **_kwargs: object) -> tuple[Path, ...]:
+        raise AssertionError("uploaded detection must not discover directory captures")
+
+    monkeypatch.setattr(detection_executor_module, "_capture_paths", forbid_discovery)
+    progress: list[int] = []
+
+    summary = PcapDetectionExecutor(config=config, runner=runner).execute_capture(
+        "detection_0123456789abcdef0123456789abcdef",
+        capture,
+        on_progress=lambda current: progress.append(current.analyzed_count),
+    )
+
+    assert summary.analyzed_count == 1
+    assert summary.processed_samples[0].sample_index == 1
+    assert progress == [1]
+    assert len(commands) == 1
+    assert commands[0][commands[0].index("-Path") + 1] == str(capture)
+
+
+@pytest.mark.parametrize("location", ["outside", "directory"])
+def test_detection_executor_rejects_uploaded_paths_outside_owned_regular_files(
+    tmp_path: Path, location: str
+) -> None:
+    config = _config(tmp_path)
+    uploads = config.quarantine_root / "uploads"
+    uploads.mkdir()
+    capture = tmp_path / "outside.pcap" if location == "outside" else uploads / "folder"
+    if location == "outside":
+        capture.write_bytes(b"capture")
+    else:
+        capture.mkdir()
+
+    with pytest.raises(PcapDetectionToolFailed):
+        PcapDetectionExecutor(config=config).execute_capture(
+            "detection_0123456789abcdef0123456789abcdef", capture
         )

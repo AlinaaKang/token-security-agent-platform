@@ -124,6 +124,41 @@ class PcapDetectionExecutor:
 
         return _summary_from_results(results)
 
+    def execute_capture(
+        self,
+        detection_id: str,
+        capture_path: Path,
+        on_progress: Callable[[PcapDetectionSummary], None] | None = None,
+    ) -> PcapDetectionSummary:
+        _validate_detection_id(detection_id)
+        try:
+            _validate_uploaded_capture(
+                capture_path,
+                self._config.quarantine_root / "uploads",
+            )
+        except Exception:
+            raise PcapDetectionToolFailed() from None
+
+        try:
+            result = (True, self._inspect_capture(capture_path), None)
+        except _PcapDetectionSampleFailed as exc:
+            result = (False, (), exc.code)
+        except subprocess.TimeoutExpired:
+            result = (False, (), PcapDetectionFailureCode.TOOL_TIMEOUT)
+        except Exception:
+            result = (False, (), PcapDetectionFailureCode.TOOL_FAILED)
+        finally:
+            with self._lock:
+                self._cancel_requested.discard(detection_id)
+
+        summary = _summary_from_results([result])
+        if on_progress is not None:
+            try:
+                on_progress(summary)
+            except Exception:
+                pass
+        return summary
+
     def _inspect_capture(self, capture_path: Path) -> tuple[PcapLocalizedEvidence, ...]:
         completed = self._runner(
             self._command(capture_path),
@@ -254,6 +289,18 @@ def _capture_paths(input_root: Path, max_files: int, start_index: int = 0) -> tu
     if type(start_index) is not int or start_index < 0:
         raise ValueError("start_index must be a nonnegative integer")
     return tuple(captures[start_index : start_index + max_files])
+
+
+def _validate_uploaded_capture(capture_path: Path, uploads_root: Path) -> None:
+    capture_path = Path(capture_path)
+    root_metadata = uploads_root.lstat()
+    capture_metadata = capture_path.lstat()
+    if _is_reparse_metadata(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
+        raise ValueError("invalid upload root")
+    if _is_reparse_metadata(capture_metadata) or not stat.S_ISREG(capture_metadata.st_mode):
+        raise ValueError("invalid uploaded capture")
+    if capture_path.parent.resolve() != uploads_root.resolve():
+        raise ValueError("uploaded capture must be inside upload root")
 
 
 def _validate_detection_id(detection_id: str) -> None:

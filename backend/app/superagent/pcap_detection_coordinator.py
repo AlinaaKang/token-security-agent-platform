@@ -18,6 +18,7 @@ from app.pcap.detection_models import (
     PcapDetectionUnknown,
 )
 from app.pcap.models import PcapActor, PcapMissionStatus
+from app.pcap.upload import PcapUploadHandle
 from app.superagent.models import PcapDetectionMissionRequest
 from app.superagent.store import SuperAgentMissionNotFound, SuperAgentMissionStore
 
@@ -34,10 +35,12 @@ class PcapDetectionMissionCoordinator:
         authorization_store: Any,
         executor: Any,
         mission_store: SuperAgentMissionStore | None = None,
+        upload_service: Any | None = None,
     ) -> None:
         self._authorization_store = authorization_store
         self._executor = executor
         self._mission_store = mission_store or SuperAgentMissionStore()
+        self._upload_service = upload_service
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pcap-detection")
         self._lock = RLock()
         self._closed = False
@@ -77,6 +80,39 @@ class PcapDetectionMissionCoordinator:
             )
             return queued
 
+    def start_uploaded(self, handle: PcapUploadHandle) -> PcapDetectionMissionResult:
+        with self._lock:
+            if self._closed or self._upload_service is None:
+                raise RuntimeError("pcap_detection_unavailable")
+            if self._active_ids:
+                raise RuntimeError("pcap_detection_active")
+            claimed = self._upload_service.claim(handle.handle_id)
+            if claimed != handle:
+                self._upload_service.discard(handle.handle_id)
+                raise RuntimeError("pcap_upload_invalid")
+            detection_id = f"detection_{uuid.uuid4().hex}"
+            queued = _snapshot(
+                detection_id=detection_id,
+                status=PcapMissionStatus.QUEUED,
+                events=(_event(1, PcapDetectionNarrative.AUTHORIZATION_ACCEPTED, "queued"),),
+            )
+            self._mission_store.put(queued)
+            self._active_ids.add(detection_id)
+            try:
+                self._pool.submit(
+                    self._run,
+                    detection_id,
+                    queued.created_at,
+                    1,
+                    0,
+                    handle,
+                )
+            except Exception:
+                self._active_ids.discard(detection_id)
+                self._upload_service.discard(handle.handle_id)
+                raise
+            return queued
+
     def cancel(self, detection_id: str) -> PcapDetectionMissionResult:
         with self._lock:
             current = self._mission_store.get(detection_id)
@@ -101,7 +137,14 @@ class PcapDetectionMissionCoordinator:
                 pass
         self._pool.shutdown(wait=True, cancel_futures=False)
 
-    def _run(self, detection_id: str, created_at: str, max_files: int, start_index: int) -> None:
+    def _run(
+        self,
+        detection_id: str,
+        created_at: str,
+        max_files: int,
+        start_index: int,
+        upload_handle: PcapUploadHandle | None = None,
+    ) -> None:
         try:
             self._mission_store.put(
                 _snapshot(
@@ -129,12 +172,23 @@ class PcapDetectionMissionCoordinator:
                     )
                 )
 
-            execute = self._executor.execute
+            execute = (
+                self._executor.execute_capture
+                if upload_handle is not None
+                else self._executor.execute
+            )
             parameters = inspect.signature(execute).parameters
             kwargs = {"on_progress": publish_progress} if "on_progress" in parameters else {}
-            if "start_index" in parameters:
+            if upload_handle is not None:
+                summary = execute(
+                    detection_id,
+                    upload_handle.capture_path,
+                    **kwargs,
+                )
+            elif "start_index" in parameters:
                 kwargs["start_index"] = start_index
-            if kwargs:
+                summary = execute(detection_id, max_files, **kwargs)
+            elif kwargs:
                 summary = execute(detection_id, max_files, **kwargs)
             else:
                 summary = execute(detection_id, max_files)
@@ -181,6 +235,8 @@ class PcapDetectionMissionCoordinator:
                     )
                 )
         finally:
+            if upload_handle is not None and self._upload_service is not None:
+                self._upload_service.discard(upload_handle.handle_id)
             with self._lock:
                 self._active_ids.discard(detection_id)
                 self._cancel_requested.discard(detection_id)
