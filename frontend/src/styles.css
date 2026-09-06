@@ -1133,6 +1133,28 @@ body { color: var(--agent-ink); background: var(--agent-canvas); overflow-x: hid
   .agent-inspector-case > nav button { min-width: 44px; height: 44px; }
   .agent-inspector-case { grid-template-rows: 56px minmax(0, 1fr); }
 }
+
+.agent-resource-center { min-width: 0; min-height: 0; overflow-y: auto; }
+.agent-resource-center > header { min-height: 68px; padding: 12px 15px; border-bottom: 1px solid var(--agent-line); background: #f3f8fc; display: flex; align-items: center; gap: 9px; }
+.agent-resource-center > header > svg { flex: 0 0 auto; color: var(--agent-blue); }
+.agent-resource-center > header strong { font-size: 11px; }
+.agent-resource-center > header p { margin: 3px 0 0; color: var(--agent-muted); font-size: 8px; }
+.agent-resource-center > footer { padding: 12px 15px; color: var(--agent-muted); border-top: 1px solid var(--agent-line); font-size: 8px; line-height: 1.55; }
+.agent-connector-list article { min-height: 54px; padding: 8px 14px; border-bottom: 1px solid #e3edf4; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.agent-connector-list article > span { width: 26px; height: 26px; color: var(--agent-blue); border-radius: 5px; background: #eaf4fb; display: grid; place-items: center; }
+.agent-connector-list article > div { min-width: 0; display: grid; gap: 2px; }
+.agent-connector-list strong { font-size: 9px; }
+.agent-connector-list small { color: var(--agent-muted); font: 8px Consolas, monospace; overflow-wrap: anywhere; }
+.agent-connector-list b { min-height: 23px; padding: 3px 6px; color: var(--agent-blue-strong); border: 1px solid #bdd7e9; border-radius: 4px; background: #eef7fd; font-size: 8px; display: inline-flex; align-items: center; }
+.agent-connector-list b[data-state="simulated"], .agent-connector-list b[data-state="degraded"] { color: #855d20; border-color: #dfc99c; background: #fff7e7; }
+.agent-connector-list b[data-state="unavailable"] { color: #687b8c; border-color: #d4dee5; background: #f2f5f7; }
+.agent-playbook-list article { padding: 13px 15px; border-bottom: 1px solid #e2ecf3; display: grid; gap: 7px; }
+.agent-playbook-list strong { font-size: 10px; }
+.agent-playbook-list p { margin: 4px 0 0; color: var(--agent-muted); font-size: 8px; line-height: 1.55; }
+.agent-playbook-list span { color: var(--agent-blue-strong); font-size: 8px; font-weight: 700; }
+.agent-knowledge-sources { padding: 12px 15px; display: grid; gap: 7px; }
+.agent-knowledge-sources span { min-height: 36px; padding: 0 10px; border: 1px solid #d4e3ee; border-radius: 5px; background: #f7fbfd; display: flex; align-items: center; font-size: 9px; }
+.agent-resource-empty { padding: 30px 18px; color: var(--agent-muted); text-align: center; font-size: 9px; line-height: 1.6; }
 .challenge-signal-empty { min-height: 150px; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 
 .challenge-investigation-desk {

@@ -35,6 +35,7 @@ import type {
 } from "./types";
 import type {
   AgentCapabilities,
+  AgentPlaybookCatalog,
   AgentTaskPage,
   AgentTaskSnapshot,
 } from "./agent/types";
@@ -95,6 +96,8 @@ export const api = {
   health: () => requestJson<HealthResponse>("/health"),
   agentCapabilities: () =>
     requestJson<AgentCapabilities>("/api/v1/agent/capabilities"),
+  agentPlaybooks: () =>
+    requestJson<AgentPlaybookCatalog>("/api/v1/agent/playbooks"),
   createAgentTask: (message: string) =>
     requestJson<AgentTaskSnapshot>("/api/v1/agent/tasks", {
       method: "POST",

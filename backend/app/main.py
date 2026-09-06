@@ -44,6 +44,7 @@ from app.superagent.pcap_detection_coordinator import PcapDetectionMissionCoordi
 from app.superagent.service import SuperAgentService
 from app.superagent.store import SuperAgentMissionStore
 from app.security_agent.coordinator import SecurityAgentCoordinator
+from app.security_agent.feedback import AnalystFeedbackService
 from app.security_agent.models import AgentCapabilities
 from app.security_agent.simulated import SimulatedTelemetryConnector
 from app.security_agent.store import SecurityAgentStore
@@ -72,6 +73,7 @@ _LIFESPAN_STATE_NAMES = (
     "service_health",
     "superagent_service",
     "security_agent_coordinator",
+    "security_agent_feedback",
 )
 
 
@@ -81,6 +83,7 @@ async def lifespan(application: FastAPI):
     event_store = None
     lab_execution_store = None
     security_agent_coordinator = None
+    security_agent_feedback = None
     try:
         lab_enabled = lab_enabled_from_environ(os.environ)
         application.state.lab_enabled = lab_enabled
@@ -113,6 +116,16 @@ async def lifespan(application: FastAPI):
         )
         try:
             security_agent_coordinator = _initialize_security_agent(application)
+            database_value = os.environ.get(
+                "TOKEN_SECURITY_AGENT_DATABASE_PATH", "tmp/security-agent.sqlite3"
+            ).strip()
+            security_agent_feedback = AnalystFeedbackService(
+                Path(database_value),
+                detector_identity=lambda: str(
+                    getattr(application.state, "active_calibration_version", "unavailable")
+                ),
+            )
+            application.state.security_agent_feedback = security_agent_feedback
         except Exception as exc:
             logger.error(
                 "security agent initialization failed error_type=%s", type(exc).__name__
@@ -151,18 +164,22 @@ async def lifespan(application: FastAPI):
                     logger.error("pcap upload cleanup failed error_type=%s", type(exc).__name__)
         finally:
             try:
-                if security_agent_coordinator is not None:
-                    security_agent_coordinator.close()
+                if security_agent_feedback is not None:
+                    security_agent_feedback.close()
             finally:
                 try:
-                    if lab_execution_store is not None:
-                        lab_execution_store.close()
+                    if security_agent_coordinator is not None:
+                        security_agent_coordinator.close()
                 finally:
                     try:
-                        if event_store is not None:
-                            event_store.close()
+                        if lab_execution_store is not None:
+                            lab_execution_store.close()
                     finally:
-                        _clear_lifespan_state(application)
+                        try:
+                            if event_store is not None:
+                                event_store.close()
+                        finally:
+                            _clear_lifespan_state(application)
 
 
 def _initialize_lifespan_services(

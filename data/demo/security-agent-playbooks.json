@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "playbooks": [
+    {
+      "playbook_id": "prompt_investigation_v1",
+      "title": "Prompt 安全调查",
+      "task_type": "prompt_investigation",
+      "description": "执行语义、Token、反事实与知识证据调查。",
+      "steps": [
+        { "step_id": "step_01", "tool_id": "analyze_prompt", "requires_authorization": true, "on_failure": "stop_for_review" },
+        { "step_id": "step_02", "tool_id": "counterfactual_recheck", "requires_authorization": true, "on_failure": "continue_degraded" },
+        { "step_id": "step_03", "tool_id": "retrieve_security_knowledge", "requires_authorization": false, "on_failure": "continue_degraded" },
+        { "step_id": "step_04", "tool_id": "generate_case_report", "requires_authorization": false, "on_failure": "continue_degraded" }
+      ]
+    },
+    {
+      "playbook_id": "pcap_dataset_v1",
+      "title": "PCAP 数据集调查",
+      "task_type": "pcap_dataset_investigation",
+      "description": "在隔离环境中分批检查可解析性、异常候选和报告。",
+      "steps": [
+        { "step_id": "step_01", "tool_id": "inspect_pcap_dataset", "requires_authorization": true, "on_failure": "stop_for_review" },
+        { "step_id": "step_02", "tool_id": "detect_pcap_batch", "requires_authorization": true, "on_failure": "retry_once" },
+        { "step_id": "step_03", "tool_id": "explain_pcap_capture", "requires_authorization": true, "on_failure": "continue_degraded" },
+        { "step_id": "step_04", "tool_id": "generate_case_report", "requires_authorization": false, "on_failure": "continue_degraded" }
+      ]
+    },
+    {
+      "playbook_id": "cross_domain_demo_v1",
+      "title": "跨域安全案件演示",
+      "task_type": "cross_domain_case",
+      "description": "关联明确标注的流量、端点、身份和日志仿真证据并验证内部处置。",
+      "steps": [
+        { "step_id": "step_01", "tool_id": "query_simulated_telemetry", "requires_authorization": true, "on_failure": "stop_for_review" },
+        { "step_id": "step_02", "tool_id": "map_attack_framework", "requires_authorization": false, "on_failure": "continue_degraded" },
+        { "step_id": "step_03", "tool_id": "simulate_response_options", "requires_authorization": false, "on_failure": "continue_degraded" },
+        { "step_id": "step_04", "tool_id": "execute_internal_action", "requires_authorization": true, "on_failure": "stop_for_review" },
+        { "step_id": "step_05", "tool_id": "verify_response_effect", "requires_authorization": false, "on_failure": "stop_for_review" }
+      ]
+    },
+    {
+      "playbook_id": "report_generation_v1",
+      "title": "引用报告生成",
+      "task_type": "report_generation",
+      "description": "只使用当前案件的公开证据引用生成 Markdown 报告。",
+      "steps": [
+        { "step_id": "step_01", "tool_id": "generate_case_report", "requires_authorization": false, "on_failure": "continue_degraded" }
+      ]
+    }
+  ]
+}

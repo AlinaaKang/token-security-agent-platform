@@ -1,18 +1,22 @@
 import { Braces, Clock3, FileText, Microscope, PanelRightClose, Scale, Wrench } from "lucide-react";
 import { useState } from "react";
+import { useEffect } from "react";
 
-import type { AgentTaskSnapshot } from "../agent/types";
+import { api } from "../api";
+import type { AgentCapabilities, AgentPlaybook, AgentTaskSnapshot } from "../agent/types";
 import { AgentAttackTimeline } from "./AgentAttackTimeline";
 import { AgentEvidenceInspector } from "./AgentEvidenceInspector";
 import { AgentHypothesisPanel } from "./AgentHypothesisPanel";
 import { AgentReportInspector } from "./AgentReportInspector";
 import { AgentToolInspector } from "./AgentToolInspector";
+import { AgentResourceCenter } from "./AgentResourceCenter";
 
 type AgentInspectorShellProps = {
   pathname: string;
   className?: string;
   onClose?: () => void;
   task?: AgentTaskSnapshot | null;
+  resource?: string | null;
 };
 
 const labels: Record<string, { title: string; context: string }> = {
@@ -32,17 +36,29 @@ const tabs = [
   { id: "report", label: "报告", Icon: FileText },
 ] as const;
 
-export function AgentInspectorShell({ pathname, className = "", onClose, task = null }: AgentInspectorShellProps) {
+export function AgentInspectorShell({ pathname, className = "", onClose, task = null, resource = null }: AgentInspectorShellProps) {
   const copy = labels[pathname] ?? labels["/super-agent"];
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("evidence");
   const agentRoute = pathname === "/super-agent";
+  const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
+  const [playbooks, setPlaybooks] = useState<AgentPlaybook[]>([]);
+  useEffect(() => {
+    if (!resource) return;
+    let active = true;
+    Promise.allSettled([api.agentCapabilities(), api.agentPlaybooks()]).then(([capabilityResult, playbookResult]) => {
+      if (!active) return;
+      if (capabilityResult.status === "fulfilled") setCapabilities(capabilityResult.value);
+      if (playbookResult.status === "fulfilled") setPlaybooks(playbookResult.value.playbooks.map((item) => ({ ...item, version: playbookResult.value.version })));
+    });
+    return () => { active = false; };
+  }, [resource]);
   return (
     <aside className={`agent-inspector-shell ${className}`.trim()} aria-label={copy.title}>
       <header>
         <div><Braces size={17} /><strong>{copy.title}</strong></div>
         {onClose ? <button type="button" onClick={onClose} aria-label="关闭检查器"><PanelRightClose size={18} /></button> : null}
       </header>
-      {agentRoute ? <div className="agent-inspector-case">
+      {agentRoute && resource ? <AgentResourceCenter resource={resource} capabilities={capabilities} playbooks={playbooks} /> : agentRoute ? <div className="agent-inspector-case">
         <nav aria-label="案件检查器视图">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" aria-label={label} aria-pressed={tab === id} onClick={() => setTab(id)} title={label}><Icon size={16} /></button>)}</nav>
         <div className="agent-inspector-content">
           {tab === "evidence" ? <AgentEvidenceInspector evidence={task?.evidence ?? []} /> : null}

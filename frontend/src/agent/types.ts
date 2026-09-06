@@ -143,3 +143,25 @@ export interface AgentTaskPage {
   limit: number;
   offset: number;
 }
+
+export interface AgentPlaybookStep {
+  step_id: string;
+  tool_id: string;
+  requires_authorization: boolean;
+  on_failure: "stop_for_review" | "retry_once" | "continue_degraded";
+}
+
+export interface AgentPlaybook {
+  playbook_id: string;
+  title: string;
+  task_type: string;
+  description: string;
+  steps?: AgentPlaybookStep[];
+  version?: string;
+  step_count?: number;
+}
+
+export interface AgentPlaybookCatalog {
+  version: string;
+  playbooks: AgentPlaybook[];
+}

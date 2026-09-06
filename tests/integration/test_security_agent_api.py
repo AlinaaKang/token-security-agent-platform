@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.security_agent.coordinator import SecurityAgentCoordinator
+from app.security_agent.feedback import AnalystFeedbackService
 from app.security_agent.models import AgentCapabilities
 from app.security_agent.store import SecurityAgentStore
 from app.security_agent.tools import build_registry
@@ -35,16 +36,27 @@ def installed(tmp_path: Path):
         capabilities=capabilities,
     )
     previous = getattr(app.state, "security_agent_coordinator", None)
+    previous_feedback = getattr(app.state, "security_agent_feedback", None)
     app.state.security_agent_coordinator = coordinator
+    feedback = AnalystFeedbackService(
+        tmp_path / "feedback.sqlite3", detector_identity=lambda: "frozen-test-v1"
+    )
+    app.state.security_agent_feedback = feedback
     try:
         yield TestClient(app), coordinator
     finally:
+        feedback.close()
         coordinator.close()
         if previous is None:
             if hasattr(app.state, "security_agent_coordinator"):
                 delattr(app.state, "security_agent_coordinator")
         else:
             app.state.security_agent_coordinator = previous
+        if previous_feedback is None:
+            if hasattr(app.state, "security_agent_feedback"):
+                delattr(app.state, "security_agent_feedback")
+        else:
+            app.state.security_agent_feedback = previous_feedback
 
 
 def test_capabilities_and_identity_conversation(tmp_path) -> None:
@@ -132,3 +144,27 @@ def test_task_listing_and_follow_up_message(tmp_path) -> None:
     assert "数据包范围" in followed.json()["messages"][-1]["content"]
     assert listing.json()["items"][0]["task_id"] == task["task_id"]
 
+
+def test_resource_catalog_and_append_only_feedback_api(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        task = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
+        ).json()
+        playbooks = client.get("/api/v1/agent/playbooks")
+        connectors = client.get("/api/v1/agent/connectors")
+        feedback = client.post(
+            f"/api/v1/agent/tasks/{task['task_id']}/feedback",
+            json={
+                "verdict": "confirmed",
+                "reason_code": "analyst_confirmed",
+                "evidence_refs": [],
+            },
+        )
+
+    assert playbooks.status_code == 200
+    assert playbooks.json()["version"] == "1.0.0"
+    assert any(item["playbook_id"] == "pcap_dataset_v1" for item in playbooks.json()["playbooks"])
+    assert connectors.status_code == 200
+    assert any(item["authenticity"] == "simulated" for item in connectors.json())
+    assert feedback.status_code == 201
+    assert feedback.json()["task_id"] == task["task_id"]

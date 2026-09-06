@@ -38,7 +38,7 @@ function Shell() {
           <Route path="*" element={<Navigate to="/super-agent" replace />} />
         </Routes>
       </div>
-      <AgentInspectorShell pathname={location.pathname} task={agentTask} className={inspectorOpen ? "is-open" : ""} onClose={() => setInspectorOpen(false)} />
+      <AgentInspectorShell pathname={location.pathname} task={agentTask} resource={new URLSearchParams(location.search).get("resource")} className={inspectorOpen ? "is-open" : ""} onClose={() => setInspectorOpen(false)} />
       {tour && location.pathname !== "/challenge" ? <GuidedTour key={location.pathname} route={location.pathname} steps={tour} /> : null}
     </div>
   );
