@@ -265,7 +265,10 @@ def test_lifespan_initializes_and_closes_opt_in_pcap_components(
     monkeypatch.setenv(
         "TOKEN_SECURITY_EVENT_DB_PATH", str(tmp_path / "shared.sqlite3")
     )
-    config = object()
+    config = SimpleNamespace(
+        upload_max_bytes=536870912,
+        quarantine_root=tmp_path,
+    )
     executor = SimpleNamespace(overview=lambda: {"enabled": True})
     executor_configs = []
     coordinator = SimpleNamespace(close_calls=0)

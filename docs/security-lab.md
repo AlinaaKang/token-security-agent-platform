@@ -1,6 +1,6 @@
 # AI 安全攻防实验舱
 
-`/lab` 是与基础页面隔离的调查工作区。它复用现有语义 Guard、Entropy-CPD、固定融合和本地知识证据，但不会改变 `/analyze`、`/events` 或 `/evaluation` 的请求、响应与处置逻辑。
+`/lab` 是与基础页面隔离的调查工作区，顶部按输入类型分为 `Prompt 攻防` 与 `PCAP 攻防`。Prompt 模式复用现有语义 Guard、Entropy-CPD、固定融合和本地知识证据；PCAP 模式接收一个由用户明确选择的 `.pcap` 或 `.pcapng` 文件，并复用现有 Docker 隔离检测器。两种模式不会改变 `/analyze`、`/events`、`/evaluation` 或 `/challenge` 的请求、响应与处置逻辑，切换模式时 Prompt 表单与结果状态会保留。
 
 ## 启用方式
 
@@ -19,8 +19,25 @@ $env:TOKEN_SECURITY_LAB_ENABLED="true"
 - `GET /api/v1/lab/runs/{run_id}`：读取 15 分钟内的脱敏调查结果。
 - `POST /api/v1/lab/runs/{run_id}/tools/{tool_id}/dry-run`：执行固定工具模拟。
 - `GET /api/v1/lab/metrics`：返回最近有效窗口的聚合运行指标。
+- `GET /api/v1/superagent/pcap/detection/upload-capability`：返回单文件上传是否可用、支持格式和大小上限。
+- `POST /api/v1/superagent/pcap/detection/upload-authorizations`：为一个确定字节数的文件签发一次性上传授权。
+- `POST /api/v1/superagent/pcap/detection/uploads`：以原始请求体流式上传一个已授权文件，并启动既有 PCAP 检测任务。
 
 服务最多保留 32 条已脱敏运行，TTL 为 15 分钟。指标从同一窗口聚合，不生成按样本、攻击族或输入哈希展开的明细。
+
+## PCAP 单文件实验
+
+PCAP 模式默认不读取本机文件。选择文件只会在浏览器中显示原文件名、格式和大小；第一次点击“准备检测”只打开确认区，第二次点击“确认上传并检测”才会签发与精确字节数绑定的一次性授权并上传文件。原文件名不会进入请求，服务端使用随机内部名称，任务结束、取消或失败后清理隔离副本。
+
+上传默认上限为 512 MiB，可通过 `TOKEN_SECURITY_PCAP_UPLOAD_MAX_BYTES` 在 1 到 2147483648 字节范围内调整。上传入口只有在本机 PCAP 后端、隔离目录、Docker 和检测镜像均可用时才启用；它不依赖 AutoDL。AutoDL 仅可用于 Prompt 模型推理，不能替代本机 Docker 对 PCAP 的隔离解析。
+
+检测结论必须按以下方式理解：
+
+- `发现异常候选` 表示现有规则或行为证据命中，并给出 Request/Packet 局部区间；它不是攻击已成功或主机已失陷的证明。
+- `未发现可定位异常` 表示当前检测范围未命中，不等于文件“全部安全”。加密、非 HTTP、未知协议或规则覆盖不足都可能没有候选。
+- `检测未完整完成` 或黄色失败表示工具没有形成可验证结果，需要排查 Docker、tshark、文件格式或超时后重新授权重试；失败不能计入安全样本。
+
+`/lab` 适合临时上传一个待测文件；`/super-agent` 的 PCAP 工作区继续负责仓库外隔离目录中的匿名批次分诊、勘察与检测。两者共用结果卡片和检测内核，但授权范围和文件来源不同。
 
 ## 六类演示场景
 
@@ -55,7 +72,7 @@ $env:TOKEN_SECURITY_LAB_ENABLED="true"
 
 `privacy_violation_count` 当前为响应边界状态指标；每个成功返回和缓存对象仍会经过递归禁用字段校验。禁用字段为：`prompt`、`suffix`、`token_text`、`token_id`、`query_text`、`raw_output`、`guard_raw_output`。
 
-游戏化入口、50/20/30 评分、录制回放、隐私边界和演示步骤见 [Token 侦探挑战](token-detective-challenge.md)。挑战复用本实验舱的脱敏结果，不改变专业调查流程。
+游戏化入口、50/20/30 评分、录制回放、隐私边界和演示步骤见 [Token 侦探挑战](token-detective-challenge.md)。挑战是全局侧栏中的独立入口，复用 Prompt 实验的脱敏结果，但不属于 `/lab` 的 Prompt/PCAP 输入切换，也不改变专业调查流程。
 
 ## 失败行为
 
@@ -67,7 +84,7 @@ $env:TOKEN_SECURITY_LAB_ENABLED="true"
 
 ## 建议演示路径
 
-路径一使用普通无害和无害格式突变，说明“分布变化不自动等于恶意”。路径二使用直接危险样本，说明语义 Guard 覆盖无明显后缀的内容风险。路径三依次选择 GCG、AutoDAN、AdvPrompter 的受保护 ID，展示 Token 定位、反事实敏感性、知识引用、模拟处置和脱敏报告。
+路径一在 `Prompt 攻防` 中使用普通无害和无害格式突变，说明“分布变化不自动等于恶意”。路径二使用直接危险样本，说明语义 Guard 覆盖无明显后缀的内容风险。路径三依次选择 GCG、AutoDAN、AdvPrompter 的受保护 ID，展示 Token 定位、反事实敏感性、知识引用、模拟处置和脱敏报告。路径四切换到 `PCAP 攻防`，选择一个合成 PCAP，完成两次确认后展示上传进度、Docker 隔离边界和局部异常证据。
 
 演示结论应限定为当前冻结样本和已记录运行，不声称 CPD 普遍提高分类 F1，也不把小样本功能抽测表述为总体准确率。
 
@@ -85,3 +102,11 @@ $env:TOKEN_SECURITY_LAB_ENABLED="true"
 - 三条响应的禁用字段命中数为 0，实验舱 `privacy_violation_count=0`。基础 `/health` 响应在测试前后 SHA-256 均为 `0adc88a4dd4910d4383aea63ea799a3bccc2e14a67d1deb7724c3b613aa5e5f4`，说明冒烟没有改变基础组件状态。
 
 上述浏览器检查仍只使用合成无害数据，不含攻击原文；AutoDL 调查只通过受保护 sample ID 发起，原文未进入浏览器、Git 或验收输出。三条结果是链路功能冒烟，不替代冻结准确率、召回率或 F1；当前仍不声明直接危险受保护场景、BEAST 或 AutoDAN-HGA 覆盖。
+
+## 2026-09-06 PCAP 单文件验收
+
+- 后端完整回归：`1038 passed, 4 skipped`。跳过项仍为未配置真实 GPU 模型，以及当前 Windows 账户无法创建文件符号链接。
+- 前端完整回归：30 个测试文件、268 个用例全部通过；TypeScript 与 Vite 生产构建成功，`1627 modules transformed`。
+- PowerShell 隔离门禁：25 项通过、1 项因当前 Windows 账户无法创建 junction 而跳过；`HttpDetection` 仅新增对隔离区 `uploads` 目录的许可，普通 Preflight 和隔离区外路径仍被拒绝。
+- 真实浏览器上传：401 字节合成 SQL 注入 PCAP 经过两次确认、一次性授权和无网络 Docker 检测后返回“检测完成 / 发现异常候选”，定位为 `Packet 2-2`；测试不读取真实数据集文件。
+- 浏览器 QA：`1440x900` 与 `390x844` 下无全局横向溢出；Prompt 默认选中，带空行的 Prompt 在 Prompt/PCAP 往返切换后完整保留，主内容区没有重复侦探挑战入口，现有检测小队展示保留。

@@ -360,6 +360,36 @@ def test_http_detection_mode_dispatches_inside_the_same_sandbox(tmp_path: Path) 
     assert json.loads(result.stdout) == report
 
 
+def test_http_detection_accepts_authorized_upload_capture(tmp_path: Path) -> None:
+    root = tmp_path / "quarantine"
+    capture = root / "uploads" / "upload_0123456789abcdef.pcap"
+    capture.parent.mkdir(parents=True)
+    capture.write_bytes(PCAP_HEADER)
+    report = _valid_detection_report()
+
+    result = _run_launcher(
+        capture,
+        root,
+        _write_fake_docker(tmp_path, report),
+        mode="HttpDetection",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout) == report
+
+
+def test_preflight_rejects_upload_capture(tmp_path: Path) -> None:
+    root = tmp_path / "quarantine"
+    capture = root / "uploads" / "upload_0123456789abcdef.pcap"
+    capture.parent.mkdir(parents=True)
+    capture.write_bytes(PCAP_HEADER)
+
+    result = _run_launcher(capture, root, tmp_path / "unused.cmd")
+
+    assert result.returncode != 0
+    assert "pcap_preflight_error=input_outside_quarantine" in result.stdout
+
+
 def test_http_detection_accepts_current_request_evidence_contract(
     tmp_path: Path,
 ) -> None:

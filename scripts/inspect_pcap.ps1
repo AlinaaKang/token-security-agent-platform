@@ -417,8 +417,21 @@ try {
     $fullPath = [System.IO.Path]::GetFullPath($Path)
     $fullRoot = [System.IO.Path]::GetFullPath($QuarantineRoot)
     $inputRoot = [System.IO.Path]::Combine($fullRoot, 'input')
-    $inputPrefix = $inputRoot.TrimEnd([char]'\', [char]'/') + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $fullPath.StartsWith($inputPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $allowedPrefixes = @(
+        $inputRoot.TrimEnd([char]'\', [char]'/') + [System.IO.Path]::DirectorySeparatorChar
+    )
+    if ($Mode -eq 'HttpDetection') {
+        $uploadRoot = [System.IO.Path]::Combine($fullRoot, 'uploads')
+        $allowedPrefixes += $uploadRoot.TrimEnd([char]'\', [char]'/') + [System.IO.Path]::DirectorySeparatorChar
+    }
+    $insideAllowedRoot = $false
+    foreach ($prefix in $allowedPrefixes) {
+        if ($fullPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $insideAllowedRoot = $true
+            break
+        }
+    }
+    if (-not $insideAllowedRoot) {
         Fail-Preflight 'input_outside_quarantine'
     }
     Assert-NoReparsePoints $fullPath 'input_reparse_point'
