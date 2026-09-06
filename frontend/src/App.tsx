@@ -75,7 +75,7 @@ function Shell() {
         <Route path="/challenge" element={<ChallengePage />} />
         <Route path="*" element={<Navigate to="/analyze" replace />} />
       </Routes>
-      {tour ? <GuidedTour key={location.pathname} route={location.pathname} steps={tour} /> : null}
+      {tour && location.pathname !== "/challenge" ? <GuidedTour key={location.pathname} route={location.pathname} steps={tour} /> : null}
     </div>
   );
 }

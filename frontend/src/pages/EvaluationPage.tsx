@@ -2,6 +2,7 @@ import { BarChart3, BookOpenCheck, CheckCircle2, CircleSlash2, GitCompareArrows,
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
+import { ResultGuide } from "../components/ResultGuide";
 import type {
   AblationMethod,
   AblationMethodReport,
@@ -197,14 +198,14 @@ export function EvaluationPage() {
         )}
       </header>
 
-      <section className="stat-strip evaluation-stats" aria-label="冻结测试集摘要">
+      <section className="stat-strip evaluation-stats" aria-label="冻结测试集摘要" data-tour="evaluation-scope">
         <div><span>测试样本</span><strong>{data?.counts.total ?? "--"}</strong></div>
         <div><span>攻击样本</span><strong>{data?.counts.attacks ?? "--"}</strong></div>
         <div><span>无害样本</span><strong>{data?.counts.benign ?? "--"}</strong></div>
         <div><span>报告版本</span><strong>{data ? "Schema v" + data.schema_version : "--"}</strong></div>
       </section>
 
-      <section className="data-section">
+      <section className="data-section" data-tour="evaluation-methods">
         <div className="table-toolbar">
           <strong><GitCompareArrows size={16} /> 总体检测能力</strong>
           <span>冻结测试结果</span>
@@ -247,7 +248,7 @@ export function EvaluationPage() {
         </div>
       </section>
 
-      <section className="data-section spaced-section">
+      <section className="data-section spaced-section" data-tour="evaluation-limits">
         <div className="table-toolbar">
           <strong><BarChart3 size={16} /> 攻击族召回率</strong>
           <span>F1 最优工作点</span>
@@ -281,6 +282,21 @@ export function EvaluationPage() {
           </div>
         )}
       </section>
+
+      <ResultGuide
+        title="如何理解评测结果"
+        summary="这些指标只描述当前冻结数据集和已声明工作点；分类是否检出与 CPD 起点定位是两类不同能力。"
+        items={[
+          { term: "Precision", explanation: "被判为异常的样本中，实际异常所占比例。" },
+          { term: "Recall", explanation: "实际异常样本中，被方法成功检出的比例。" },
+          { term: "F1", explanation: "Precision 与 Recall 的调和平均，用于观察两者的综合平衡。" },
+          { term: "FPR", explanation: "FPR 越低，代表无害样本被误报的比例越低。" },
+          { term: "AUROC", explanation: "描述方法跨不同阈值区分正负样本的整体能力。" },
+          { term: "P50/P95", explanation: "分别表示典型请求与较慢尾部请求的处理延迟。" },
+          { term: "冻结评测", explanation: "测试数据与结果固定，参数不能根据测试结果再次调整。" },
+          { term: "工作点", explanation: "一组已选定阈值及其取舍；不同工作点服务于不同误报约束。" },
+        ]}
+      />
 
       {data?.agent_ablation && <AgentAblationSection report={data.agent_ablation} />}
 

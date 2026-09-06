@@ -1,6 +1,7 @@
 import { BarChart3, CheckCircle2, CircleAlert, KeyRound, LoaderCircle, Play, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { ResultGuide } from "../components/ResultGuide";
 import type { PcapReconMissionResult, PcapReconSummary } from "../types";
 
 export const PCAP_RECON_MISSION_STORAGE_KEY = "token-security-superagent-pcap-recon-mission-id";
@@ -101,5 +102,14 @@ export function PcapReconWorkspace() {
     {mission?.status === "degraded" ? <section className="pcap-recon-empty is-degraded" role="alert"><CircleAlert size={24} /><strong>勘察未完成，可重新授权重试</strong><span>{failureLabels[mission.failure_code ?? "tool_failed"]}</span><button type="button" onClick={retry} disabled={pending || restorePending}>{pending ? "正在重新授权" : "重新授权勘察"}</button></section> : mission?.summary ? <><div className="pcap-recon-phase"><strong>当前阶段：认识数据</strong><span>下一阶段：根据真实画像选择规则、Request 定位、行为异常或可选 CPD</span></div><Profile summary={mission.summary} /></> : <section className="pcap-recon-empty"><BarChart3 size={24} /><strong>{mission ? "正在形成聚合画像" : "等待开始数据勘察"}</strong></section>}
     {mission && !terminal.has(mission.status) ? <div role="status">{mission.status === "running" ? "勘察运行中" : "勘察排队中"}</div> : null}
     {mission?.events?.length ? <ol className="pcap-recon-events">{mission.events.filter((event) => allowedNarratives.has(event.summary)).map((event) => <li key={event.sequence}>{narrativeLabels[event.summary]}</li>)}</ol> : null}
+    {mission && terminal.has(mission.status) ? <ResultGuide
+      title="如何理解数据画像"
+      summary="数据勘察只形成聚合画像，不判断攻击。它用于决定下一阶段该采用哪些可解释检测方法。"
+      items={[
+        { term: "协议画像", explanation: "表示样本中可识别协议的覆盖情况，不是安全标签。" },
+        { term: "明文 / 加密", explanation: "决定能否观察请求级内容；加密流量通常只能使用元数据和序列特征。" },
+        { term: "勘察失败", explanation: "表示隔离工具或报告校验没有完成，不能将该样本视为安全。" },
+      ]}
+    /> : null}
   </section>;
 }

@@ -3,22 +3,29 @@ import { describe, expect, it } from "vitest";
 import { TOURS } from "./tourConfig";
 
 describe("guided tour route configuration", () => {
-  it("covers each interactive route with four uniquely targeted steps", () => {
-    for (const route of ["/analyze", "/lab", "/super-agent", "/challenge"]) {
+  it("covers all primary routes with uniquely targeted steps", () => {
+    for (const route of ["/analyze", "/events", "/evaluation", "/lab", "/super-agent", "/challenge"]) {
       const steps = TOURS[route];
-      expect(steps).toHaveLength(4);
-      expect(new Set(steps?.map((step) => step.id)).size).toBe(4);
-      expect(new Set(steps?.map((step) => step.target)).size).toBe(4);
+      expect(steps?.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(steps?.map((step) => step.id)).size).toBe(steps?.length);
+      expect(new Set(steps?.map((step) => step.target)).size).toBe(steps?.length);
     }
   });
 
-  it("does not define automatic tours for read-only destinations", () => {
-    expect(TOURS["/events"]).toBeUndefined();
-    expect(TOURS["/evaluation"]).toBeUndefined();
+  it("defines reading-only steps for audit and evaluation destinations", () => {
+    expect(TOURS["/events"]?.map((step) => step.target)).toEqual(["events-summary", "events-table"]);
+    expect(TOURS["/evaluation"]?.map((step) => step.target)).toEqual([
+      "evaluation-scope",
+      "evaluation-methods",
+      "evaluation-limits",
+    ]);
+    expect(TOURS["/events"]?.some((step) => step.advanceOnClick)).toBe(false);
+    expect(TOURS["/evaluation"]?.some((step) => step.advanceOnClick)).toBe(false);
   });
 
   it("auto-advances only local selector steps and keeps execution steps manual", () => {
-    for (const steps of Object.values(TOURS)) {
+    for (const route of ["/analyze", "/lab", "/super-agent", "/challenge"]) {
+      const steps = TOURS[route];
       expect(steps?.at(-1)?.advanceOnClick).not.toBe(true);
       expect(steps?.at(-1)?.id).toContain("command");
     }

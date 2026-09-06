@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import { PcapDetectionResult } from "../components/PcapDetectionResult";
+import { ResultGuide } from "../components/ResultGuide";
 import type { PcapDetectionMissionResult, PcapMissionStatus } from "../types";
 
 const TERMINAL = new Set<PcapMissionStatus>(["completed", "cancelled", "degraded"]);
@@ -62,5 +63,14 @@ export function PcapDetectionWorkspace() {
     <div className="pcap-detection-authorization"><div><FileSearch size={19} /><strong>{overview ? `可选 PCAP ${overview.eligible_file_count}` : "读取检测目录"}</strong></div><label>检测批次 <select value={batchStart} onChange={(event) => setBatchStart(Number(event.target.value))} disabled={active || busy}>{batchOptions.map((start) => <option key={start} value={start}>样本 {String(start + 1).padStart(2, "0")}–{String(Math.min(start + 20, overview?.eligible_file_count ?? start + 20)).padStart(2, "0")}</option>)}</select></label><label>最多处理 <input type="number" min="1" max="20" value={maxFiles} onChange={(event) => setMaxFiles(event.target.value)} disabled={active} /> 个文件</label>{confirming ? <div className="pcap-detection-confirm"><KeyRound size={18} /><span>仅在确认后进入 Docker 隔离检测</span><button type="button" onClick={() => setConfirming(false)}>返回</button><button type="button" onClick={start} disabled={busy}><ShieldCheck size={14} />确认并开始</button></div> : <button type="button" onClick={() => setConfirming(true)} disabled={!overview?.enabled || active || busy}><Play size={15} />准备异常检测</button>}</div>
     {error ? <div className="superagent-error" role="alert"><CircleAlert size={16} />{error}</div> : null}
     {mission ? <PcapDetectionResult mission={mission} sampleLabel={(sampleIndex) => `样本 ${String(sampleIndex + batchStart).padStart(2, "0")}`} onCancel={cancel} busy={busy} /> : <div className="pcap-detection-empty"><ArrowRight size={22} /><strong>规则侦探等待授权</strong><span>检测结果只展示局部证据，不恢复原始请求。</span></div>}
+    {mission && TERMINAL.has(mission.status) ? <ResultGuide
+      title="如何理解异常检测结果"
+      summary="结论优先回答当前范围是否出现异常候选，并保留工具失败与不可见证据的边界。"
+      items={[
+        { term: "发现异常", explanation: "表示至少一个成功解析样本命中了可解释规则或行为异常证据。" },
+        { term: "当前范围未命中", explanation: "当前范围未命中不等于文件全部安全。" },
+        { term: "工具失败", explanation: "工具失败既不能计为安全，也不能计为异常。" },
+      ]}
+    /> : null}
   </section>;
 }

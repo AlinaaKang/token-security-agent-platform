@@ -61,7 +61,8 @@ export function ChallengeSignalPicker({
   }
 
   return (
-    <div className="challenge-signal-picker">
+    <div className="challenge-signal-picker" data-tour="challenge-onset">
+      {!readOnly ? <p className="challenge-signal-instruction">选择最早开始持续变化的位置，不是曲线最高点</p> : null}
       <div className="challenge-signal-legend" aria-hidden="true">
         {SERIES.map((item) => <span className={item.className} key={item.key}>{item.label}</span>)}
       </div>
@@ -125,7 +126,7 @@ export function ChallengeSignalPicker({
                       role="tooltip"
                       style={{ left }}
                     >
-                      Token #{signal.index}
+                      已选择 Token #{signal.index}
                     </span>
                   ) : null}
                 </Fragment>

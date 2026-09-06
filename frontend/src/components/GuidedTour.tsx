@@ -187,6 +187,7 @@ export function GuidedTour({ route, steps, storage: providedStorage }: GuidedTou
         onClick={replay}
       >
         <CircleHelp size={20} aria-hidden="true" />
+        <span>本页引导</span>
       </button> : null}
       {open && step && targetBox ? (
         <div className="guided-tour-layer">

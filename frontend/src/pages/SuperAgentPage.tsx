@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
+import { ResultGuide } from "../components/ResultGuide";
 import { AuditableReasoningChain } from "../components/AuditableReasoningChain";
 import { PcapSuperAgentWorkspace } from "./PcapSuperAgentWorkspace";
 import {
@@ -269,7 +270,19 @@ export function SuperAgentPage() {
           )}
         </div>
       ) : null}
-      {mission ? <ClosurePanel mission={mission} /> : null}
+      {mission ? <>
+        <ClosurePanel mission={mission} />
+        <ResultGuide
+          title="如何理解自主处置结果"
+          summary="智能体只能在预先声明的权限与次数上限内观察、规划和执行平台内部工具。"
+          items={[
+            { term: "有界计划", explanation: "任务最多使用页面列出的工具调用次数，并且最多重规划一次。" },
+            { term: "角色轨迹", explanation: "展示各角色提交的结构化事件，不包含隐藏思维链。" },
+            { term: "工具回执", explanation: "成功回执表示平台内部工具完成；失败回执表示该步骤没有形成预期结果。" },
+            { term: "最终状态", explanation: "综合基础动作、实际工具回执和限制条件形成任务收口状态。" },
+          ]}
+        />
+      </> : null}
       </> : <PcapSuperAgentWorkspace />}
     </main>
   );

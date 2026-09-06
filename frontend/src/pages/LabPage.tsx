@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
+import { ResultGuide } from "../components/ResultGuide";
 import { LabSignalChart } from "../components/LabSignalChart";
 import { LabToolCenter } from "../components/LabToolCenter";
 import { LabPcapWorkspace } from "./LabPcapWorkspace";
@@ -390,6 +391,16 @@ export function LabPage() {
       ) : (
         <>
           <EvidenceTimeline run={run} />
+          <ResultGuide
+            title="如何理解 Prompt 攻防结果"
+            summary="实验结果用于比较证据链和受控处置，不会写入正式安全事件库。"
+            items={[
+              { term: "证据剖面", explanation: "依次展示 Guard、CPD 与融合动作，便于复核每一步公开证据。" },
+              { term: "反事实敏感性", explanation: "反事实敏感性不是严格因果证明；它只说明受控改动后结果是否随之变化。" },
+              { term: "工具预览", explanation: "预览展示计划动作，不代表工具已经执行。" },
+              { term: "工具回执", explanation: "只有平台内部执行产生的结构化回执才表示该步骤实际运行。" },
+            ]}
+          />
           <section className="lab-investigation" aria-label="调查证据工作区">
             <div className="lab-tabs" role="tablist" aria-label="调查视图">
               {([

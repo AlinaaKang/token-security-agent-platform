@@ -23,10 +23,10 @@ describe("ChallengeSignalPicker", () => {
     render(<ChallengeSignalPicker signals={signals} selectedIndex={20} onSelect={() => undefined} />);
     const selected = screen.getByRole("button", { name: "选择 Token 20" });
     const unselected = screen.getByRole("button", { name: "选择 Token 10" });
-    const tooltip = screen.getByRole("tooltip", { name: "Token #20" });
+    const tooltip = screen.getByRole("tooltip", { name: "已选择 Token #20" });
     expect(selected).toHaveAttribute("aria-describedby", tooltip.id);
     expect(unselected).not.toHaveAttribute("aria-describedby");
-    expect(screen.queryByRole("tooltip", { name: "Token #10" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tooltip", { name: "已选择 Token #10" })).not.toBeInTheDocument();
   });
 
   it("anchors the selected tooltip in the chart top padding without moving its flag", () => {
@@ -34,7 +34,7 @@ describe("ChallengeSignalPicker", () => {
       <ChallengeSignalPicker signals={signals} selectedIndex={20} onSelect={() => undefined} />,
     );
     const selected = screen.getByRole("button", { name: "选择 Token 20" });
-    const tooltip = screen.getByRole("tooltip", { name: "Token #20" });
+    const tooltip = screen.getByRole("tooltip", { name: "已选择 Token #20" });
 
     expect(tooltip.parentElement).toBe(container.querySelector(".challenge-signal-targets"));
     expect(selected).not.toContainElement(tooltip);
@@ -77,6 +77,7 @@ describe("ChallengeSignalPicker", () => {
     expect(paths).toHaveLength(3);
     paths.forEach((path) => expect(path.getAttribute("d")).toMatch(/^M\d/));
     expect(screen.getByText("Entropy、NLL 与 CPD 累积值；选择预测异常起点")).toBeInTheDocument();
+    expect(screen.getByText("选择最早开始持续变化的位置，不是曲线最高点")).toBeInTheDocument();
   });
 
   it("renders a stable fallback with fewer than two signals", () => {

@@ -39,8 +39,16 @@ import type {
 } from "../challenge/types";
 import { ChallengeInputCard } from "../components/ChallengeInputCard";
 import { ChallengeSignalPicker } from "../components/ChallengeSignalPicker";
+import { GuidedTour } from "../components/GuidedTour";
 import { InvestigationDesk } from "../components/InvestigationDesk";
 import { MascotTeam } from "../components/MascotTeam";
+import { ResultGuide } from "../components/ResultGuide";
+import {
+  CHALLENGE_ANSWER_STEPS,
+  CHALLENGE_INVESTIGATION_STEPS,
+  CHALLENGE_REVEAL_STEPS,
+  CHALLENGE_SETUP_STEPS,
+} from "../tourConfig";
 import type { Decision, HealthResponse, LabScenario, SemanticSeverity } from "../types";
 
 const FAMILY_LABELS = {
@@ -348,8 +356,8 @@ export function ChallengePage() {
             <div><span>连击</span><strong>{session.combo}</strong></div>
             <div><span>当前总分</span><strong>{session.totalScore}</strong></div>
           </section>
-          {currentRound ? <ChallengeInputCard publicInput={currentRound.publicInput} /> : null}
-          <MascotTeam
+          {currentRound ? <div data-tour="challenge-input"><ChallengeInputCard publicInput={currentRound.publicInput} /></div> : null}
+          <div data-tour="challenge-team"><MascotTeam
             phase={autoReplaying ? "investigating" : session.phase}
             replayStageId={mascotReplayStageId}
             evidenceConflict={revealEvidenceConflict}
@@ -357,7 +365,7 @@ export function ChallengePage() {
               state: investigation,
               onSelect: (role) => setInvestigation((current) => inspectRole(current, role)),
             } : undefined}
-          />
+          /></div>
           {interactiveInvestigating && run && investigation.selectedRole ? (
             <InvestigationDesk
               run={run}
@@ -402,7 +410,7 @@ export function ChallengePage() {
 
       {session.phase === "guessing" && run && investigationComplete ? (
         <section className="challenge-round-workspace" aria-label="本关线索">
-          <div className="challenge-clue-heading">
+          <div className="challenge-clue-heading" data-tour="challenge-clues">
             <div><span>Guard 线索</span><strong>{SEMANTIC_LABELS[run.detection.semantic_severity]}</strong></div>
             <div><span>CPD 观测</span><strong>{run.detection.detector_status === "token_anomaly_candidate" ? "发现分布候选" : "未发现分布候选"}</strong></div>
           </div>
@@ -413,7 +421,7 @@ export function ChallengePage() {
           />
           <div className="challenge-answer-grid">
             {evidenceRequired ? (
-              <fieldset>
+              <fieldset data-tour="challenge-evidence">
                 <legend>证据关系</legend>
                 <div className="challenge-answer-options">
                   {EVIDENCE_OPTIONS.map((option) => (
@@ -428,12 +436,12 @@ export function ChallengePage() {
                 </div>
               </fieldset>
             ) : (
-              <div className="challenge-answer-na">
+              <div className="challenge-answer-na" data-tour="challenge-evidence">
                 <strong>证据关系不适用</strong>
                 <span>本关按其余适用项归一化计分</span>
               </div>
             )}
-            <fieldset>
+            <fieldset data-tour="challenge-action">
               <legend>处置动作</legend>
               <div className="challenge-answer-options challenge-action-options">
                 {ACTION_OPTIONS.map((option) => (
@@ -456,14 +464,14 @@ export function ChallengePage() {
                 : draft.onsetIndex === null ? "请选择曲线位置" : `T${draft.onsetIndex}`
               : "不适用"}</strong>
           </div>
-          <button className="challenge-submit-button" type="button" disabled={!canSubmit} onClick={submitAnswer}>
+          <button className="challenge-submit-button" data-tour="challenge-submit" type="button" disabled={!canSubmit} onClick={submitAnswer}>
             <ShieldCheck size={17} aria-hidden="true" />提交研判
           </button>
         </section>
       ) : null}
 
       {session.phase === "revealed" && run && session.currentAnswer && session.currentScore ? (
-        <section className="challenge-reveal" aria-label="本关揭晓">
+        <section className="challenge-reveal" aria-label="本关揭晓" data-tour="challenge-reveal">
           <div className="challenge-reveal-heading">
             <div><CheckCircle2 size={20} aria-hidden="true" /><strong>研判揭晓</strong></div>
             <div><span>本关百分制分数</span><strong>{session.currentScore.normalizedScore}</strong></div>
@@ -489,6 +497,16 @@ export function ChallengePage() {
             <small>敏感性结果不构成严格因果证明</small>
           </div>
           <p className="challenge-score-limitation">挑战得分不是检测准确率或攻击覆盖率</p>
+          <ResultGuide
+            title="如何理解本关得分"
+            summary="得分表示你的研判与当前系统结果的一致程度，不能替代独立评测集上的模型指标。"
+            items={[
+              { term: "动作 50 分", explanation: "比较玩家选择的处置动作与系统原始动作。" },
+              { term: "证据 20 分", explanation: "比较玩家判断的语义与分布证据关系；不适用时按其余项目归一化。" },
+              { term: "定位 30 分", explanation: "比较玩家标记起点与系统 CPD 起点的距离；不适用时按其余项目归一化。" },
+              { term: "本关百分制", explanation: "只对本关适用项目归一化，挑战总分是各关百分制结果的平均值。" },
+            ]}
+          />
           <button className="challenge-next-button" type="button" onClick={advanceRound}>
             {session.roundIndex >= session.rounds.length - 1 ? <Trophy size={17} aria-hidden="true" /> : <ArrowRight size={17} aria-hidden="true" />}
             {session.roundIndex >= session.rounds.length - 1 ? "查看总分" : "下一关"}
@@ -508,6 +526,14 @@ export function ChallengePage() {
           </section>
         </>
       ) : null}
+      {session.phase === "setup" ? <GuidedTour route="/challenge" steps={CHALLENGE_SETUP_STEPS} /> : null}
+      {session.phase === "guessing" && !investigationComplete
+        ? <GuidedTour route="/challenge/investigation" steps={CHALLENGE_INVESTIGATION_STEPS} />
+        : null}
+      {session.phase === "guessing" && investigationComplete
+        ? <GuidedTour route="/challenge/answer" steps={CHALLENGE_ANSWER_STEPS} />
+        : null}
+      {session.phase === "revealed" ? <GuidedTour route="/challenge/reveal" steps={CHALLENGE_REVEAL_STEPS} /> : null}
     </main>
   );
 }

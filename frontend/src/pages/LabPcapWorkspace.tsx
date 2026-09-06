@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
 import { PcapDetectionResult } from "../components/PcapDetectionResult";
+import { ResultGuide } from "../components/ResultGuide";
 import type { PcapDetectionMissionResult, PcapMissionStatus, PcapUploadCapability } from "../types";
 
 const TERMINAL = new Set<PcapMissionStatus>(["completed", "cancelled", "degraded"]);
@@ -147,5 +148,14 @@ export function LabPcapWorkspace() {
     {error ? <div className="lab-error" role="alert"><CircleAlert size={17} />{error}</div> : null}
     {phase !== "confirming" && !busy ? <button className="lab-pcap-command" data-tour="lab-active-command" type="button" disabled={!file || !capability?.enabled} onClick={() => setPhase("confirming")}><ShieldCheck size={17} />准备检测</button> : null}
     {mission ? <PcapDetectionResult mission={mission} sampleLabel={() => "上传样本"} onCancel={cancel} busy={false} /> : null}
+    {mission && TERMINAL.has(mission.status) ? <ResultGuide
+      title="如何理解单文件检测结果"
+      summary="结果仅覆盖本次上传副本中成功解析并被当前规则观察到的证据。"
+      items={[
+        { term: "异常候选", explanation: "表示网络请求、序列或行为证据命中规则，不代表攻击已经成功。" },
+        { term: "当前范围未命中", explanation: "当前范围未命中不等于文件全部安全。加密或未支持协议仍可能缺少可见证据。" },
+        { term: "工具失败", explanation: "工具失败既不能计为安全，也不能计为异常。它表示没有形成可验证结果。" },
+      ]}
+    /> : null}
   </section>;
 }

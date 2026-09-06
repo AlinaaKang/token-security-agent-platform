@@ -16,6 +16,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
+import { ResultGuide } from "../components/ResultGuide";
 import { PcapMascotTeam } from "../components/PcapMascotTeam";
 import { PcapReconWorkspace } from "./PcapReconWorkspace";
 import { PcapDetectionWorkspace } from "./PcapDetectionWorkspace";
@@ -351,6 +352,15 @@ export function PcapSuperAgentWorkspace() {
         <button type="button" aria-pressed={pcapView === "recon"} onClick={() => setPcapView("recon")}>数据勘察</button>
         <button type="button" aria-pressed={pcapView === "detection"} onClick={() => setPcapView("detection")}>异常检测</button>
       </div>
+      <ResultGuide
+        title="如何选择 PCAP 工作模式"
+        summary="三个模式共享隔离执行边界，但回答的问题不同。"
+        items={[
+          { term: "批量分诊", explanation: "快速判断一批文件是否形成可用网络证据，并汇总成功、跳过与失败。" },
+          { term: "数据勘察", explanation: "数据勘察只形成聚合画像，不判断攻击。" },
+          { term: "异常检测", explanation: "在选定批次中定位规则、请求序列与行为层异常候选。" },
+        ]}
+      />
       {pcapView === "recon" ? <PcapReconWorkspace /> : pcapView === "detection" ? <PcapDetectionWorkspace /> : <>
       <div className="pcap-authorization-track">
         <section className="pcap-overview-stage" data-tour="superagent-bounds">
@@ -413,6 +423,15 @@ export function PcapSuperAgentWorkspace() {
           <Network size={25} /><strong>等待有界批次任务</strong><span>范围概览与执行授权保持分离。</span>
         </section>
       )}
+      {mission && terminalStatuses.has(mission.status) ? <ResultGuide
+        title="如何理解批量分诊结果"
+        summary="成功、失败与异常是不同维度，不能用工具状态替代安全结论。"
+        items={[
+          { term: "检查成功", explanation: "表示工具形成了可验证证据，证据仍可能正常或异常。" },
+          { term: "检查失败", explanation: "工具失败既不能计为安全，也不能计为异常。" },
+          { term: "仅流量证据", explanation: "无法恢复 Prompt 语义时，结论只来自网络层可观察特征。" },
+        ]}
+      /> : null}
       </>}
     </section>
   );

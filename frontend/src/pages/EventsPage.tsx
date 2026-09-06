@@ -2,6 +2,7 @@ import { Database, FileWarning, LockKeyhole } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
+import { ResultGuide } from "../components/ResultGuide";
 import type { EventPage, FusionReason, SemanticCategory, SemanticSeverity } from "../types";
 
 const decisionLabels = {
@@ -91,13 +92,13 @@ export function EventsPage() {
         <span className="privacy-mark"><LockKeyhole size={15} /> 脱敏审计</span>
       </header>
 
-      <section className="stat-strip" aria-label="事件摘要">
+      <section className="stat-strip" aria-label="事件摘要" data-tour="events-summary">
         <div><span>记录总数</span><strong>{data?.total ?? "--"}</strong></div>
         <div><span>当前页</span><strong>{data?.items.length ?? "--"}</strong></div>
         <div><span>存储边界</span><strong>哈希与元数据</strong></div>
       </section>
 
-      <section className="data-section">
+      <section className="data-section" data-tour="events-table">
         <div className="table-toolbar">
           <strong><Database size={16} /> 最近事件</strong>
           <span>{data ? data.total + " 条记录" : error ? "加载失败" : "正在载入"}</span>
@@ -152,6 +153,18 @@ export function EventsPage() {
           </div>
         )}
       </section>
+
+      <ResultGuide
+        title="如何理解安全事件"
+        summary="这是脱敏审计记录，不包含原始 Prompt。每一行用于复核一次检测如何形成最终处置。"
+        items={[
+          { term: "请求标识", explanation: "用于关联一次请求与审计记录，不包含请求原文。" },
+          { term: "语义状态", explanation: "表示语义 Guard 的分类结果；不可用会被单独标记。" },
+          { term: "Token 状态", explanation: "表示局部统计证据是否命中异常候选，不等于攻击已经成功。" },
+          { term: "动作", explanation: "融合现有证据后给出的放行、复核、拦截或净化复检建议。" },
+          { term: "校准版本", explanation: "标识本次检测使用的阈值版本，便于复现与审计。" },
+        ]}
+      />
     </main>
   );
 }

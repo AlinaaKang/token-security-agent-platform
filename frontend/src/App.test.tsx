@@ -306,7 +306,7 @@ describe("competition security console", () => {
     expect(screen.getByRole("link", { name: "安全分析" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("opens a replayable first-use guide only on supported routes", () => {
+  it("opens a replayable first-use guide on primary routes", () => {
     const view = render(<App />);
     expect(screen.getByRole("dialog", { name: "准备待检测内容" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "跳过引导" }));
@@ -315,8 +315,7 @@ describe("competition security console", () => {
 
     window.history.pushState({}, "", "/events");
     render(<App />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "打开本页使用引导" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "先看审计范围" })).toBeInTheDocument();
   });
 
   it("separates semantic blocking from a normal Token distribution", async () => {
@@ -517,6 +516,7 @@ describe("competition security console", () => {
     expect(screen.getByText("official-v1")).toBeInTheDocument();
     expect(screen.getByText("模板降级")).toBeInTheDocument();
     expect(screen.queryByText("Prompt")).not.toBeInTheDocument();
+    expect(screen.getByText("这是脱敏审计记录，不包含原始 Prompt。每一行用于复核一次检测如何形成最终处置。")).toBeInTheDocument();
   });
 
   it("shows all frozen benchmark methods, operating points and scope", async () => {
@@ -538,6 +538,7 @@ describe("competition security console", () => {
     expect(screen.getByText("97.22%")).toBeInTheDocument();
     expect(screen.getAllByText("100.00%").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("仅为冻结工程检索评测")).toBeInTheDocument();
+    expect(screen.getByText("FPR 越低，代表无害样本被误报的比例越低。")).toBeInTheDocument();
     expect(screen.getByTitle(`sha256:${"c".repeat(64)}`)).toBeInTheDocument();
     expect(screen.getByText("智能体冻结消融")).toBeInTheDocument();
     expect(screen.getAllByText("仅语义模型").length).toBeGreaterThan(0);

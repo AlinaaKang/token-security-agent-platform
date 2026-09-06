@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
+import { ResultGuide } from "../components/ResultGuide";
 import { buildAnalyzeDecisionTrace, publicModelName } from "../analyze/decisionTrace";
 import { AnalyzeDecisionTrace } from "../components/AnalyzeDecisionTrace";
 import type {
@@ -299,6 +300,16 @@ function ResultPanel({
               playbackKey={result.request_id}
             />
           </div>
+          <ResultGuide
+            title="如何理解检测结论"
+            summary="结论由语义 Guard 与 Token 局部统计证据按固定策略融合，任一路证据都应结合其适用边界阅读。"
+            items={[
+              { term: "语义状态", explanation: "判断输入表达的安全类别；语义安全不代表 Token 分布一定正常。" },
+              { term: "Token 局部状态", explanation: "Token 异常候选不是已经确认的越狱攻击。它表示局部统计变化达到当前阈值。" },
+              { term: "知识证据", explanation: "知识证据用于解释，不会改写基础动作。" },
+              { term: "融合处置", explanation: "按照固定、可审计的策略把两路状态转换为放行、复核或拦截。" },
+            ]}
+          />
           <dl className="result-grid">
             <div><dt>处置动作</dt><dd>{decisionLabels[result.decision]}</dd></div>
             <div><dt>原始检测分数</dt><dd>{result.detector_score.toFixed(3)}</dd></div>

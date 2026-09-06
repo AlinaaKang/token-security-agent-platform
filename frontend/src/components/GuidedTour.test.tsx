@@ -39,7 +39,9 @@ describe("GuidedTour", () => {
 
     render(<Harness />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开本页使用引导" })).toBeInTheDocument();
+    const launcher = screen.getByRole("button", { name: "打开本页使用引导" });
+    expect(launcher).toBeInTheDocument();
+    expect(launcher).toHaveTextContent("本页引导");
   });
 
   it("moves forward and backward without clicking the highlighted command", () => {
