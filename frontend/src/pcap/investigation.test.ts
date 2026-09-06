@@ -150,7 +150,7 @@ describe("PCAP per-capture evidence builders", () => {
     expect(buildPcapRoleLines(encryptedCapture, "traffic")).toEqual([
       { section: "evidence", text: "协议计数：QUIC 3" },
       { section: "evidence", text: "协议计数：TLS 18" },
-      { section: "evidence", text: "加密传输可见；应用层内容不可见" },
+      { section: "evidence", text: "加密传输可见；加密载荷内容不可见" },
       { section: "evidence", text: "证据能力：仅有网络证据可用，无法恢复应用层语义" },
     ]);
     expect(buildPcapRoleLines(insufficientCapture, "traffic")).toEqual([
@@ -165,7 +165,7 @@ describe("PCAP per-capture evidence builders", () => {
       { section: "evidence", text: "协议计数：HTTP 12" },
       { section: "evidence", text: "协议计数：TLS 18" },
       { section: "evidence", text: "明文应用协议可见" },
-      { section: "evidence", text: "加密传输可见；应用层内容不可见" },
+      { section: "evidence", text: "加密传输可见；加密载荷内容不可见" },
       { section: "evidence", text: "证据能力：可继续进行应用层检测；不证明存在 LLM 流量或攻击" },
     ]);
   });

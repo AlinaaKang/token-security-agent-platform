@@ -2795,13 +2795,13 @@ td:first-child { min-width: 128px; }
 .pcap-capture-selector-button {
   flex: 0 0 auto;
   min-width: 88px;
-  min-height: 34px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
   color: var(--muted);
   background: var(--surface-soft);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   cursor: pointer;
 }

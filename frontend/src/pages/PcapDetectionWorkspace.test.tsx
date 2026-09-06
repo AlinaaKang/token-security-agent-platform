@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PcapDetectionWorkspace } from "./PcapDetectionWorkspace";
@@ -20,9 +20,12 @@ const evidence = {
 
 const detectionMissionKey = "token-security-superagent-pcap-detection-id";
 
-function detectionResult(status: "completed" | "queued" | "running" = "completed") {
+function detectionResult(
+  status: "completed" | "queued" | "running" = "completed",
+  detectionId = "detection_0123456789abcdef0123456789abcdef",
+) {
   return {
-    detection_id: "detection_0123456789abcdef0123456789abcdef",
+    detection_id: detectionId,
     objective: "detect_pcap_anomalies",
     status,
     events: [],
@@ -31,6 +34,12 @@ function detectionResult(status: "completed" | "queued" | "running" = "completed
     failure_code: null,
     created_at: "2026-09-04T00:00:00Z",
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
 }
 
 describe("PcapDetectionWorkspace", () => {
@@ -92,7 +101,7 @@ describe("PcapDetectionWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn((url: string) => {
       if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
       missionReads += 1;
-      return Promise.resolve(new Response(JSON.stringify(detectionResult(missionReads === 1 ? "running" : "completed")), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(detectionResult(missionReads === 1 ? "running" : "completed", "detection_saved_running")), { status: 200 }));
     }));
 
     render(<PcapDetectionWorkspace />);
@@ -105,6 +114,10 @@ describe("PcapDetectionWorkspace", () => {
 
   it("restores a saved terminal mission without removing its saved ID", async () => {
     window.sessionStorage.setItem(detectionMissionKey, "detection_saved_terminal");
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(detectionResult("completed", "detection_saved_terminal")), { status: 200 }));
+    }));
 
     render(<PcapDetectionWorkspace />);
 
@@ -123,23 +136,53 @@ describe("PcapDetectionWorkspace", () => {
 
     render(<PcapDetectionWorkspace />);
 
-    expect(await screen.findByRole("button", { name: /准备异常检测/ })).toBeEnabled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("已保存的异常检测任务已失效或无效，请开始新任务");
+    expect(screen.getByRole("button", { name: /准备异常检测/ })).toBeEnabled();
     expect(window.sessionStorage.getItem(detectionMissionKey)).toBeNull();
     expect(authorizationCalls).toBe(0);
   });
 
-  it("clears a saved mission with a different objective without rendering it", async () => {
-    window.sessionStorage.setItem(detectionMissionKey, "mission_for_another_workspace");
+  it.each([
+    ["null", null],
+    ["incomplete", { objective: "detect_pcap_anomalies" }],
+    ["wrong objective", { ...detectionResult("completed", "detection_saved_invalid"), objective: "reconnoiter_pcap_dataset" }],
+    ["wrong ID", detectionResult("completed", "detection_different")],
+    ["unusable structure", { ...detectionResult("completed", "detection_saved_invalid"), report: null }],
+  ])("clears a saved mission with a %s restore payload without rendering or polling it", async (_case, payload) => {
+    window.sessionStorage.setItem(detectionMissionKey, "detection_saved_invalid");
+    const missionUrls: string[] = [];
     vi.stubGlobal("fetch", vi.fn((url: string) => {
       if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
-      return Promise.resolve(new Response(JSON.stringify({ ...detectionResult(), objective: "reconnoiter_pcap_dataset" }), { status: 200 }));
+      missionUrls.push(url);
+      return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
     }));
 
     render(<PcapDetectionWorkspace />);
 
-    expect(await screen.findByRole("button", { name: /准备异常检测/ })).toBeEnabled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("已保存的异常检测任务已失效或无效，请开始新任务");
+    expect(screen.getByRole("button", { name: /准备异常检测/ })).toBeEnabled();
     expect(screen.queryByText("检测完成")).not.toBeInTheDocument();
     expect(window.sessionStorage.getItem(detectionMissionKey)).toBeNull();
+    expect(missionUrls).toHaveLength(1);
+    expect(missionUrls[0]).toContain("detection_saved_invalid");
+    expect(missionUrls[0]).not.toContain("undefined");
+  });
+
+  it("marks the workspace busy and names the task while restoring", async () => {
+    window.sessionStorage.setItem(detectionMissionKey, "detection_pending_restore");
+    const pendingRestore = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      return pendingRestore.promise;
+    }));
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByText("正在恢复异常检测任务")).toBeVisible();
+    expect(screen.getByRole("region", { name: "PCAP 异常检测工作区" })).toHaveAttribute("aria-busy", "true");
+
+    pendingRestore.resolve(new Response(JSON.stringify(detectionResult("completed", "detection_pending_restore")), { status: 200 }));
+    expect(await screen.findByText("检测完成")).toBeInTheDocument();
   });
 
   it("retains a saved mission after a transient restore failure and retries the same ID", async () => {
@@ -153,7 +196,7 @@ describe("PcapDetectionWorkspace", () => {
       missionUrls.push(url);
       missionReads += 1;
       if (missionReads === 1) return Promise.resolve(new Response(JSON.stringify({ detail: "temporary failure" }), { status: 503 }));
-      return Promise.resolve(new Response(JSON.stringify(detectionResult()), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(detectionResult("completed", "detection_retryable")), { status: 200 }));
     }));
 
     render(<PcapDetectionWorkspace />);
@@ -178,6 +221,30 @@ describe("PcapDetectionWorkspace", () => {
 
     expect(await screen.findByText("检测完成")).toBeInTheDocument();
     expect(screen.queryByText("无法启动异常检测，请重试")).not.toBeInTheDocument();
+  });
+
+  it("continues loading the workspace when session storage refuses to read a mission ID", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("storage unavailable"); });
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByRole("button", { name: /准备异常检测/ })).toBeEnabled();
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes("/missions/"))).toHaveLength(0);
+  });
+
+  it("keeps an invalid restore usable when session storage refuses to remove the stale ID", async () => {
+    window.sessionStorage.setItem(detectionMissionKey, "detection_unremovable");
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new Error("storage unavailable"); });
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ objective: "detect_pcap_anomalies" }), { status: 200 }));
+    }));
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("已保存的异常检测任务已失效或无效，请开始新任务");
+    expect(screen.getByRole("button", { name: /准备异常检测/ })).toBeEnabled();
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes("/missions/"))).toHaveLength(1));
   });
 
   it("states explicitly when a completed scan found no localized anomaly", async () => {

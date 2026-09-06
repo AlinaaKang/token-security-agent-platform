@@ -100,7 +100,7 @@ function trafficLines(capture: PcapCaptureEvidence): PcapEvidenceLine[] {
     lines.push({ section: "evidence", text: "明文应用协议可见" });
   }
   if (capture.visibility.encrypted_transport_observed) {
-    lines.push({ section: "evidence", text: "加密传输可见；应用层内容不可见" });
+    lines.push({ section: "evidence", text: "加密传输可见；加密载荷内容不可见" });
   }
   if (!capture.visibility.plaintext_application_protocol_observed
     && !capture.visibility.encrypted_transport_observed) {

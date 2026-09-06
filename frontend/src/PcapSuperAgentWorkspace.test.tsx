@@ -5,6 +5,7 @@ import { App } from "./App";
 
 const PRIVATE_SENTINEL = "PRIVATE_PCAP_PATH_PAYLOAD_SHA256";
 const missionId = "mission_0123456789abcdef0123456789abcdef";
+const detectionId = "detection_0123456789abcdef0123456789abcdef";
 
 const overview = {
   enabled: true,
@@ -82,6 +83,22 @@ const completedMission = {
   },
 };
 
+const runningDetectionMission = {
+  detection_id: detectionId,
+  objective: "detect_pcap_anomalies",
+  status: "running",
+  events: [],
+  summary: null,
+  report: {
+    confirmed_evidence_ids: [],
+    candidate_evidence_ids: [],
+    unknowns: [],
+    recommended_actions: [],
+  },
+  failure_code: null,
+  created_at: "2026-09-04T00:00:00Z",
+};
+
 function response(payload: unknown, ok = true, status = 200) {
   return Promise.resolve({ ok, status, json: async () => payload });
 }
@@ -110,7 +127,7 @@ function installFetch(options: {
   failPath?: string;
 } = {}) {
   const missions = [...(options.missionSequence ?? [runningMission, completedMission])];
-  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (options.failPath && url.endsWith(options.failPath)) {
       return response({ error: { message: PRIVATE_SENTINEL } }, false, 500);
@@ -132,10 +149,20 @@ function installFetch(options: {
         ? options.overviewResponse.then((payload) => response(payload))
         : response(options.overview ?? overview);
     }
+    if (url === "/pcap-api/v1/superagent/pcap/detection/overview") {
+      return response({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" });
+    }
+    if (url === "/pcap-api/v1/superagent/pcap/detection/authorizations") {
+      return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 }, true, 201);
+    }
     if (url === "/pcap-api/v1/superagent/pcap/authorizations") {
       return response({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 20 }, true, 201);
     }
-    if (url === "/pcap-api/v1/superagent/missions") return response(runningMission, true, 201);
+    if (url === "/pcap-api/v1/superagent/missions") {
+      const body = JSON.parse(String(init?.body));
+      return response(body.objective === "detect_pcap_anomalies" ? runningDetectionMission : runningMission, true, 201);
+    }
+    if (url === `/pcap-api/v1/superagent/missions/${detectionId}`) return response(runningDetectionMission);
     if (url === `/pcap-api/v1/superagent/missions/${missionId}/cancel`) {
       return options.cancelResponse
         ? options.cancelResponse.then((payload) => response(payload))
@@ -423,5 +450,23 @@ describe("PCAP SuperAgent evidence workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "数据勘察" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
     expect(requestUrls().filter((url) => url.includes("/missions/")).length).toBe(before);
+  });
+
+  it("restores the same running anomaly mission after switching through batch triage without cancelling it", async () => {
+    render(<App />);
+    await openPcapMode();
+    fireEvent.click(screen.getByRole("button", { name: "异常检测" }));
+    fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
+    fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
+    expect(await screen.findByText("检测运行中")).toBeVisible();
+    expect(window.sessionStorage.getItem("token-security-superagent-pcap-detection-id")).toBe(detectionId);
+
+    fireEvent.click(screen.getByRole("button", { name: "批量分诊" }));
+    await screen.findByText("待处理文件 17");
+    fireEvent.click(screen.getByRole("button", { name: "异常检测" }));
+
+    expect(await screen.findByText("检测运行中")).toBeVisible();
+    expect(requestUrls()).toContain(`/pcap-api/v1/superagent/missions/${detectionId}`);
+    expect(requestUrls().some((url) => url.endsWith("/cancel"))).toBe(false);
   });
 });

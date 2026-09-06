@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { PcapDetectionResult } from "../components/PcapDetectionResult";
 import { ResultGuide } from "../components/ResultGuide";
-import type { PcapDetectionMissionResult, PcapMissionStatus, SuperAgentStoredMission } from "../types";
+import type { PcapDetectionMissionResult, PcapMissionStatus } from "../types";
 
 const TERMINAL = new Set<PcapMissionStatus>(["completed", "cancelled", "degraded"]);
+const MISSION_STATUSES = new Set<PcapMissionStatus>(["queued", "running", "completed", "cancelled", "degraded"]);
 const DETECTION_MISSION_KEY = "token-security-superagent-pcap-detection-id";
+const INVALID_RESTORE_MESSAGE = "已保存的异常检测任务已失效或无效，请开始新任务";
 
 function readDetectionMissionId(): string | null {
   try {
@@ -33,8 +35,50 @@ function removeDetectionMissionId() {
   }
 }
 
-function isDetectionMission(mission: SuperAgentStoredMission): mission is PcapDetectionMissionResult {
-  return mission.objective === "detect_pcap_anomalies";
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isDetectionMission(mission: unknown, expectedId: string): mission is PcapDetectionMissionResult {
+  if (!isRecord(mission)
+    || mission.detection_id !== expectedId
+    || mission.objective !== "detect_pcap_anomalies"
+    || typeof mission.status !== "string"
+    || !MISSION_STATUSES.has(mission.status as PcapMissionStatus)
+    || !Array.isArray(mission.events)
+    || typeof mission.created_at !== "string"
+    || !(mission.failure_code === null || typeof mission.failure_code === "string")
+    || !isRecord(mission.report)
+    || !isStringArray(mission.report.confirmed_evidence_ids)
+    || !isStringArray(mission.report.candidate_evidence_ids)
+    || !isStringArray(mission.report.unknowns)
+    || !isStringArray(mission.report.recommended_actions)) return false;
+
+  if (mission.summary === null) return true;
+  if (!isRecord(mission.summary)
+    || mission.summary.schema_version !== 1
+    || typeof mission.summary.analyzed_count !== "number"
+    || typeof mission.summary.succeeded_count !== "number"
+    || typeof mission.summary.failed_count !== "number"
+    || !Array.isArray(mission.summary.evidence)
+    || !Array.isArray(mission.summary.processed_samples)) return false;
+
+  return mission.summary.evidence.every((item) => isRecord(item)
+    && typeof item.evidence_id === "string"
+    && typeof item.start_packet === "number"
+    && typeof item.end_packet === "number"
+    && typeof item.start_offset_ms === "number"
+    && typeof item.confidence === "number"
+    && typeof item.attack_candidate === "string"
+    && (item.purpose_candidates === undefined || Array.isArray(item.purpose_candidates)))
+    && mission.summary.processed_samples.every((item) => isRecord(item)
+      && typeof item.sample_index === "number"
+      && typeof item.status === "string"
+      && typeof item.evidence_count === "number");
 }
 
 export function PcapDetectionWorkspace() {
@@ -60,9 +104,10 @@ export function PcapDetectionWorkspace() {
     setRestoreError(null);
     api.getPcapMission(missionId).then((storedMission) => {
       if (!mounted) return;
-      if (!isDetectionMission(storedMission)) {
+      if (!isDetectionMission(storedMission, missionId)) {
         removeDetectionMissionId();
         setRestoreMissionId(null);
+        setRestoreError(INVALID_RESTORE_MESSAGE);
         return;
       }
       setMission(storedMission);
@@ -72,6 +117,7 @@ export function PcapDetectionWorkspace() {
       if (status === 404 || status === 410) {
         removeDetectionMissionId();
         setRestoreMissionId(null);
+        setRestoreError(INVALID_RESTORE_MESSAGE);
         return;
       }
       setRestoreError("无法恢复异常检测任务，请重试");
@@ -87,7 +133,8 @@ export function PcapDetectionWorkspace() {
     const poll = async () => {
       try {
         const result = await api.getPcapMission(mission.detection_id);
-        if (!mounted || result.objective !== "detect_pcap_anomalies") return;
+        if (!mounted) return;
+        if (!isDetectionMission(result, mission.detection_id)) throw new Error("invalid mission response");
         setMission(result);
         if (!TERMINAL.has(result.status)) timer = window.setTimeout(poll, 500);
       } catch {
@@ -126,10 +173,10 @@ export function PcapDetectionWorkspace() {
     setRestoreRevision((revision) => revision + 1);
   }
 
-  return <section className="pcap-detection-workspace" aria-label="PCAP 异常检测工作区" aria-busy={busy}>
+  return <section className="pcap-detection-workspace" aria-label="PCAP 异常检测工作区" aria-busy={busy || restorePending}>
     <div className="pcap-detection-authorization"><div><FileSearch size={19} /><strong>{overview ? `可选 PCAP ${overview.eligible_file_count}` : "读取检测目录"}</strong></div><label>检测批次 <select value={batchStart} onChange={(event) => setBatchStart(Number(event.target.value))} disabled={active || busy || restorePending}>{batchOptions.map((start) => <option key={start} value={start}>样本 {String(start + 1).padStart(2, "0")}–{String(Math.min(start + 20, overview?.eligible_file_count ?? start + 20)).padStart(2, "0")}</option>)}</select></label><label>最多处理 <input type="number" min="1" max="20" value={maxFiles} onChange={(event) => setMaxFiles(event.target.value)} disabled={active || restorePending} /> 个文件</label>{confirming ? <div className="pcap-detection-confirm"><KeyRound size={18} /><span>仅在确认后进入 Docker 隔离检测</span><button type="button" onClick={() => setConfirming(false)}>返回</button><button type="button" onClick={start} disabled={busy || restorePending}><ShieldCheck size={14} />确认并开始</button></div> : <button type="button" onClick={() => setConfirming(true)} disabled={!overview?.enabled || active || busy || restorePending}><Play size={15} />准备异常检测</button>}</div>
-    {restoreError || error ? <div className="superagent-error" role="alert"><CircleAlert size={16} />{restoreError ?? error}{restoreError ? <button type="button" onClick={retryRestore} disabled={restorePending}>重试恢复</button> : null}</div> : null}
-    {mission ? <PcapDetectionResult mission={mission} sampleLabel={(sampleIndex) => `样本 ${String(sampleIndex + batchStart).padStart(2, "0")}`} onCancel={cancel} busy={busy} /> : <div className="pcap-detection-empty"><ArrowRight size={22} /><strong>规则侦探等待授权</strong><span>检测结果只展示局部证据，不恢复原始请求。</span></div>}
+    {restoreError || error ? <div className="superagent-error" role="alert"><CircleAlert size={16} />{restoreError ?? error}{restoreError && restoreMissionId ? <button type="button" onClick={retryRestore} disabled={restorePending}>重试恢复</button> : null}</div> : null}
+    {mission ? <PcapDetectionResult mission={mission} sampleLabel={(sampleIndex) => `样本 ${String(sampleIndex + batchStart).padStart(2, "0")}`} onCancel={cancel} busy={busy} /> : restorePending ? <div className="pcap-detection-empty"><FileSearch size={22} /><strong>正在恢复异常检测任务</strong><span>正在读取已保存的公开检测状态。</span></div> : <div className="pcap-detection-empty"><ArrowRight size={22} /><strong>规则侦探等待授权</strong><span>检测结果只展示局部证据，不恢复原始请求。</span></div>}
     {mission && TERMINAL.has(mission.status) ? <ResultGuide
       title="如何理解异常检测结果"
       summary="结论优先回答当前范围是否出现异常候选，并保留工具失败与不可见证据的边界。"

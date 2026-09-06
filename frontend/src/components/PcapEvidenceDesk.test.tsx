@@ -72,7 +72,7 @@ describe("PcapEvidenceDesk", () => {
       />,
     );
     expect(screen.getByText("协议计数：TLS 12")).toBeVisible();
-    expect(screen.getByText("加密传输可见；应用层内容不可见")).toBeVisible();
+    expect(screen.getByText("加密传输可见；加密载荷内容不可见")).toBeVisible();
     expect(screen.getByText("证据能力：仅有网络证据可用，无法恢复应用层语义")).toBeVisible();
     expect(vi.getTimerCount()).toBe(0);
   });
