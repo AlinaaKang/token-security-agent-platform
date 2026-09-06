@@ -228,6 +228,29 @@ def test_recon_rejects_unknown_private_state_fields_without_reflection(tmp_path:
     assert 'PRIVATE_SENTINEL' not in result.stdout + result.stderr
 
 
+def test_recon_rebuilds_valid_checkpoint_when_scope_changes(tmp_path: Path):
+    root=tmp_path/'q'; inp=root/'input'; inp.mkdir(parents=True); (inp/'one.pcap').write_bytes(b'x')
+    inspector=configurable_inspector(tmp_path)
+    assert run(root, inspector).returncode == 0
+
+    new_state_id = 'state_' + 'c' * 32
+    result = subprocess.run([
+        str(WINDOWS_POWERSHELL), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', str(SCRIPT), '-QuarantineRoot', str(root), '-InspectorScript', str(inspector),
+        '-ReconId', RECON_ID, '-StateId', new_state_id,
+    ], capture_output=True, text=True, env={
+        **os.environ,
+        'FAKE_RECON_LOG_ROOT': str(inspector.parent / 'recon-log'),
+        'FAKE_RECON_CANCEL_MARKER': str(root / 'state' / f'{RECON_ID}.cancel'),
+    })
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == f'pcap_recon_result={RECON_ID}'
+    state=json.loads((root/'state'/'pcap-recon-private.json').read_text())
+    assert state['state_id'] == new_state_id
+    assert state['entries'][0]['status'] == 'succeeded'
+
+
 def test_recon_state_replacement_is_atomic_and_pre_cancel_cleans_children(tmp_path: Path):
     root=tmp_path/'q'; inp=root/'input'; inp.mkdir(parents=True); (inp/'one.pcap').write_bytes(b'x')
     output=root/'output'; state_dir=root/'state'; output.mkdir(); state_dir.mkdir()
