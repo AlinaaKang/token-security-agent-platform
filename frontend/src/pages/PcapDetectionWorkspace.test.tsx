@@ -18,7 +18,9 @@ const evidence = {
   supporting_signals: ["sql_syntax_pattern", "request_boundary"],
 };
 
-function detectionResult(status: "completed" | "queued" = "completed") {
+const detectionMissionKey = "token-security-superagent-pcap-detection-id";
+
+function detectionResult(status: "completed" | "queued" | "running" = "completed") {
   return {
     detection_id: "detection_0123456789abcdef0123456789abcdef",
     objective: "detect_pcap_anomalies",
@@ -32,9 +34,14 @@ function detectionResult(status: "completed" | "queued" = "completed") {
 }
 
 describe("PcapDetectionWorkspace", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    window.sessionStorage.clear();
+    vi.useRealTimers();
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
+    window.sessionStorage.clear();
     vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
       if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
       if (init?.method === "POST" && url.includes("authorizations")) return Promise.resolve(new Response(JSON.stringify({ authorization_id: "pcap_auth_0123456789abcdef0123456789abcdef", max_files: 1 }), { status: 201 }));
@@ -77,6 +84,100 @@ describe("PcapDetectionWorkspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
     fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
     expect(await screen.findByText("检测完成")).toBeInTheDocument();
+  });
+
+  it("restores a saved running mission and polls until it completes", async () => {
+    window.sessionStorage.setItem(detectionMissionKey, "detection_saved_running");
+    let missionReads = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      missionReads += 1;
+      return Promise.resolve(new Response(JSON.stringify(detectionResult(missionReads === 1 ? "running" : "completed")), { status: 200 }));
+    }));
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByText("检测运行中")).toBeInTheDocument();
+    expect(await screen.findByText("检测完成")).toBeInTheDocument();
+    expect(window.sessionStorage.getItem(detectionMissionKey)).toBe("detection_saved_running");
+    expect(missionReads).toBe(2);
+  });
+
+  it("restores a saved terminal mission without removing its saved ID", async () => {
+    window.sessionStorage.setItem(detectionMissionKey, "detection_saved_terminal");
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByText("检测完成")).toBeInTheDocument();
+    expect(window.sessionStorage.getItem(detectionMissionKey)).toBe("detection_saved_terminal");
+  });
+
+  it.each([404, 410])("clears a missing saved mission after a %s restore response without authorizing", async (status) => {
+    window.sessionStorage.setItem(detectionMissionKey, "detection_missing");
+    let authorizationCalls = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      if (init?.method === "POST") authorizationCalls += 1;
+      return Promise.resolve(new Response(JSON.stringify({ detail: "missing" }), { status }));
+    }));
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByRole("button", { name: /准备异常检测/ })).toBeEnabled();
+    expect(window.sessionStorage.getItem(detectionMissionKey)).toBeNull();
+    expect(authorizationCalls).toBe(0);
+  });
+
+  it("clears a saved mission with a different objective without rendering it", async () => {
+    window.sessionStorage.setItem(detectionMissionKey, "mission_for_another_workspace");
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ ...detectionResult(), objective: "reconnoiter_pcap_dataset" }), { status: 200 }));
+    }));
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByRole("button", { name: /准备异常检测/ })).toBeEnabled();
+    expect(screen.queryByText("检测完成")).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem(detectionMissionKey)).toBeNull();
+  });
+
+  it("retains a saved mission after a transient restore failure and retries the same ID", async () => {
+    window.sessionStorage.setItem(detectionMissionKey, "detection_retryable");
+    const missionUrls: string[] = [];
+    let missionReads = 0;
+    let authorizationCalls = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("/overview")) return Promise.resolve(new Response(JSON.stringify({ enabled: true, eligible_file_count: 3, max_files: 20, localization: "request_or_packet" }), { status: 200 }));
+      if (init?.method === "POST") authorizationCalls += 1;
+      missionUrls.push(url);
+      missionReads += 1;
+      if (missionReads === 1) return Promise.resolve(new Response(JSON.stringify({ detail: "temporary failure" }), { status: 503 }));
+      return Promise.resolve(new Response(JSON.stringify(detectionResult()), { status: 200 }));
+    }));
+
+    render(<PcapDetectionWorkspace />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法恢复异常检测任务，请重试");
+    expect(window.sessionStorage.getItem(detectionMissionKey)).toBe("detection_retryable");
+    fireEvent.click(screen.getByRole("button", { name: "重试恢复" }));
+    expect(await screen.findByText("检测完成")).toBeInTheDocument();
+    expect(missionUrls).toEqual([
+      expect.stringContaining("detection_retryable"),
+      expect.stringContaining("detection_retryable"),
+    ]);
+    expect(authorizationCalls).toBe(0);
+  });
+
+  it("continues starting a detection when session storage refuses to persist the mission ID", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("storage unavailable"); });
+
+    render(<PcapDetectionWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
+    fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
+
+    expect(await screen.findByText("检测完成")).toBeInTheDocument();
+    expect(screen.queryByText("无法启动异常检测，请重试")).not.toBeInTheDocument();
   });
 
   it("states explicitly when a completed scan found no localized anomaly", async () => {
