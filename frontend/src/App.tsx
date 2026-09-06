@@ -10,7 +10,7 @@ import { ChallengePage } from "./pages/ChallengePage";
 import { EvaluationPage } from "./pages/EvaluationPage";
 import { EventsPage } from "./pages/EventsPage";
 import { LabPage } from "./pages/LabPage";
-import { SuperAgentPage } from "./pages/SuperAgentPage";
+import { AgentWorkspacePage } from "./pages/AgentWorkspacePage";
 import { TOURS } from "./tourConfig";
 import "./styles.css";
 
@@ -31,7 +31,7 @@ function Shell() {
           <Route path="/events" element={<EventsPage />} />
           <Route path="/evaluation" element={<EvaluationPage />} />
           <Route path="/lab" element={<LabPage />} />
-          <Route path="/super-agent" element={<SuperAgentPage />} />
+          <Route path="/super-agent" element={<AgentWorkspacePage />} />
           <Route path="/challenge" element={<ChallengePage />} />
           <Route path="*" element={<Navigate to="/super-agent" replace />} />
         </Routes>
