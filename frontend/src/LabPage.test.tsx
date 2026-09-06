@@ -269,10 +269,24 @@ describe("security lab workspace", () => {
 
     expect(await screen.findByRole("main", { name: "AI 安全攻防实验舱" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "攻防实验舱" })).toHaveClass("active");
-    expect(screen.getByRole("link", { name: "专业调查" })).toHaveClass("active");
-    expect(screen.getByRole("link", { name: "侦探挑战" })).toHaveAttribute("href", "/challenge");
+    expect(screen.getByRole("button", { name: "Prompt 攻防" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "PCAP 攻防" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("link", { name: "专业调查" })).not.toBeInTheDocument();
     expect(screen.getByText("普通无害")).toBeInTheDocument();
     expect(screen.getByText("AutoDAN 优化攻击")).toBeInTheDocument();
+  });
+
+  it("preserves the Prompt draft while switching through the PCAP experiment", async () => {
+    installFetch();
+    render(<App />);
+    await screen.findByText("实验舱已就绪");
+    fireEvent.change(screen.getByLabelText("自定义 Prompt"), { target: { value: "保留这段输入" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "PCAP 攻防" }));
+    expect(await screen.findByRole("region", { name: "PCAP 上传检测" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Prompt 攻防" }));
+
+    expect(screen.getByLabelText("自定义 Prompt")).toHaveValue("保留这段输入");
   });
 
   it("creates a custom investigation and renders the recorded evidence pipeline", async () => {

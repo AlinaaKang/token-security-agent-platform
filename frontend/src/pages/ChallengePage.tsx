@@ -40,7 +40,6 @@ import type {
 import { ChallengeInputCard } from "../components/ChallengeInputCard";
 import { ChallengeSignalPicker } from "../components/ChallengeSignalPicker";
 import { InvestigationDesk } from "../components/InvestigationDesk";
-import { LabModeSwitch } from "../components/LabModeSwitch";
 import { MascotTeam } from "../components/MascotTeam";
 import type { Decision, HealthResponse, LabScenario, SemanticSeverity } from "../types";
 
@@ -270,7 +269,6 @@ export function ChallengePage() {
     <main className="page challenge-page" aria-label="Token 侦探挑战">
       <header className="challenge-header">
         <div>
-          <LabModeSwitch />
           <h1>Token 侦探挑战</h1>
           <p>侦探学院已集合。选择关卡组，用真实脱敏检测结果完成研判。</p>
         </div>

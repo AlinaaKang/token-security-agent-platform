@@ -23,4 +23,13 @@ describe("guided tour route configuration", () => {
       expect(steps?.at(-1)?.id).toContain("command");
     }
   });
+
+  it("guides the lab through input kind, active input, boundary, and manual command", () => {
+    expect(TOURS["/lab"]?.map((step) => step.target)).toEqual([
+      "lab-input-kind",
+      "lab-active-input",
+      "lab-active-boundary",
+      "lab-active-command",
+    ]);
+  });
 });

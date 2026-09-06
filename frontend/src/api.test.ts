@@ -43,4 +43,49 @@ describe("API backend routing", () => {
       `/pcap-api/v1/superagent/missions/${missionId}/cancel`,
     ]);
   });
+
+  it("uploads the exact browser file through the local namespace without a filename header", async () => {
+    class FakeXhr {
+      static latest: FakeXhr;
+      method = "";
+      url = "";
+      status = 201;
+      responseText = JSON.stringify({ detection_id: "detection_0123456789abcdef0123456789abcdef" });
+      headers = new Map<string, string>();
+      body: Document | XMLHttpRequestBodyInit | null = null;
+      upload = {} as XMLHttpRequestUpload;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      constructor() { FakeXhr.latest = this; }
+      open(method: string, url: string) { this.method = method; this.url = url; }
+      setRequestHeader(name: string, value: string) { this.headers.set(name, value); }
+      send(body: Document | XMLHttpRequestBodyInit | null) { this.body = body; }
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXhr);
+    const file = new File([bytes(24)], "PRIVATE-NAME.pcap", { type: "application/vnd.tcpdump.pcap" });
+    const progress = vi.fn();
+
+    const pending = api.uploadPcapForDetection(
+      file,
+      "pcap_auth_0123456789abcdef0123456789abcdef",
+      progress,
+    );
+    const xhr = FakeXhr.latest!;
+    (xhr.upload.onprogress as (event: ProgressEvent) => void)({ lengthComputable: true, loaded: 12, total: 24 } as ProgressEvent);
+    xhr.onload?.();
+    await pending;
+
+    expect(xhr.method).toBe("POST");
+    expect(xhr.url).toBe("/pcap-api/v1/superagent/pcap/detection/uploads");
+    expect(xhr.body).toBe(file);
+    expect(xhr.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(xhr.headers.get("X-PCAP-Authorization")).toContain("pcap_auth_");
+    expect([...xhr.headers.keys()].join(" ").toLowerCase()).not.toContain("filename");
+    expect(progress).toHaveBeenCalledWith(50);
+  });
 });
+
+function bytes(length: number) {
+  return new Uint8Array(length);
+}

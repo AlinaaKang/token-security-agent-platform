@@ -270,7 +270,7 @@
   box-shadow: 0 0 0 3px rgba(79, 130, 178, 0.24);
 }
 
-.lab-mode-switch {
+.lab-input-switch {
   display: inline-flex;
   min-height: 36px;
   margin-bottom: 14px;
@@ -280,7 +280,7 @@
   background: #edf1f4;
 }
 
-.lab-mode-switch a {
+.lab-input-switch button {
   min-width: 112px;
   min-height: 30px;
   padding: 0 11px;
@@ -293,9 +293,11 @@
   font-size: 12px;
   font-weight: 750;
   text-decoration: none;
+  border: 0;
+  cursor: pointer;
 }
 
-.lab-mode-switch a.active {
+.lab-input-switch button.active {
   color: #153f38;
   background: #fff;
   box-shadow: 0 1px 4px rgba(35, 53, 70, 0.12);
@@ -3104,7 +3106,52 @@ td:first-child { min-width: 128px; }
 .pcap-detection-empty strong { color: var(--ink); font-size: 12px; }
 .pcap-detection-empty span { font-size: 9px; }
 
+.lab-pcap-workspace { min-width: 0; display: grid; gap: 14px; }
+.lab-pcap-readiness { min-height: 38px; padding: 0 2px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lab-pcap-readiness > span { color: var(--review); display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 750; }
+.lab-pcap-readiness > span.is-ready { color: var(--trusted); }
+.lab-pcap-readiness small { color: var(--muted); font-size: 10px; }
+.lab-pcap-upload-band { min-width: 0; position: relative; border: 1px solid var(--line); border-top: 2px solid var(--ink); background: var(--surface); }
+.lab-pcap-upload-band > input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+.lab-pcap-drop { min-height: 172px; padding: 24px; color: var(--trusted); display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; cursor: pointer; }
+.lab-pcap-drop strong { color: var(--ink); font-size: 15px; }
+.lab-pcap-drop span { color: var(--muted); font-size: 11px; }
+.lab-pcap-drop:hover { background: var(--surface-soft); }
+.lab-pcap-upload-band:focus-within { outline: 2px solid var(--trusted); outline-offset: 2px; }
+.lab-pcap-file { min-width: 0; padding: 11px 14px; border-top: 1px solid var(--line); background: var(--surface-soft); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.lab-pcap-file > svg { color: var(--trusted); }
+.lab-pcap-file > div { min-width: 0; display: grid; gap: 3px; }
+.lab-pcap-file strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.lab-pcap-file span { color: var(--muted); font-size: 9px; }
+.lab-pcap-file button { width: 34px; height: 34px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--ink); background: var(--surface); display: grid; place-items: center; }
+.lab-pcap-boundary { min-width: 0; padding: 13px 15px; border: 1px solid var(--line); background: var(--surface-soft); display: flex; align-items: flex-start; gap: 10px; }
+.lab-pcap-boundary > svg { flex: 0 0 auto; color: var(--trusted); }
+.lab-pcap-boundary > div { min-width: 0; display: grid; gap: 4px; }
+.lab-pcap-boundary strong { font-size: 11px; }
+.lab-pcap-boundary span { max-width: 78ch; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.lab-pcap-confirm { min-width: 0; padding: 13px 15px; border: 1px solid #d9c8a7; background: var(--review-soft); display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; }
+.lab-pcap-confirm > svg { color: var(--review); }
+.lab-pcap-confirm > div { min-width: 0; display: grid; gap: 3px; }
+.lab-pcap-confirm strong { font-size: 11px; }
+.lab-pcap-confirm span { color: var(--muted); font-size: 9px; }
+.lab-pcap-confirm button, .lab-pcap-command { min-height: 38px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--ink); background: var(--surface); font-size: 11px; font-weight: 750; }
+.lab-pcap-confirm button:last-child, .lab-pcap-command { border-color: #0e6757; color: #fff; background: var(--trusted); }
+.lab-pcap-command { justify-self: end; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.lab-pcap-command:disabled { border-color: var(--line-strong); color: #87918e; background: #e8ecea; }
+.lab-pcap-progress { padding: 13px 15px; border: 1px solid var(--line); background: var(--surface); display: grid; gap: 8px; }
+.lab-pcap-progress > div { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; }
+.lab-pcap-progress strong { color: var(--trusted); }
+.lab-pcap-progress progress { width: 100%; height: 8px; accent-color: var(--trusted); }
+.lab-pcap-workspace .lab-error { margin: 0; }
+.lab-pcap-workspace button:focus-visible, .lab-input-switch button:focus-visible { outline: 2px solid var(--trusted); outline-offset: 2px; }
+
 @media (max-width: 760px) {
+  .lab-input-switch { width: 100%; }
+  .lab-input-switch button { min-width: 0; flex: 1; }
+  .lab-pcap-readiness { align-items: flex-start; flex-direction: column; }
+  .lab-pcap-confirm { grid-template-columns: auto minmax(0, 1fr); }
+  .lab-pcap-confirm button { grid-column: span 1; }
+  .lab-pcap-command { width: 100%; justify-self: stretch; }
   .pcap-detection-authorization { align-items: stretch; flex-direction: column; }
   .pcap-detection-authorization > div:first-child { margin-right: 0; }
   .pcap-detection-confirm { grid-template-columns: 22px minmax(0, 1fr); }

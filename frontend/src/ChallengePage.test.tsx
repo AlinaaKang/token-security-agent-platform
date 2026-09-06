@@ -218,8 +218,8 @@ describe("token detective challenge setup", () => {
     render(<App />);
 
     expect(await screen.findByRole("main", { name: "Token 侦探挑战" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "侦探挑战" })).toHaveClass("active");
-    expect(screen.getByRole("link", { name: "专业调查" })).toHaveAttribute("href", "/lab");
+    expect(screen.getByRole("link", { name: "Token 侦探挑战" })).toHaveClass("active");
+    expect(screen.queryByRole("link", { name: "专业调查" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "三关速战" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "五关完整挑战" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Guard 语义侦探" })).toBeInTheDocument();

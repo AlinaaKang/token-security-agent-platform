@@ -27,6 +27,7 @@ import type {
   PcapDetectionAuthorizationRequest,
   PcapDetectionMissionRequest,
   PcapDetectionMissionResult,
+  PcapUploadCapability,
   SuperAgentCapabilities,
   SuperAgentMissionRequest,
   SuperAgentMissionResult,
@@ -41,14 +42,49 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       payload?.error?.message ??
       payload?.detail ??
       "请求失败（HTTP " + (response.status ?? "unknown") + "）";
-    const error = new Error(message) as Error & { status?: number };
+    const error = new Error(message) as Error & { status?: number; code?: string };
     error.status = response.status;
+    error.code = payload?.error?.code;
     throw error;
   }
   return payload as T;
 }
 
 const PCAP_API = "/pcap-api/v1/superagent";
+
+function uploadPcapForDetection(
+  file: File,
+  authorizationId: string,
+  onProgress: (percent: number) => void,
+): Promise<PcapDetectionMissionResult> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", PCAP_API + "/pcap/detection/uploads");
+    request.setRequestHeader("Content-Type", "application/octet-stream");
+    request.setRequestHeader("X-PCAP-Authorization", authorizationId);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    request.onload = () => {
+      let payload: unknown = null;
+      try { payload = JSON.parse(request.responseText); } catch { /* fixed below */ }
+      if (request.status >= 200 && request.status < 300) {
+        resolve(payload as PcapDetectionMissionResult);
+        return;
+      }
+      const body = payload as { error?: { code?: string; message?: string } } | null;
+      const error = new Error(body?.error?.message ?? `请求失败（HTTP ${request.status || "unknown"}）`) as Error & { status?: number; code?: string };
+      error.status = request.status;
+      error.code = body?.error?.code;
+      reject(error);
+    };
+    request.onerror = () => reject(Object.assign(new Error("无法连接本地 PCAP 后端"), { status: 0, code: "pcap_upload_unavailable" }));
+    request.onabort = () => reject(Object.assign(new Error("上传已取消"), { status: 0, code: "pcap_upload_cancelled" }));
+    request.send(file);
+  });
+}
 
 export const api = {
   health: () => requestJson<HealthResponse>("/health"),
@@ -125,6 +161,15 @@ export const api = {
     requestJson<PcapReconOverview>(PCAP_API + "/pcap/reconnaissance/overview"),
   pcapDetectionOverview: () =>
     requestJson<PcapDetectionOverview>(PCAP_API + "/pcap/detection/overview"),
+  pcapUploadCapability: () =>
+    requestJson<PcapUploadCapability>(PCAP_API + "/pcap/detection/upload-capability"),
+  authorizePcapUpload: (byteCount: number) =>
+    requestJson<PcapAuthorizationReceipt>(PCAP_API + "/pcap/detection/upload-authorizations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed: true, byte_count: byteCount }),
+    }),
+  uploadPcapForDetection,
   authorizePcapDetection: (payload: PcapDetectionAuthorizationRequest) =>
     requestJson<PcapAuthorizationReceipt>(PCAP_API + "/pcap/detection/authorizations", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),

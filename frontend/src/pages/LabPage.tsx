@@ -6,6 +6,8 @@ import {
   CircleAlert,
   FileLock2,
   FlaskConical,
+  MessageSquareText,
+  Network,
   ScanSearch,
   ShieldAlert,
   ShieldCheck,
@@ -14,9 +16,9 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api } from "../api";
-import { LabModeSwitch } from "../components/LabModeSwitch";
 import { LabSignalChart } from "../components/LabSignalChart";
 import { LabToolCenter } from "../components/LabToolCenter";
+import { LabPcapWorkspace } from "./LabPcapWorkspace";
 import type {
   Decision,
   HealthResponse,
@@ -245,6 +247,7 @@ function MetricsPanel({ metrics }: { metrics: LabMetrics }) {
 }
 
 export function LabPage() {
+  const [labSurface, setLabSurface] = useState<"prompt" | "pcap">("prompt");
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [scenarios, setScenarios] = useState<LabScenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState("custom");
@@ -330,7 +333,10 @@ export function LabPage() {
     <main className="page lab-page" aria-label="AI 安全攻防实验舱">
       <header className="page-header">
         <div>
-          <LabModeSwitch />
+          <div className="lab-input-switch" role="group" aria-label="实验输入类型" data-tour="lab-input-kind">
+            <button type="button" aria-pressed={labSurface === "prompt"} className={labSurface === "prompt" ? "active" : ""} onClick={() => setLabSurface("prompt")}><MessageSquareText size={16} />Prompt 攻防</button>
+            <button type="button" aria-pressed={labSurface === "pcap"} className={labSurface === "pcap" ? "active" : ""} onClick={() => setLabSurface("pcap")}><Network size={16} />PCAP 攻防</button>
+          </div>
           <h1>AI 安全攻防实验舱</h1>
           <p>按证据顺序调查异常，验证反事实敏感性，并对固定处置工具进行预览与平台内部执行。</p>
         </div>
@@ -339,10 +345,11 @@ export function LabPage() {
         </span>
       </header>
 
-      <form className="lab-control-band" onSubmit={createRun}>
+      {labSurface === "pcap" ? <LabPcapWorkspace /> : <>
+      <form className="lab-control-band" data-tour="lab-active-input" onSubmit={createRun}>
         <div className="lab-field lab-scenario-field">
           <label htmlFor="lab-scenario">实验场景</label>
-          <select data-tour="lab-scenario" id="lab-scenario" value={selectedScenario} onChange={(event) => setSelectedScenario(event.target.value)} disabled={!labReady}>
+          <select id="lab-scenario" value={selectedScenario} onChange={(event) => setSelectedScenario(event.target.value)} disabled={!labReady}>
             <option value="custom">自定义输入</option>
             {scenarios.map((scenario) => <option value={scenario.scenario_id} key={scenario.scenario_id}>{scenario.label}</option>)}
           </select>
@@ -350,7 +357,6 @@ export function LabPage() {
         <div className="lab-field lab-input-field">
           <label htmlFor="lab-custom-input">自定义 Prompt</label>
           <textarea
-            data-tour="lab-input"
             id="lab-custom-input"
             value={customInput}
             onChange={(event) => setCustomInput(event.target.value)}
@@ -361,7 +367,7 @@ export function LabPage() {
         </div>
         <div className="lab-mode-field">
           <span>工作模式</span>
-          <div className="lab-segmented" role="group" aria-label="实验舱工作模式" data-tour="lab-mode">
+          <div className="lab-segmented" role="group" aria-label="实验舱工作模式" data-tour="lab-active-boundary">
             {(["analysis", "gateway"] as Mode[]).map((item) => (
               <button type="button" key={item} aria-pressed={mode === item} className={mode === item ? "active" : ""} onClick={() => setMode(item)}>
                 {item === "analysis" ? "安全分析" : "在线防护"}
@@ -369,7 +375,7 @@ export function LabPage() {
             ))}
           </div>
         </div>
-        <button className="lab-run-button" data-tour="lab-command" type="submit" disabled={!canSubmit}>
+        <button className="lab-run-button" data-tour="lab-active-command" type="submit" disabled={!canSubmit}>
           <FlaskConical size={17} /> {loading ? "调查运行中" : "开始调查"}
         </button>
       </form>
@@ -404,6 +410,7 @@ export function LabPage() {
           {metrics ? <MetricsPanel metrics={metrics} /> : null}
         </>
       )}
+      </>}
     </main>
   );
 }

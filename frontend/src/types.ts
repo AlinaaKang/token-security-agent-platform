@@ -456,6 +456,8 @@ export interface PcapDetectionOverview {
   localization: "request_or_packet";
 }
 export interface PcapDetectionAuthorizationRequest { confirmed: true; max_files: number; }
+export interface PcapUploadCapability { enabled: boolean; max_bytes: number; accepted_formats: Array<"pcap" | "pcapng">; }
+export interface PcapUploadAuthorizationRequest { confirmed: true; byte_count: number; }
 export interface PcapDetectionMissionRequest {
   objective: "detect_pcap_anomalies";
   authorization_id: string;

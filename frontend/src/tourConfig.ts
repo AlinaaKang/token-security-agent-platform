@@ -8,10 +8,10 @@ export const TOURS: Partial<Record<string, GuidedTourStep[]>> = {
     { id: "analyze-command", target: "analyze-command", title: "开始安全检测", description: "准备好后由你点击开始；远程模型未连接时仍可跳过本步。" },
   ],
   "/lab": [
-    { id: "lab-scenario", target: "lab-scenario", title: "选择实验场景", description: "可以使用受保护冻结场景，也可以选择自定义输入。", advanceOnClick: true },
-    { id: "lab-input", target: "lab-input", title: "准备实验输入", description: "只有自定义场景会读取这里的内容；冻结场景只发送样本 ID。" },
-    { id: "lab-mode", target: "lab-mode", title: "选择实验模式", description: "在分析观察与在线防护策略之间切换。", advanceOnClick: true },
-    { id: "lab-command", target: "lab-command", title: "开始调查", description: "实验由你手动启动，结果不会写入正式安全事件库。" },
+    { id: "lab-input-kind", target: "lab-input-kind", title: "选择攻防输入", description: "Prompt 攻防验证模型输入，PCAP 攻防检测一个本地网络抓包。", advanceOnClick: true },
+    { id: "lab-active-input", target: "lab-active-input", title: "准备实验输入", description: "当前区域只读取你主动选择的 Prompt 场景或单个 PCAP 文件。" },
+    { id: "lab-active-boundary", target: "lab-active-boundary", title: "确认实验边界", description: "Prompt 使用既有检测链路；PCAP 只在本地无网络 Docker 中解析。" },
+    { id: "lab-active-command", target: "lab-active-command", title: "手动开始实验", description: "只有你点击最终操作后，系统才会运行调查或上传检测。" },
   ],
   "/super-agent": [
     { id: "superagent-task", target: "superagent-task", title: "选择任务类型", description: "Prompt 调查与 PCAP 分诊属于同一个自主处置智能体的两种任务模式。" },
