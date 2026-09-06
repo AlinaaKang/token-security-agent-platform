@@ -273,32 +273,36 @@ describe("competition security console", () => {
     vi.unstubAllGlobals();
   });
 
-  it("groups the platform navigation by user task without changing routes", () => {
+  it("groups cases, professional workspaces, and agent resources without changing routes", () => {
     render(<App />);
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const groups = within(navigation).getAllByRole("group");
     expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual([
-      "检测与处置",
-      "验证与评测",
-      "互动演示",
+      "安全案件",
+      "专业工作区",
+      "智能体资源",
     ]);
 
     expect(within(groups[0]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
-      "安全分析",
-      "自主处置",
+      "安全智能体",
       "安全事件",
     ]);
     expect(within(groups[1]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
+      "安全分析",
       "攻防实验舱",
       "评测中心",
+      "Token 侦探挑战",
     ]);
     expect(within(groups[2]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
-      "Token 侦探挑战",
+      "检测技能",
+      "安全知识库",
+      "数据连接器",
+      "调查报告",
     ]);
 
     expect(screen.getByRole("link", { name: "安全分析" })).toHaveAttribute("href", "/analyze");
-    expect(screen.getByRole("link", { name: "自主处置" })).toHaveAttribute("href", "/super-agent");
+    expect(screen.getByRole("link", { name: "安全智能体" })).toHaveAttribute("href", "/super-agent");
     expect(screen.getByRole("link", { name: "安全事件" })).toHaveAttribute("href", "/events");
     expect(screen.getByRole("link", { name: "攻防实验舱" })).toHaveAttribute("href", "/lab");
     expect(screen.getByRole("link", { name: "评测中心" })).toHaveAttribute("href", "/evaluation");
@@ -321,7 +325,7 @@ describe("competition security console", () => {
   it("separates semantic blocking from a normal Token distribution", async () => {
     render(<App />);
     expect(await screen.findByText("检测服务已连接")).toBeInTheDocument();
-    expect(screen.getByText("研究原型 · 基础与进阶任务")).toBeInTheDocument();
+    expect(screen.getByText("本地编排可用")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "SAFE_TEST_INPUT" } });
     fireEvent.change(screen.getByLabelText("工作模式"), { target: { value: "gateway" } });
     fireEvent.click(screen.getByRole("button", { name: "开始检测" }));
