@@ -98,6 +98,39 @@ def test_enabled_pcap_config_uses_repository_owned_scripts(tmp_path: Path) -> No
     assert config.batch_script.parent.name == "scripts"
     assert config.inspect_script.parent == config.batch_script.parent
     assert config.recon_batch_script.parent == config.batch_script.parent
+    assert config.upload_max_bytes == 536870912
+
+
+@pytest.mark.parametrize("upload_max_bytes", ["1", "2147483648"])
+def test_enabled_pcap_config_accepts_bounded_upload_limit(
+    tmp_path: Path, upload_max_bytes: str
+) -> None:
+    quarantine_root = tmp_path / "quarantine"
+    (quarantine_root / "input").mkdir(parents=True)
+    powershell = tmp_path / "pwsh.exe"
+    powershell.touch()
+    env = enabled_environment(quarantine_root, powershell)
+    env["TOKEN_SECURITY_PCAP_UPLOAD_MAX_BYTES"] = upload_max_bytes
+
+    config = PcapConfig.from_environ(env)
+
+    assert config is not None
+    assert config.upload_max_bytes == int(upload_max_bytes)
+
+
+@pytest.mark.parametrize("upload_max_bytes", ["", "not-a-number", "0", "true", "2147483649"])
+def test_enabled_pcap_config_rejects_invalid_upload_limit(
+    tmp_path: Path, upload_max_bytes: str
+) -> None:
+    quarantine_root = tmp_path / "quarantine"
+    (quarantine_root / "input").mkdir(parents=True)
+    powershell = tmp_path / "pwsh.exe"
+    powershell.touch()
+    env = enabled_environment(quarantine_root, powershell)
+    env["TOKEN_SECURITY_PCAP_UPLOAD_MAX_BYTES"] = upload_max_bytes
+
+    with pytest.raises(ValueError, match="PCAP upload maximum bytes"):
+        PcapConfig.from_environ(env)
 
 
 def test_manual_pcap_config_recon_script_default_is_repository_absolute(

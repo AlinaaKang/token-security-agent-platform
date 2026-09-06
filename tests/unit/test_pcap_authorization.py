@@ -132,3 +132,52 @@ def test_detection_authorization_is_purpose_bound_and_single_use() -> None:
     assert consumed.max_files == 4
     with pytest.raises(PcapAuthorizationAlreadyUsed):
         store.consume(receipt.authorization_id, purpose="detection")
+
+
+def test_upload_authorization_is_bound_to_one_file_and_exact_byte_count() -> None:
+    store = PcapAuthorizationStore(upload_max_bytes=10)
+
+    with pytest.raises(ValueError, match="upload_detection max_files"):
+        store.issue(2, purpose="upload_detection", expected_byte_count=8)
+
+    receipt = store.issue(1, purpose="upload_detection", expected_byte_count=8)
+
+    with pytest.raises(PcapAuthorizationPurposeMismatch):
+        store.consume(
+            receipt.authorization_id,
+            purpose="detection",
+            expected_byte_count=8,
+        )
+    with pytest.raises(ValueError, match="expected_byte_count"):
+        store.consume(
+            receipt.authorization_id,
+            purpose="upload_detection",
+            expected_byte_count=7,
+        )
+
+    consumed = store.consume(
+        receipt.authorization_id,
+        purpose="upload_detection",
+        expected_byte_count=8,
+    )
+    assert consumed.max_files == 1
+    with pytest.raises(PcapAuthorizationAlreadyUsed):
+        store.consume(
+            receipt.authorization_id,
+            purpose="upload_detection",
+            expected_byte_count=8,
+        )
+
+
+@pytest.mark.parametrize("expected_byte_count", [None, 0, True, 1.5, 11])
+def test_upload_authorization_rejects_invalid_or_oversized_byte_counts(
+    expected_byte_count: object,
+) -> None:
+    store = PcapAuthorizationStore(upload_max_bytes=10)
+
+    with pytest.raises(ValueError, match="expected_byte_count"):
+        store.issue(
+            1,
+            purpose="upload_detection",
+            expected_byte_count=expected_byte_count,  # type: ignore[arg-type]
+        )

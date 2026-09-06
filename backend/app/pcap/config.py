@@ -13,6 +13,8 @@ _SCRIPT_OVERRIDE_VARIABLES = (
     "TOKEN_SECURITY_PCAP_RECON_BATCH_SCRIPT",
 )
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_DEFAULT_UPLOAD_MAX_BYTES = 536870912
+_MAX_UPLOAD_MAX_BYTES = 2147483648
 _DEFAULT_RECON_BATCH_SCRIPT = (
     Path(__file__).resolve().parents[3] / "scripts" / "inspect_pcap_recon_batch.ps1"
 )
@@ -25,6 +27,7 @@ class PcapConfig:
     batch_script: Path
     inspect_script: Path
     recon_batch_script: Path = _DEFAULT_RECON_BATCH_SCRIPT
+    upload_max_bytes: int = _DEFAULT_UPLOAD_MAX_BYTES
 
     @classmethod
     def from_environ(cls, environ: Mapping[str, str]) -> PcapConfig | None:
@@ -50,13 +53,33 @@ class PcapConfig:
             raise ValueError("PCAP quarantine root must remain outside the repository")
         _reject_external_script_overrides(environ, repository_root)
         scripts = repository_root / "scripts"
+        upload_max_bytes = _upload_max_bytes(environ)
         return cls(
             quarantine_root=quarantine_root,
             powershell_executable=powershell_executable,
             batch_script=scripts / "inspect_pcap_batch.ps1",
             inspect_script=scripts / "inspect_pcap.ps1",
             recon_batch_script=scripts / "inspect_pcap_recon_batch.ps1",
+            upload_max_bytes=upload_max_bytes,
         )
+
+
+def _upload_max_bytes(environ: Mapping[str, str]) -> int:
+    variable = "TOKEN_SECURITY_PCAP_UPLOAD_MAX_BYTES"
+    if variable not in environ:
+        return _DEFAULT_UPLOAD_MAX_BYTES
+    raw_value = environ[variable]
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "PCAP upload maximum bytes must be an integer between 1 and 2147483648"
+        ) from None
+    if str(value) != raw_value.strip() or not 1 <= value <= _MAX_UPLOAD_MAX_BYTES:
+        raise ValueError(
+            "PCAP upload maximum bytes must be an integer between 1 and 2147483648"
+        )
+    return value
 
 
 def _existing_directory(value: str | Path, label: str) -> Path:
