@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "snapshot_version": "security-agent-demo-cases-v1",
+  "cases_sha256": "sha256:e29529c18c42e638cc828ebbec13ab22596f1ecf536214dc15979081f8670a6c",
+  "cases": [
+    {
+      "case_id": "demo_llm_injection_01",
+      "title": "提示词注入侦察演示",
+      "evidence": [
+        {
+          "evidence_id": "sim_endpoint_injection_01",
+          "source_type": "endpoint",
+          "source_ref": "demo:endpoint:primary",
+          "summary": "endpoint_process_anomaly：应用进程在异常请求窗口内出现行为偏移。",
+          "observed_at": "T+00:00:04",
+          "uncertainty": "仿真端点事实，仅用于跨域编排演示。"
+        },
+        {
+          "evidence_id": "sim_identity_injection_01",
+          "source_type": "identity",
+          "source_ref": "demo:identity:service-session",
+          "summary": "identity_session_burst：服务会话频率在同一窗口内突增。",
+          "observed_at": "T+00:00:07",
+          "uncertainty": "仿真身份事实，不代表真实账号活动。"
+        },
+        {
+          "evidence_id": "sim_gateway_injection_01",
+          "source_type": "gateway_log",
+          "source_ref": "demo:gateway:request-window",
+          "summary": "gateway_request_correlation：网关请求与异常行为窗口相关。",
+          "observed_at": "T+00:00:09",
+          "uncertainty": "相关性不能单独证明因果或攻击成功。"
+        }
+      ]
+    },
+    {
+      "case_id": "demo_internal_probe_01",
+      "title": "内部地址探测演示",
+      "evidence": [
+        {
+          "evidence_id": "sim_gateway_probe_01",
+          "source_type": "gateway_log",
+          "source_ref": "demo:gateway:probe-window",
+          "summary": "gateway_request_correlation：短时间内出现多目标内部资源探测模式。",
+          "observed_at": "T+00:00:03",
+          "uncertainty": "仿真日志只说明探测形态，不说明请求已成功。"
+        },
+        {
+          "evidence_id": "sim_endpoint_probe_01",
+          "source_type": "endpoint",
+          "source_ref": "demo:endpoint:network-client",
+          "summary": "endpoint_process_anomaly：网络客户端行为与基线产生偏离。",
+          "observed_at": "T+00:00:06",
+          "uncertainty": "仿真端点事实，需与真实流量证据分开。"
+        }
+      ]
+    },
+    {
+      "case_id": "demo_scripted_extraction_01",
+      "title": "脚本化提取演示",
+      "evidence": [
+        {
+          "evidence_id": "sim_identity_extract_01",
+          "source_type": "identity",
+          "source_ref": "demo:identity:automation-session",
+          "summary": "identity_session_burst：自动化会话以固定节奏重复访问。",
+          "observed_at": "T+00:00:02",
+          "uncertainty": "仿真身份事实，不包含真实用户标识。"
+        },
+        {
+          "evidence_id": "sim_gateway_extract_01",
+          "source_type": "gateway_log",
+          "source_ref": "demo:gateway:response-window",
+          "summary": "gateway_request_correlation：请求与响应体量序列呈脚本化变化。",
+          "observed_at": "T+00:00:08",
+          "uncertainty": "仿真相关性不能证明数据已被提取。"
+        }
+      ]
+    }
+  ]
+}
