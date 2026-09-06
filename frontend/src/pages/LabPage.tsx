@@ -341,7 +341,7 @@ export function LabPage() {
           <p>按证据顺序调查异常，验证反事实敏感性，并对固定处置工具进行预览与平台内部执行。</p>
         </div>
         <span className={`readiness ${labReady ? "ready" : ""}`}>
-          <Activity size={15} /> {health === null ? "正在连接" : labReady ? "实验舱已就绪" : "实验舱未启用"}
+          <Activity size={15} /> {labSurface === "pcap" ? "PCAP 独立模式" : health === null ? "正在连接" : labReady ? "实验舱已就绪" : "实验舱未启用"}
         </span>
       </header>
 

@@ -284,6 +284,7 @@ describe("security lab workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "PCAP 攻防" }));
     expect(await screen.findByRole("region", { name: "PCAP 上传检测" })).toBeInTheDocument();
+    expect(screen.getByText("PCAP 独立模式")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Prompt 攻防" }));
 
     expect(screen.getByLabelText("自定义 Prompt")).toHaveValue("保留这段输入");
