@@ -94,7 +94,7 @@ def parse_intent(
             task_type=AgentTaskType.PCAP_DATASET_INVESTIGATION,
             requires_task=True,
         )
-    if any(word in text for word in ("报告", "markdown")) and any(
+    if not pcap_action and not prompt_action and any(word in text for word in ("报告", "markdown")) and any(
         word in text for word in ("生成", "导出", "整理")
     ):
         return _intent(
@@ -151,4 +151,3 @@ def parse_intent(
         )
 
     return _intent("out_of_scope", "请求不属于当前安全调查智能体的专业范围。")
-

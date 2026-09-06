@@ -47,6 +47,10 @@ _PLAN_TEMPLATES: dict[AgentTaskType, tuple[_StepTemplate, ...]] = {
     AgentTaskType.CROSS_DOMAIN_CASE: (
         _StepTemplate("query_simulated_telemetry", "读取明确标注的内置仿真遥测。", True),
         _StepTemplate("retrieve_security_knowledge", "检索跨域攻击知识。"),
+        _StepTemplate("simulate_response_options", "比较可逆处置方案的预期影响。"),
+        _StepTemplate("preview_response_action", "预览平台内部处置动作。"),
+        _StepTemplate("execute_internal_action", "执行已授权的平台内部动作。", True),
+        _StepTemplate("verify_response_effect", "独立验证处置动作是否生效。"),
         _StepTemplate("generate_case_report", "生成跨源案件报告。"),
     ),
     AgentTaskType.REPORT_GENERATION: (
@@ -221,4 +225,3 @@ def _insert_before_report(templates: list[_StepTemplate], item: _StepTemplate) -
 
 def _unique(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
-

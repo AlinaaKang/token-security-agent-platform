@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.security_agent.coordinator import SecurityAgentCoordinator
+from app.security_agent.models import AgentCapabilities
+from app.security_agent.store import SecurityAgentStore
+from app.security_agent.tools import build_registry
+
+
+def _handler(tool_id: str):
+    return lambda _arguments: {
+        "objective": tool_id,
+        "status": "completed",
+        "summary": {"analyzed_count": 1, "failed_count": 0, "evidence": []},
+    }
+
+
+@contextmanager
+def installed(tmp_path: Path):
+    handlers = {tool_id: _handler(tool_id) for tool_id in build_registry({}).ids()}
+    registry = build_registry(handlers)
+    capabilities = AgentCapabilities(
+        planner_mode="deterministic_fallback",
+        tool_ids=registry.ids(),
+        connector_states={"pcap_docker": "available", "endpoint_demo": "simulated"},
+    )
+    coordinator = SecurityAgentCoordinator(
+        store=SecurityAgentStore(tmp_path / "agent.sqlite3"),
+        registry=registry,
+        capabilities=capabilities,
+    )
+    previous = getattr(app.state, "security_agent_coordinator", None)
+    app.state.security_agent_coordinator = coordinator
+    try:
+        yield TestClient(app), coordinator
+    finally:
+        coordinator.close()
+        if previous is None:
+            if hasattr(app.state, "security_agent_coordinator"):
+                delattr(app.state, "security_agent_coordinator")
+        else:
+            app.state.security_agent_coordinator = previous
+
+
+def test_capabilities_and_identity_conversation(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        response = client.get("/api/v1/agent/capabilities")
+        created = client.post("/api/v1/agent/tasks", json={"message": "你叫什么名字"})
+
+    assert response.status_code == 200
+    assert response.json()["max_plan_steps"] == 12
+    assert created.status_code == 201
+    assert created.json()["status"] == "completed"
+
+
+def test_task_switch_does_not_cancel_background_execution(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        created = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
+        ).json()
+        client.get("/api/v1/agent/tasks")
+        restored = client.get(f"/api/v1/agent/tasks/{created['task_id']}").json()
+
+    assert restored["status"] != "cancelled"
+
+
+def test_authorization_scope_mismatch_has_public_error(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        task = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
+        ).json()
+        response = client.post(
+            f"/api/v1/agent/tasks/{task['task_id']}/authorizations",
+            json={"confirmed": True, "scopes": ["prompt:analyze"]},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "error": {
+            "code": "agent_authorization_scope_mismatch",
+            "message": "authorization scope does not match the task",
+        }
+    }
+
+
+def test_sse_replays_only_events_after_last_event_id(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        task = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
+        ).json()
+        response = client.get(
+            f"/api/v1/agent/tasks/{task['task_id']}/events",
+            headers={"Last-Event-ID": "1"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "id: 1\n" not in response.text
+    assert "id: 2\n" in response.text
+
+
+def test_explicit_cancel_and_missing_task_errors(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        task = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
+        ).json()
+        cancelled = client.post(f"/api/v1/agent/tasks/{task['task_id']}/cancel")
+        missing = client.get("/api/v1/agent/tasks/task_missing")
+
+    assert cancelled.json()["status"] == "cancelled"
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "agent_task_not_found"
+
+
+def test_task_listing_and_follow_up_message(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        task = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
+        ).json()
+        followed = client.post(
+            f"/api/v1/agent/tasks/{task['task_id']}/messages",
+            json={"message": "packet 4-4 是什么"},
+        )
+        listing = client.get("/api/v1/agent/tasks?limit=20&offset=0")
+
+    assert followed.status_code == 200
+    assert "数据包范围" in followed.json()["messages"][-1]["content"]
+    assert listing.json()["items"][0]["task_id"] == task["task_id"]
+

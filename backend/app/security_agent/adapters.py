@@ -148,6 +148,9 @@ def _summary(
 def _observation_kind(
     tool_id: str, raw: Mapping[str, Any], evidence: tuple[AgentEvidence, ...]
 ) -> str:
+    declared = _as_optional_text(raw.get("observation_kind"))
+    if declared is not None:
+        return declared
     if tool_id == "detect_pcap_batch" and evidence:
         return "http_candidate"
     if raw.get("failure_code"):
@@ -184,4 +187,3 @@ def _as_optional_text(value: Any) -> str | None:
 
 def _timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-

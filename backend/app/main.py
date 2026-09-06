@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -15,6 +16,7 @@ from app.api.evaluation import router as evaluation_router
 from app.api.demo import router as demo_router
 from app.api.lab import router as lab_router
 from app.api.superagent import router as superagent_router
+from app.api.agent import router as agent_router
 from app.audit.store import SQLiteEventStore
 from app.bootstrap import (
     ServiceConfig,
@@ -41,6 +43,11 @@ from app.superagent.pcap_recon_coordinator import PcapReconMissionCoordinator
 from app.superagent.pcap_detection_coordinator import PcapDetectionMissionCoordinator
 from app.superagent.service import SuperAgentService
 from app.superagent.store import SuperAgentMissionStore
+from app.security_agent.coordinator import SecurityAgentCoordinator
+from app.security_agent.models import AgentCapabilities
+from app.security_agent.simulated import SimulatedTelemetryConnector
+from app.security_agent.store import SecurityAgentStore
+from app.security_agent.tools import build_registry
 
 
 PRODUCT_NAME = "面向AI安全的Token流量异常检测智能体平台"
@@ -64,6 +71,7 @@ _LIFESPAN_STATE_NAMES = (
     "pcap_upload_max_bytes",
     "service_health",
     "superagent_service",
+    "security_agent_coordinator",
 )
 
 
@@ -72,6 +80,7 @@ async def lifespan(application: FastAPI):
     _clear_lifespan_state(application)
     event_store = None
     lab_execution_store = None
+    security_agent_coordinator = None
     try:
         lab_enabled = lab_enabled_from_environ(os.environ)
         application.state.lab_enabled = lab_enabled
@@ -102,6 +111,12 @@ async def lifespan(application: FastAPI):
             lab_execution_store=lab_execution_store,
             audit_health=audit_health,
         )
+        try:
+            security_agent_coordinator = _initialize_security_agent(application)
+        except Exception as exc:
+            logger.error(
+                "security agent initialization failed error_type=%s", type(exc).__name__
+            )
         yield
     finally:
         try:
@@ -136,14 +151,18 @@ async def lifespan(application: FastAPI):
                     logger.error("pcap upload cleanup failed error_type=%s", type(exc).__name__)
         finally:
             try:
-                if lab_execution_store is not None:
-                    lab_execution_store.close()
+                if security_agent_coordinator is not None:
+                    security_agent_coordinator.close()
             finally:
                 try:
-                    if event_store is not None:
-                        event_store.close()
+                    if lab_execution_store is not None:
+                        lab_execution_store.close()
                 finally:
-                    _clear_lifespan_state(application)
+                    try:
+                        if event_store is not None:
+                            event_store.close()
+                    finally:
+                        _clear_lifespan_state(application)
 
 
 def _initialize_lifespan_services(
@@ -393,6 +412,80 @@ def _clear_lifespan_state(application: FastAPI) -> None:
             delattr(application.state, name)
 
 
+def _initialize_security_agent(application: FastAPI) -> SecurityAgentCoordinator:
+    database_value = os.environ.get(
+        "TOKEN_SECURITY_AGENT_DATABASE_PATH", "tmp/security-agent.sqlite3"
+    ).strip()
+    if not database_value:
+        raise ValueError("TOKEN_SECURITY_AGENT_DATABASE_PATH must not be blank")
+    connector = SimulatedTelemetryConnector()
+
+    def simulated(arguments: dict[str, object]) -> dict[str, object]:
+        case_id = str(arguments["case_id"])
+        evidence = connector.query(case_id)
+        return {
+            "objective": "cross_domain_case",
+            "status": "completed",
+            "summary": {
+                "analyzed_count": len(evidence),
+                "failed_count": 0,
+                "evidence": [item.model_dump(mode="json") for item in evidence],
+            },
+        }
+
+    def completed(tool_id: str, *, observation_kind: str | None = None):
+        return lambda _arguments: {
+            "objective": tool_id,
+            "status": "completed",
+            "observation_kind": observation_kind or f"{tool_id}_completed",
+            "summary": f"{tool_id} 已完成平台内部结构化处理。",
+        }
+
+    handlers = {
+        "query_simulated_telemetry": simulated,
+        "retrieve_security_knowledge": completed("retrieve_security_knowledge"),
+        "explain_attack": completed("explain_attack"),
+        "explain_protocol": completed("explain_protocol"),
+        "generate_case_report": completed("generate_case_report"),
+        "preview_response_action": completed("preview_response_action"),
+        "execute_internal_action": completed("execute_internal_action"),
+        "map_attack_framework": completed("map_attack_framework"),
+        "search_similar_cases": completed("search_similar_cases"),
+        "simulate_response_options": completed("simulate_response_options"),
+        "verify_response_effect": completed(
+            "verify_response_effect", observation_kind="response_verified"
+        ),
+    }
+    registry = build_registry(handlers)
+    capabilities = AgentCapabilities(
+        planner_mode="deterministic_fallback",
+        tool_ids=registry.ids(),
+        connector_states={
+            "prompt_runtime": (
+                "available"
+                if getattr(application.state, "analysis_workflow", None) is not None
+                else "unavailable"
+            ),
+            "pcap_docker": (
+                "available"
+                if getattr(application.state, "pcap_detection_coordinator", None)
+                is not None
+                else "unavailable"
+            ),
+            "endpoint_demo": "simulated",
+            "identity_demo": "simulated",
+            "gateway_log_demo": "simulated",
+        },
+    )
+    coordinator = SecurityAgentCoordinator(
+        store=SecurityAgentStore(Path(database_value)),
+        registry=registry,
+        capabilities=capabilities,
+    )
+    application.state.security_agent_coordinator = coordinator
+    return coordinator
+
+
 app = FastAPI(title=PRODUCT_NAME, version="0.1.0", lifespan=lifespan)
 
 
@@ -417,6 +510,7 @@ app.include_router(evaluation_router)
 app.include_router(demo_router)
 app.include_router(lab_router)
 app.include_router(superagent_router)
+app.include_router(agent_router)
 
 
 @app.get("/health")

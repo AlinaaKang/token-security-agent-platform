@@ -75,8 +75,10 @@ class AgentTaskType(StrEnum):
 class AgentTaskStatus(StrEnum):
     DRAFT = "draft"
     AWAITING_AUTHORIZATION = "awaiting_authorization"
+    PLANNED = "planned"
     QUEUED = "queued"
     RUNNING = "running"
+    PAUSED = "paused"
     COMPLETED = "completed"
     DEGRADED = "degraded"
     FAILED = "failed"
