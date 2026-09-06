@@ -1,9 +1,18 @@
-import { Braces, CircleDot, PanelRightClose } from "lucide-react";
+import { Braces, Clock3, FileText, Microscope, PanelRightClose, Scale, Wrench } from "lucide-react";
+import { useState } from "react";
+
+import type { AgentTaskSnapshot } from "../agent/types";
+import { AgentAttackTimeline } from "./AgentAttackTimeline";
+import { AgentEvidenceInspector } from "./AgentEvidenceInspector";
+import { AgentHypothesisPanel } from "./AgentHypothesisPanel";
+import { AgentReportInspector } from "./AgentReportInspector";
+import { AgentToolInspector } from "./AgentToolInspector";
 
 type AgentInspectorShellProps = {
   pathname: string;
   className?: string;
   onClose?: () => void;
+  task?: AgentTaskSnapshot | null;
 };
 
 const labels: Record<string, { title: string; context: string }> = {
@@ -15,19 +24,34 @@ const labels: Record<string, { title: string; context: string }> = {
   "/challenge": { title: "挑战检查器", context: "检查选择、证据位置与回合得分" },
 };
 
-export function AgentInspectorShell({ pathname, className = "", onClose }: AgentInspectorShellProps) {
+const tabs = [
+  { id: "evidence", label: "证据", Icon: Microscope },
+  { id: "hypotheses", label: "假设", Icon: Scale },
+  { id: "tools", label: "工具", Icon: Wrench },
+  { id: "timeline", label: "时间线", Icon: Clock3 },
+  { id: "report", label: "报告", Icon: FileText },
+] as const;
+
+export function AgentInspectorShell({ pathname, className = "", onClose, task = null }: AgentInspectorShellProps) {
   const copy = labels[pathname] ?? labels["/super-agent"];
+  const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("evidence");
+  const agentRoute = pathname === "/super-agent";
   return (
     <aside className={`agent-inspector-shell ${className}`.trim()} aria-label={copy.title}>
       <header>
         <div><Braces size={17} /><strong>{copy.title}</strong></div>
         {onClose ? <button type="button" onClick={onClose} aria-label="关闭检查器"><PanelRightClose size={18} /></button> : null}
       </header>
-      <div className="agent-inspector-empty">
-        <CircleDot size={20} />
-        <strong>等待选择</strong>
-        <p>{copy.context}</p>
-      </div>
+      {agentRoute ? <div className="agent-inspector-case">
+        <nav aria-label="案件检查器视图">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" aria-label={label} aria-pressed={tab === id} onClick={() => setTab(id)} title={label}><Icon size={16} /></button>)}</nav>
+        <div className="agent-inspector-content">
+          {tab === "evidence" ? <AgentEvidenceInspector evidence={task?.evidence ?? []} /> : null}
+          {tab === "hypotheses" ? <AgentHypothesisPanel hypotheses={task?.hypotheses ?? []} /> : null}
+          {tab === "tools" ? <AgentToolInspector plan={task?.plan ?? []} observations={task?.observations ?? []} /> : null}
+          {tab === "timeline" ? <AgentAttackTimeline timeline={task?.timeline ?? []} /> : null}
+          {tab === "report" ? <AgentReportInspector report={task?.report ?? null} /> : null}
+        </div>
+      </div> : <div className="agent-inspector-empty"><Microscope size={20} /><strong>等待选择</strong><p>{copy.context}</p></div>}
       <footer><span />公开结构化数据</footer>
     </aside>
   );

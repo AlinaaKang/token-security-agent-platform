@@ -16,7 +16,7 @@ const examples = [
   { label: "运行跨域安全演示", value: "运行跨域攻防演示并生成处置报告", icon: Sparkles },
 ] as const;
 
-export function AgentWorkspacePage() {
+export function AgentWorkspacePage({ onTaskChange }: { onTaskChange?: (task: AgentTaskSnapshot | null) => void }) {
   const [activeId, setActiveId] = useState<string | null>(() => lastSelectedAgentTaskId());
   const [snapshot, setSnapshot] = useState<AgentTaskSnapshot | null>(null);
   const [history, setHistory] = useState<AgentTaskSnapshot[]>([]);
@@ -27,6 +27,8 @@ export function AgentWorkspacePage() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false);
   const live = useAgentTask(activeId);
   const task = live.task ?? snapshot;
+
+  useEffect(() => { onTaskChange?.(task); }, [onTaskChange, task]);
 
   useEffect(() => {
     let active = true;

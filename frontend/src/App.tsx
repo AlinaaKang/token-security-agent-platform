@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useState } from "react";
+import type { AgentTaskSnapshot } from "./agent/types";
 
 import { AgentInspectorShell } from "./components/AgentInspectorShell";
 import { AgentMobileNav } from "./components/AgentMobileNav";
@@ -19,6 +20,7 @@ function Shell() {
   const tour = TOURS[location.pathname];
   const [menuOpen, setMenuOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [agentTask, setAgentTask] = useState<AgentTaskSnapshot | null>(null);
 
   return (
     <div className="app-shell">
@@ -31,12 +33,12 @@ function Shell() {
           <Route path="/events" element={<EventsPage />} />
           <Route path="/evaluation" element={<EvaluationPage />} />
           <Route path="/lab" element={<LabPage />} />
-          <Route path="/super-agent" element={<AgentWorkspacePage />} />
+          <Route path="/super-agent" element={<AgentWorkspacePage onTaskChange={setAgentTask} />} />
           <Route path="/challenge" element={<ChallengePage />} />
           <Route path="*" element={<Navigate to="/super-agent" replace />} />
         </Routes>
       </div>
-      <AgentInspectorShell pathname={location.pathname} className={inspectorOpen ? "is-open" : ""} onClose={() => setInspectorOpen(false)} />
+      <AgentInspectorShell pathname={location.pathname} task={agentTask} className={inspectorOpen ? "is-open" : ""} onClose={() => setInspectorOpen(false)} />
       {tour && location.pathname !== "/challenge" ? <GuidedTour key={location.pathname} route={location.pathname} steps={tour} /> : null}
     </div>
   );
