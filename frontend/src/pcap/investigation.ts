@@ -1,8 +1,13 @@
-import type { PcapMissionResult, PcapPublicNarrative } from "../types";
+import type { PcapCaptureEvidence } from "../types";
 
-export type PcapInvestigationRole = "guard" | "cpd" | "captain";
+export type PcapInvestigationRole = "parser" | "traffic" | "captain";
 export type PcapInvestigationRoleState = "locked" | "ready" | "presenting" | "visited";
-export type PcapEvidenceSection = "evidence" | "confirmed" | "candidate" | "unknown";
+export type PcapEvidenceSection =
+  | "evidence"
+  | "confirmed"
+  | "candidate"
+  | "unknown"
+  | "recommendation";
 
 export interface PcapEvidenceLine {
   section: PcapEvidenceSection;
@@ -15,24 +20,7 @@ export interface PcapInvestigationState {
   visitedRoles: PcapInvestigationRole[];
 }
 
-const ROLE_ORDER: PcapInvestigationRole[] = ["guard", "cpd", "captain"];
-
-const PUBLIC_NARRATIVE_LABELS: Record<PcapPublicNarrative, string> = {
-  batch_triage_completed: "批次分诊已完成",
-  coordinator_plan: "有界批次计划已建立",
-  cpd_evidence_unavailable: "CPD 证据不可用",
-  deterministic_response_ready: "确定性响应记录已就绪",
-  encrypted_transport_observed: "观察到加密传输",
-  evidence_level_validated: "证据级别已核验",
-  insufficient_evidence: "现有证据不足",
-  no_packet_payload_retained: "未保留数据包载荷",
-  plaintext_application_protocol_observed: "观察到明文应用协议",
-  plaintext_application_protocol_candidate_not_proven_llm_traffic: "明文应用协议候选，不证明 LLM 流量",
-  retain_public_metadata: "保留公开元数据供人工复核",
-  token_evidence_unavailable: "Token 证据不可用",
-  tool_authorization_accepted: "执行授权已接受",
-  traffic_only_evidence: "仅有网络流量证据",
-};
+const ROLE_ORDER: PcapInvestigationRole[] = ["parser", "traffic", "captain"];
 
 export function initialPcapInvestigationState(): PcapInvestigationState {
   return {
@@ -81,58 +69,91 @@ export function finishPcapRole(
   };
 }
 
-function reportLine(
-  section: Exclude<PcapEvidenceSection, "evidence">,
-  narratives: PcapPublicNarrative[],
-): PcapEvidenceLine {
-  return {
-    section,
-    text: narratives.length
-      ? narratives.map((narrative) => PUBLIC_NARRATIVE_LABELS[narrative]).join("；")
-      : "暂无公开结论",
-  };
-}
-
 export function buildPcapRoleLines(
-  mission: PcapMissionResult,
+  capture: PcapCaptureEvidence,
   role: PcapInvestigationRole,
 ): PcapEvidenceLine[] {
-  const captures = mission.summary?.captures ?? [];
-  const selectedCount = mission.summary?.selected_count ?? 0;
+  if (role === "parser") return parserLines(capture);
+  if (role === "traffic") return trafficLines(capture);
+  return captainLines(capture);
+}
 
-  if (role === "guard") {
-    const plaintextCount = captures.filter(
-      ({ visibility }) => visibility.plaintext_application_protocol_observed,
-    ).length;
-    const encryptedCount = captures.filter(
-      ({ visibility }) => visibility.encrypted_transport_observed,
-    ).length;
+function parserLines(capture: PcapCaptureEvidence): PcapEvidenceLine[] {
+  if (capture.status === "succeeded") {
+    return [{ section: "evidence", text: `检查成功；已验证 ${capture.packet_count} 个数据包` }];
+  }
+  if (capture.status === "failed") {
+    return [{ section: "evidence", text: `检查失败；错误代码：${capture.error_code ?? "未提供错误代码"}` }];
+  }
+  return [{ section: "evidence", text: "检查跳过；未形成新的检查结果" }];
+}
+
+function trafficLines(capture: PcapCaptureEvidence): PcapEvidenceLine[] {
+  const protocols = Object.entries(capture.protocol_counts)
+    .filter(([, count]) => Number.isFinite(count))
+    .sort(([left], [right]) => left.localeCompare(right));
+  const lines: PcapEvidenceLine[] = protocols.length
+    ? protocols.map(([protocol, count]) => ({ section: "evidence", text: `协议计数：${protocol.toUpperCase()} ${count}` }))
+    : [{ section: "evidence", text: "协议计数：无可用协议计数" }];
+
+  if (capture.visibility.plaintext_application_protocol_observed) {
+    lines.push({ section: "evidence", text: "明文应用协议可见" });
+  } else if (capture.visibility.encrypted_transport_observed) {
+    lines.push({ section: "evidence", text: "加密传输可见；应用层内容不可见" });
+  } else {
+    lines.push({ section: "evidence", text: "应用层不可见" });
+  }
+
+  const capabilityText = capture.capability === "token_eligible"
+    ? "证据能力：可继续进行应用层检测；不证明存在 LLM 流量或攻击"
+    : capture.capability === "traffic_only"
+      ? "证据能力：仅有网络证据可用，无法恢复应用层语义"
+      : "证据能力：可观测证据不足，无法形成可靠结论";
+  lines.push({ section: "evidence", text: capabilityText });
+  return lines;
+}
+
+function captainLines(capture: PcapCaptureEvidence): PcapEvidenceLine[] {
+  if (capture.status === "failed") {
     return [
-      { section: "evidence", text: "尚未恢复 Prompt，语义证据暂不可用" },
-      { section: "evidence", text: `明文应用协议可见：${plaintextCount} / ${selectedCount} 个捕获` },
-      { section: "evidence", text: `加密传输可见：${encryptedCount} / ${selectedCount} 个捕获；加密载荷内容不可见` },
+      { section: "confirmed", text: "未形成可验证检查结果" },
+      { section: "candidate", text: "暂无可复核网络证据" },
+      { section: "unknown", text: `失败原因：${capture.error_code ?? "未提供错误代码"}` },
+      { section: "recommendation", text: "建议重试该文件" },
     ];
   }
 
-  if (role === "cpd") {
-    const eligibleCount = captures.filter(({ capability }) => capability === "token_eligible").length;
+  if (capture.status === "skipped") {
     return [
-      {
-        section: "evidence",
-        text: `明文应用协议候选：${eligibleCount} 个；仅表示协议可见性，不证明 LLM 流量、越狱、CPD 或 Token 异常`,
-      },
-      { section: "evidence", text: "模型与 Token 证据不可用" },
+      { section: "confirmed", text: "未形成新的检查结果" },
+      { section: "candidate", text: "暂无可复核网络证据" },
+      { section: "unknown", text: `跳过原因：${capture.error_code ?? "未提供跳过原因"}` },
+      { section: "recommendation", text: "建议重试该文件" },
     ];
   }
 
-  const summary = mission.summary;
+  if (capture.capability === "token_eligible") {
+    return [
+      { section: "confirmed", text: "已形成可验证网络证据" },
+      { section: "candidate", text: "明文应用协议可见" },
+      { section: "unknown", text: "应用层语义结论未知" },
+      { section: "recommendation", text: "建议进入异常检测继续研判" },
+    ];
+  }
+
+  if (capture.capability === "traffic_only") {
+    return [
+      { section: "confirmed", text: "已形成可验证网络证据" },
+      { section: "candidate", text: "仅有网络证据可供复核" },
+      { section: "unknown", text: "应用层语义未知" },
+      { section: "recommendation", text: "建议保留网络元数据供人工复核" },
+    ];
+  }
+
   return [
-    {
-      section: "evidence",
-      text: `批次计数：已选择 ${summary?.selected_count ?? 0}，成功 ${summary?.succeeded_count ?? 0}，失败 ${summary?.failed_count ?? 0}，跳过 ${summary?.skipped_count ?? 0}`,
-    },
-    reportLine("confirmed", mission.report.confirmed),
-    reportLine("candidate", mission.report.candidates),
-    reportLine("unknown", mission.report.unknowns),
+    { section: "confirmed", text: "检查完成但证据不足" },
+    { section: "candidate", text: "暂无可复核网络证据" },
+    { section: "unknown", text: "可观测证据不足" },
+    { section: "recommendation", text: "建议补充可见流量后重试" },
   ];
 }
