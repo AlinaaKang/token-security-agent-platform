@@ -15,23 +15,23 @@ import { PcapEvidenceDesk } from "./PcapEvidenceDesk";
 
 const MASCOTS = [
   {
-    role: "guard" as const,
-    name: "Guard 语义侦探",
-    shortName: "语义侦探",
+    role: "parser" as const,
+    name: "文件解析员",
+    shortName: "文件解析员",
     image: "/mascots/guard-detective.webp",
     Icon: ShieldCheck,
   },
   {
-    role: "cpd" as const,
-    name: "CPD 曲线侦探",
-    shortName: "曲线侦探",
+    role: "traffic" as const,
+    name: "流量分析员",
+    shortName: "流量分析员",
     image: "/mascots/cpd-detective.webp",
     Icon: Activity,
   },
   {
     role: "captain" as const,
-    name: "Agent 小队队长",
-    shortName: "小队队长",
+    name: "分诊队长",
+    shortName: "分诊队长",
     image: "/mascots/agent-captain.webp",
     Icon: BadgeCheck,
   },
@@ -50,8 +50,12 @@ function roleStatusId(role: PcapInvestigationRole): string {
 
 export function PcapMascotTeam({ mission }: { mission: PcapMissionResult }) {
   const [state, setState] = useState(initialPcapInvestigationState);
+  const captures = mission.summary?.captures ?? [];
+  const [selectedCaptureIndex, setSelectedCaptureIndex] = useState(0);
   const reducedMotion = usePrefersReducedMotion();
   const presentationActive = state.presentingRole !== null;
+  const activeCaptureIndex = captures.length ? Math.min(selectedCaptureIndex, captures.length - 1) : 0;
+  const selectedCapture = captures[activeCaptureIndex] ?? null;
 
   const completePresentation = useCallback(() => {
     setState((current) => current.presentingRole
@@ -63,13 +67,35 @@ export function PcapMascotTeam({ mission }: { mission: PcapMissionResult }) {
     setState((current) => selectPcapRole(current, role));
   }
 
+  function selectCapture(index: number) {
+    setSelectedCaptureIndex(index);
+    setState(initialPcapInvestigationState());
+  }
+
   return (
-    <section className="pcap-mascot-team" aria-label="PCAP 侦探证据回放">
+    <section className="pcap-mascot-team" aria-label="批量分诊互动复盘">
       <div className="pcap-mascot-heading">
-        <strong>侦探证据回放</strong>
-        <span>按角色顺序复核公开证据</span>
+        <strong>批量分诊互动复盘</strong>
+        <span>逐份解释当前批次的公开 PCAP 证据</span>
       </div>
-      <div className="pcap-mascot-lineup">
+      {captures.length === 0 ? <p className="pcap-mascot-empty">本批次没有可回放文件</p> : null}
+      {captures.length > 0 ? (
+        <div className="pcap-capture-selector" role="group" aria-label="当前批次捕获回放">
+          {captures.map((capture, index) => (
+            <button
+              type="button"
+              key={capture.capture_id}
+              className="pcap-capture-selector-button"
+              aria-label={`回放捕获 ${index + 1}`}
+              aria-pressed={activeCaptureIndex === index}
+              onClick={() => selectCapture(index)}
+            >
+              {`捕获 ${String(index + 1).padStart(2, "0")}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {selectedCapture ? <div className="pcap-mascot-lineup">
         {MASCOTS.map(({ role, name, shortName, image, Icon }) => {
           const roleState = roleStateForPcap(state, role);
           const selected = state.selectedRole === role;
@@ -110,10 +136,11 @@ export function PcapMascotTeam({ mission }: { mission: PcapMissionResult }) {
             </figure>
           );
         })}
-      </div>
-      {state.selectedRole ? (
+      </div> : null}
+      {state.selectedRole && selectedCapture ? (
         <PcapEvidenceDesk
-          mission={mission}
+          missionId={mission.mission_id}
+          capture={selectedCapture}
           role={state.selectedRole}
           replay={state.presentingRole !== state.selectedRole}
           onComplete={completePresentation}

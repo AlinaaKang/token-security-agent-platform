@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PcapMissionResult } from "../types";
 import { PcapMascotTeam } from "./PcapMascotTeam";
 
-const networkOnlyMission: PcapMissionResult = {
+const mission: PcapMissionResult = {
   mission_id: "mission_public",
   objective: "triage_pcap_evidence",
   status: "completed",
@@ -35,8 +35,8 @@ const networkOnlyMission: PcapMissionResult = {
       {
         capture_id: "capture_encrypted",
         status: "succeeded",
-        packet_count: 12,
-        protocol_counts: { tls: 12 },
+        packet_count: 18,
+        protocol_counts: { tls: 18 },
         visibility: {
           plaintext_application_protocol_observed: false,
           encrypted_transport_observed: true,
@@ -48,13 +48,8 @@ const networkOnlyMission: PcapMissionResult = {
       },
     ],
   },
-  report: {
-    confirmed: ["traffic_only_evidence"],
-    candidates: ["plaintext_application_protocol_candidate_not_proven_llm_traffic"],
-    unknowns: ["cpd_evidence_unavailable", "token_evidence_unavailable"],
-    recommended_action: ["retain_public_metadata"],
-  },
-  limitations: ["no_packet_payload_retained", "token_evidence_unavailable"],
+  report: { confirmed: [], candidates: [], unknowns: [], recommended_action: [] },
+  limitations: [],
   created_at: "2026-09-01T02:00:00Z",
 };
 
@@ -69,110 +64,58 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function installMotionPreference(initialMatches = false) {
-  let matches = initialMatches;
-  const listeners = new Set<(event: MediaQueryListEvent) => void>();
-  const mediaQuery = {
-    get matches() { return matches; },
-    media: "(prefers-reduced-motion: reduce)",
-    onchange: null,
-    addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener)),
-    removeEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener)),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  };
-  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(mediaQuery));
-  return {
-    mediaQuery,
-    setReduced(nextMatches: boolean) {
-      matches = nextMatches;
-      listeners.forEach((listener) => listener({ matches } as MediaQueryListEvent));
-    },
-  };
-}
-
 describe("PcapMascotTeam", () => {
-  it("uses the three original mascot assets and never invents Token evidence", () => {
-    render(<PcapMascotTeam mission={networkOnlyMission} />);
-    expect(screen.getByRole("img", { name: "Guard 语义侦探" })).toHaveAttribute("src", "/mascots/guard-detective.webp");
-    expect(screen.getByRole("img", { name: "CPD 曲线侦探" })).toHaveAttribute("src", "/mascots/cpd-detective.webp");
-    expect(screen.getByRole("img", { name: "Agent 小队队长" })).toHaveAttribute("src", "/mascots/agent-captain.webp");
-    fireEvent.click(screen.getByRole("button", { name: "Guard 语义侦探" }));
-    expect(screen.getByText("尚未恢复 Prompt，语义证据暂不可用")).toBeVisible();
-    expect(screen.queryByText(/异常 Token 起点/)).not.toBeInTheDocument();
+  it("shows the batch replay, default capture, role order, and original assets", () => {
+    render(<PcapMascotTeam mission={mission} />);
+    expect(screen.getByRole("region", { name: "批量分诊互动复盘" })).toBeVisible();
+    expect(screen.getByText("逐份解释当前批次的公开 PCAP 证据")).toBeVisible();
+    expect(screen.getByRole("button", { name: "回放捕获 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "回放捕获 2" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "文件解析员" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "流量分析员" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "分诊队长" })).toBeDisabled();
+    expect(screen.getByRole("img", { name: "文件解析员" })).toHaveAttribute("src", "/mascots/guard-detective.webp");
+    expect(screen.getByRole("img", { name: "流量分析员" })).toHaveAttribute("src", "/mascots/cpd-detective.webp");
+    expect(screen.getByRole("img", { name: "分诊队长" })).toHaveAttribute("src", "/mascots/agent-captain.webp");
   });
 
-  it("starts with one in-place Guard hop, a next-role cue, and locked later controls", () => {
-    render(<PcapMascotTeam mission={networkOnlyMission} />);
-    const guard = screen.getByRole("button", { name: "Guard 语义侦探" });
-    expect(guard).toBeEnabled();
-    expect(screen.getByRole("button", { name: "CPD 曲线侦探" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Agent 小队队长" })).toBeDisabled();
-    expect(screen.getByText("下一步：点击语义侦探")).toBeVisible();
-    expect(guard.closest("figure")).toHaveAttribute("data-motion", "hop");
-    expect(screen.getAllByRole("figure").filter((figure) => figure.dataset.motion === "hop")).toHaveLength(1);
-    expect(screen.queryByTestId("pcap-mascot-center-stage")).not.toBeInTheDocument();
-  });
-
-  it("unlocks roles in order and keeps completed roles available for immediate replay", async () => {
-    render(<PcapMascotTeam mission={networkOnlyMission} />);
-    fireEvent.click(screen.getByRole("button", { name: "Guard 语义侦探" }));
+  it("replays roles sequentially and keeps completed roles available", async () => {
+    render(<PcapMascotTeam mission={mission} />);
+    fireEvent.click(screen.getByRole("button", { name: "文件解析员" }));
+    expect(screen.getByText("检查成功；已验证 12 个数据包")).toBeVisible();
+    const traffic = screen.getByRole("button", { name: "流量分析员" });
+    expect(traffic).toBeEnabled();
+    fireEvent.click(traffic);
+    expect(screen.getByText("协议计数：HTTP 12")).toBeVisible();
+    expect(screen.getByRole("button", { name: "分诊队长" })).toBeDisabled();
     await act(async () => { await vi.advanceTimersByTimeAsync(840); });
-
-    const guard = screen.getByRole("button", { name: "Guard 语义侦探" });
-    const cpd = screen.getByRole("button", { name: "CPD 曲线侦探" });
-    expect(guard).toBeEnabled();
-    expect(cpd).toBeEnabled();
-    expect(screen.getByText("下一步：点击曲线侦探")).toBeVisible();
-    expect(cpd.closest("figure")).toHaveAttribute("data-motion", "hop");
-
-    fireEvent.click(guard);
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(guard).toHaveAttribute("aria-pressed", "true");
-    expect(cpd).toBeEnabled();
-    expect(vi.getTimerCount()).toBe(0);
-
-    fireEvent.click(cpd);
-    expect(screen.getByText(/明文应用协议候选：1 个/)).toBeVisible();
-    expect(screen.queryByText("模型与 Token 证据不可用")).not.toBeInTheDocument();
-    await act(async () => { await vi.advanceTimersByTimeAsync(420); });
-    const captain = screen.getByRole("button", { name: "Agent 小队队长" });
-    expect(captain).toBeEnabled();
-    fireEvent.click(captain);
-    expect(screen.getByText("批次计数：已选择 2，成功 2，失败 0，跳过 0")).toBeVisible();
-    expect(screen.getByRole("region", { name: "已证实" })).not.toHaveTextContent("仅有网络流量证据");
-    await act(async () => { await vi.advanceTimersByTimeAsync(1_260); });
-    expect(screen.getByRole("region", { name: "已证实" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "分诊队长" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "文件解析员" })).toBeEnabled();
   });
 
-  it("disables every role while a first-visit report is presenting", () => {
-    render(<PcapMascotTeam mission={networkOnlyMission} />);
-    fireEvent.click(screen.getByRole("button", { name: "Guard 语义侦探" }));
-    screen.getAllByRole("button").forEach((button) => expect(button).toBeDisabled());
-    expect(screen.getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
-      .toHaveAttribute("data-motion", "hop");
+  it("switches capture and resets roles without leaking prior evidence", () => {
+    render(<PcapMascotTeam mission={mission} />);
+    fireEvent.click(screen.getByRole("button", { name: "文件解析员" }));
+    expect(screen.getByText("检查成功；已验证 12 个数据包")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "回放捕获 2" }));
+    expect(screen.getByRole("button", { name: "回放捕获 2" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "回放捕获 1" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "文件解析员" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "流量分析员" })).toBeDisabled();
+    expect(screen.queryByText("检查成功；已验证 12 个数据包")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "文件解析员" }));
+    expect(screen.getByText("检查成功；已验证 18 个数据包")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "流量分析员" }));
+    expect(screen.getByText("协议计数：TLS 18")).toBeVisible();
+    expect(screen.queryByText("协议计数：HTTP 12")).not.toBeInTheDocument();
   });
 
-  it("removes hop motion and reveal timers when reduced motion is requested", () => {
-    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
-    render(<PcapMascotTeam mission={networkOnlyMission} />);
-    screen.getAllByRole("figure").forEach((figure) => expect(figure).toHaveAttribute("data-motion", "none"));
-    fireEvent.click(screen.getByRole("button", { name: "Guard 语义侦探" }));
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("updates hop motion when the reduced-motion preference changes and cleans up", () => {
-    const preference = installMotionPreference();
-    const { unmount } = render(<PcapMascotTeam mission={networkOnlyMission} />);
-    expect(screen.getByRole("button", { name: "Guard 语义侦探" }).closest("figure"))
-      .toHaveAttribute("data-motion", "hop");
-
-    act(() => preference.setReduced(true));
-    screen.getAllByRole("figure").forEach((figure) => expect(figure).toHaveAttribute("data-motion", "none"));
-
-    unmount();
-    expect(preference.mediaQuery.removeEventListener).toHaveBeenCalledTimes(1);
+  it("shows an empty batch without mascot controls", () => {
+    const emptyMission = { ...mission, summary: { ...mission.summary!, captures: [] } };
+    render(<PcapMascotTeam mission={emptyMission} />);
+    expect(screen.getByText("本批次没有可回放文件")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "文件解析员" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "流量分析员" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "分诊队长" })).not.toBeInTheDocument();
   });
 });

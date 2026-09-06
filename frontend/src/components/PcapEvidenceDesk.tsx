@@ -6,34 +6,36 @@ import {
   type PcapInvestigationRole,
 } from "../pcap/investigation";
 import { usePrefersReducedMotion } from "../pcap/usePrefersReducedMotion";
-import type { PcapMissionResult } from "../types";
+import type { PcapCaptureEvidence } from "../types";
 
 const LINE_REVEAL_INTERVAL_MS = 420;
 
 const roleLabels: Record<PcapInvestigationRole, string> = {
-  guard: "Guard 语义侦探",
-  cpd: "CPD 曲线侦探",
-  captain: "Agent 小队队长",
+  parser: "文件解析员",
+  traffic: "流量分析员",
+  captain: "分诊队长",
 };
 
 const sectionLabels: Record<Exclude<PcapEvidenceSection, "evidence">, string> = {
   confirmed: "已证实",
   candidate: "候选",
   unknown: "未知",
+  recommendation: "建议动作",
 };
 
 interface PcapEvidenceDeskProps {
-  mission: PcapMissionResult;
+  missionId: string;
+  capture: PcapCaptureEvidence;
   role: PcapInvestigationRole;
   replay: boolean;
   onComplete: () => void;
 }
 
-export function PcapEvidenceDesk({ mission, role, replay, onComplete }: PcapEvidenceDeskProps) {
+export function PcapEvidenceDesk({ missionId, capture, role, replay, onComplete }: PcapEvidenceDeskProps) {
   const reducedMotion = usePrefersReducedMotion();
-  const lines = useMemo(() => buildPcapRoleLines(mission, role), [mission, role]);
+  const lines = useMemo(() => buildPcapRoleLines(capture, role), [capture, role]);
   const immediate = replay || reducedMotion;
-  const playbackId = `${mission.mission_id}:${role}:${replay ? "replay" : "first"}`;
+  const playbackId = `${missionId}:${capture.capture_id}:${role}:${replay ? "replay" : "first"}`;
   const firstVisibleCount = immediate ? lines.length : Math.min(1, lines.length);
   const completedPlaybackIds = useRef(new Set<string>());
   const [reveal, setReveal] = useState(() => ({ playbackId, visibleCount: firstVisibleCount }));

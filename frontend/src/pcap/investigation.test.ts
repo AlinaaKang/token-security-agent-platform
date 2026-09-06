@@ -39,6 +39,18 @@ const encryptedCapture: PcapCaptureEvidence = {
   error_code: null,
 };
 
+const mixedVisibilityCapture: PcapCaptureEvidence = {
+  ...plaintextCapture,
+  capture_id: "capture_mixed_visibility",
+  protocol_counts: { tls: 18, http: 12 },
+  visibility: {
+    plaintext_application_protocol_observed: true,
+    encrypted_transport_observed: true,
+    tls_observed: true,
+    quic_observed: false,
+  },
+};
+
 const failedCapture: PcapCaptureEvidence = {
   capture_id: "capture_failed",
   status: "failed",
@@ -145,6 +157,16 @@ describe("PCAP per-capture evidence builders", () => {
       { section: "evidence", text: "协议计数：无可用协议计数" },
       { section: "evidence", text: "应用层不可见" },
       { section: "evidence", text: "证据能力：可观测证据不足，无法形成可靠结论" },
+    ]);
+  });
+
+  it("reports plaintext and encrypted visibility independently", () => {
+    expect(buildPcapRoleLines(mixedVisibilityCapture, "traffic")).toEqual([
+      { section: "evidence", text: "协议计数：HTTP 12" },
+      { section: "evidence", text: "协议计数：TLS 18" },
+      { section: "evidence", text: "明文应用协议可见" },
+      { section: "evidence", text: "加密传输可见；应用层内容不可见" },
+      { section: "evidence", text: "证据能力：可继续进行应用层检测；不证明存在 LLM 流量或攻击" },
     ]);
   });
 

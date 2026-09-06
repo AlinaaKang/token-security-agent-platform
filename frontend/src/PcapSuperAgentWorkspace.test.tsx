@@ -389,7 +389,7 @@ describe("PCAP SuperAgent evidence workspace", () => {
     expect(within(failedCapture!).getByText("检查失败")).toBeVisible();
     expect(within(failedCapture!).getByText("inspection_failed")).toBeVisible();
     expect(within(failedCapture!).queryByText("证据不足")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "PCAP 侦探证据回放" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "批量分诊互动复盘" })).toBeVisible();
     expect(document.body.textContent).not.toContain(PRIVATE_SENTINEL);
   });
 
