@@ -37,7 +37,7 @@ def valid_public_recon_overview() -> dict[str, object]:
     return {
         "enabled": True,
         "eligible_file_count": 2318,
-        "sample_limit": 20,
+        "sample_limit": 100,
         "sampling_method": "size_quartile_v1",
     }
 
@@ -175,13 +175,20 @@ class PublicApiFixture:
                     method == "POST"
                     and self.path == "/api/v1/superagent/missions"
                     and isinstance(body, dict)
-                    and body.get("objective") in {
-                        "reconnoiter_pcap_dataset",
-                        "detect_pcap_anomalies",
-                    }
+                    and body.get("objective") == "reconnoiter_pcap_dataset"
                 ):
                     status, payload = 422, _fixed_error(
                         "request_validation_failed", "request validation failed"
+                    )
+                if (
+                    method == "POST"
+                    and self.path == "/api/v1/superagent/missions"
+                    and isinstance(body, dict)
+                    and body.get("objective") == "detect_pcap_anomalies"
+                ):
+                    status, payload = 403, _fixed_error(
+                        "pcap_authorization_required",
+                        "pcap authorization is required",
                     )
                 encoded = json.dumps(payload).encode("utf-8")
                 self.send_response(status)

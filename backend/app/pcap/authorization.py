@@ -12,6 +12,7 @@ from typing import Literal
 
 
 _MAX_FILES = 20
+_MAX_RECON_FILES = 10_000
 _DEFAULT_UPLOAD_MAX_BYTES = 536870912
 _DEFAULT_STORE_CAPACITY = 256
 _AUTHORIZATION_ID = re.compile(r"^pcap_auth_[0-9a-f]{32}$")
@@ -85,7 +86,6 @@ class PcapAuthorizationStore:
         purpose: PcapAuthorizationPurpose = "triage",
         expected_byte_count: int | None = None,
     ) -> PcapAuthorizationReceipt:
-        _validate_max_files(max_files)
         if purpose not in (
             "triage",
             "reconnaissance",
@@ -95,8 +95,11 @@ class PcapAuthorizationStore:
             raise ValueError(
                 "purpose must be triage, reconnaissance, detection, or upload_detection"
             )
-        if purpose == "reconnaissance" and max_files != _MAX_FILES:
-            raise ValueError("reconnaissance max_files is fixed at 20")
+        if purpose == "reconnaissance":
+            if type(max_files) is not int or not 1 <= max_files <= _MAX_RECON_FILES:
+                raise ValueError("reconnaissance max_files must be between 1 and 10000")
+        else:
+            _validate_max_files(max_files)
         if purpose == "upload_detection":
             if max_files != 1:
                 raise ValueError("upload_detection max_files is fixed at 1")

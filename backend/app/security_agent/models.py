@@ -93,6 +93,7 @@ class AgentIntent(_PublicModel):
         "explain_attack",
         "explain_pcap",
         "explain_current_evidence",
+        "case_question",
         "investigate_prompt",
         "investigate_pcap_dataset",
         "investigate_pcap_capture",
@@ -108,6 +109,7 @@ class AgentIntent(_PublicModel):
     requires_task: bool = False
     requires_authorization: bool = False
     control_is_explicit: bool = False
+    report_requested: bool = False
 
 
 class AgentPlanStep(_PublicModel):
@@ -190,6 +192,30 @@ class AgentMessage(_PublicModel):
     evidence_refs: tuple[NonEmptyText, ...] = Field(default=(), max_length=200)
 
 
+class AgentSuggestedQuestion(_PublicModel):
+    question_id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
+    label: NonEmptyText
+    message: NonEmptyText
+
+
+class AgentNextAction(_PublicModel):
+    action_id: Literal[
+        "explain_evidence",
+        "suggest_prompt_repair",
+        "recheck_prompt",
+        "inspect_suspicious_packets",
+        "analyze_attack_chain",
+        "generate_response_plan",
+        "generate_report",
+        "expand_pcap_scope",
+    ]
+    label: NonEmptyText
+    action_kind: Literal["read_only", "state_change"]
+    requires_authorization: bool = False
+    enabled: bool = True
+    disabled_reason: NonEmptyText | None = None
+
+
 class AgentReportMetadata(_PublicModel):
     report_id: NonEmptyText
     title: NonEmptyText
@@ -223,12 +249,15 @@ class AgentTaskSnapshot(_PublicModel):
     task_id: NonEmptyText
     version: int = Field(ge=1)
     task_type: AgentTaskType
+    workspace_mode: Literal["prompt", "pcap"] | None = None
     status: AgentTaskStatus
     title: NonEmptyText
     objective_summary: NonEmptyText
     created_at: NonEmptyText
     updated_at: NonEmptyText
     messages: tuple[AgentMessage, ...] = Field(default=(), max_length=100)
+    suggested_questions: tuple[AgentSuggestedQuestion, ...] = Field(default=(), max_length=4)
+    next_actions: tuple[AgentNextAction, ...] = Field(default=(), max_length=4)
     plan: tuple[AgentPlanStep, ...] = Field(default=(), max_length=12)
     observations: tuple[AgentObservation, ...] = Field(default=(), max_length=200)
     evidence: tuple[AgentEvidence, ...] = Field(default=(), max_length=200)
@@ -256,5 +285,21 @@ class AgentCapabilities(_PublicModel):
 
 class AgentCommandRequest(_PublicModel):
     message: str = Field(min_length=1, max_length=MAX_PROMPT_CHARACTERS)
+    workspace_mode: Literal["prompt", "pcap"] | None = None
     task_id: NonEmptyText | None = None
     data_source_refs: tuple[NonEmptyText, ...] = Field(default=(), max_length=20)
+
+
+class AgentActionRequest(_PublicModel):
+    action_id: Literal[
+        "explain_evidence",
+        "suggest_prompt_repair",
+        "recheck_prompt",
+        "inspect_suspicious_packets",
+        "analyze_attack_chain",
+        "generate_response_plan",
+        "generate_report",
+        "expand_pcap_scope",
+    ]
+    transient_input: str | None = Field(default=None, max_length=MAX_PROMPT_CHARACTERS)
+    authorization_scopes: tuple[NonEmptyText, ...] = Field(default=(), max_length=8)

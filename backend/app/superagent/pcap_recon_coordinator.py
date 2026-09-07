@@ -54,7 +54,7 @@ class PcapReconMissionCoordinator:
             )
             if self._active_recon_ids:
                 raise RuntimeError("pcap_reconnaissance_active")
-            self._authorization_store.consume(
+            authorization = self._authorization_store.consume(
                 request.authorization_id, purpose="reconnaissance"
             )
             recon_id = f"recon_{uuid.uuid4().hex}"
@@ -65,7 +65,7 @@ class PcapReconMissionCoordinator:
             )
             self._mission_store.put(queued)
             self._active_recon_ids.add(recon_id)
-            self._pool.submit(self._run, recon_id, queued.created_at, 20)
+            self._pool.submit(self._run, recon_id, queued.created_at, authorization.max_files)
             return queued
 
     def cancel(self, recon_id: str) -> PcapReconMissionResult:

@@ -1,15 +1,16 @@
-import { Braces, Clock3, FileText, Microscope, PanelRightClose, Scale, Wrench } from "lucide-react";
+import { BookOpenCheck, Braces, Clock3, FileText, Microscope, PanelRightClose, Scale, Wrench } from "lucide-react";
 import { useState } from "react";
-import { useEffect } from "react";
 
-import { api } from "../api";
-import type { AgentCapabilities, AgentPlaybook, AgentTaskSnapshot } from "../agent/types";
+import type { AgentTaskSnapshot } from "../agent/types";
+import { resolveInspectorMode } from "../agent/inspectorMode";
+import type { PcapDetectionMissionResult } from "../types";
 import { AgentAttackTimeline } from "./AgentAttackTimeline";
 import { AgentEvidenceInspector } from "./AgentEvidenceInspector";
 import { AgentHypothesisPanel } from "./AgentHypothesisPanel";
 import { AgentReportInspector } from "./AgentReportInspector";
 import { AgentToolInspector } from "./AgentToolInspector";
-import { AgentResourceCenter } from "./AgentResourceCenter";
+import { AgentPcapInspector } from "./AgentPcapInspector";
+import { AgentPromptInspector } from "./AgentPromptInspector";
 
 type AgentInspectorShellProps = {
   pathname: string;
@@ -17,6 +18,7 @@ type AgentInspectorShellProps = {
   onClose?: () => void;
   task?: AgentTaskSnapshot | null;
   resource?: string | null;
+  pcapMission?: PcapDetectionMissionResult | null;
 };
 
 const labels: Record<string, { title: string; context: string }> = {
@@ -36,29 +38,25 @@ const tabs = [
   { id: "report", label: "报告", Icon: FileText },
 ] as const;
 
-export function AgentInspectorShell({ pathname, className = "", onClose, task = null, resource = null }: AgentInspectorShellProps) {
-  const copy = labels[pathname] ?? labels["/super-agent"];
+export function AgentInspectorShell({ pathname, className = "", onClose, task = null, resource = null, pcapMission = null }: AgentInspectorShellProps) {
+  const mode = resolveInspectorMode(task, pcapMission);
+  const baseCopy = labels[pathname] ?? labels["/super-agent"];
+  const copy = pathname === "/super-agent" && resource
+    ? { title: "资源说明", context: "资源正文显示在中间工作区；这里只说明使用边界。" }
+    : pathname === "/super-agent"
+    ? mode === "prompt" ? { title: "Prompt 调查检查器", context: "分别核对 Guard、Token、复核、工具与报告" }
+      : mode === "pcap" ? { title: "PCAP 调查检查器", context: "核对 mission、Packet、解析过程与报告边界" }
+        : baseCopy
+    : baseCopy;
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("evidence");
   const agentRoute = pathname === "/super-agent";
-  const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
-  const [playbooks, setPlaybooks] = useState<AgentPlaybook[]>([]);
-  useEffect(() => {
-    if (!resource) return;
-    let active = true;
-    Promise.allSettled([api.agentCapabilities(), api.agentPlaybooks()]).then(([capabilityResult, playbookResult]) => {
-      if (!active) return;
-      if (capabilityResult.status === "fulfilled") setCapabilities(capabilityResult.value);
-      if (playbookResult.status === "fulfilled") setPlaybooks(playbookResult.value.playbooks.map((item) => ({ ...item, version: playbookResult.value.version })));
-    });
-    return () => { active = false; };
-  }, [resource]);
   return (
-    <aside className={`agent-inspector-shell ${className}`.trim()} aria-label={copy.title}>
+    <aside className={`agent-inspector-shell ${className}`.trim()} aria-label={copy.title} data-tour="agent-inspector">
       <header>
         <div><Braces size={17} /><strong>{copy.title}</strong></div>
         {onClose ? <button type="button" onClick={onClose} aria-label="关闭检查器"><PanelRightClose size={18} /></button> : null}
       </header>
-      {agentRoute && resource ? <AgentResourceCenter resource={resource} capabilities={capabilities} playbooks={playbooks} /> : agentRoute ? <div className="agent-inspector-case">
+      {agentRoute && resource ? <div className="agent-inspector-empty agent-resource-scope"><BookOpenCheck size={20} /><strong>资源不会自动执行动作</strong><p>检测技能、知识、连接器和报告用于规划、解释与复核。打开资源不会中断当前任务。</p></div> : agentRoute && mode === "prompt" && task ? <AgentPromptInspector task={task} /> : agentRoute && mode === "pcap" ? <AgentPcapInspector mission={pcapMission} /> : agentRoute ? <div className="agent-inspector-case">
         <nav aria-label="案件检查器视图">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" aria-label={label} aria-pressed={tab === id} onClick={() => setTab(id)} title={label}><Icon size={16} /></button>)}</nav>
         <div className="agent-inspector-content">
           {tab === "evidence" ? <AgentEvidenceInspector evidence={task?.evidence ?? []} /> : null}

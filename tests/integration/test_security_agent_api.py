@@ -11,6 +11,7 @@ from app.security_agent.feedback import AnalystFeedbackService
 from app.security_agent.models import AgentCapabilities
 from app.security_agent.store import SecurityAgentStore
 from app.security_agent.tools import build_registry
+from tests.unit.test_security_agent_pcap_import import _mission
 
 
 def _handler(tool_id: str):
@@ -93,6 +94,97 @@ def test_capabilities_and_identity_conversation(tmp_path) -> None:
     assert created.json()["status"] == "completed"
 
 
+def test_task_creation_persists_pcap_workspace_for_general_questions(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        created = client.post(
+            "/api/v1/agent/tasks",
+            json={"message": "你好", "workspace_mode": "pcap"},
+        )
+        restored = client.get(
+            f"/api/v1/agent/tasks/{created.json()['task_id']}"
+        )
+
+    assert created.status_code == 201
+    assert created.json()["workspace_mode"] == "pcap"
+    assert restored.json()["workspace_mode"] == "pcap"
+
+
+def test_pcap_task_accepts_free_form_contextual_questions(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        created = client.post(
+            "/api/v1/agent/tasks",
+            json={"message": "你好", "workspace_mode": "pcap"},
+        ).json()
+        response = client.post(
+            f"/api/v1/agent/tasks/{created['task_id']}/messages",
+            json={"message": "可能是什么攻击类型？"},
+        )
+
+    assert response.status_code == 200
+    assert "属于当前 PCAP 调查范围" in response.json()["messages"][-1]["content"]
+    assert "超出" not in response.json()["messages"][-1]["content"]
+
+
+def test_public_pcap_result_import_is_idempotent_and_conversational(tmp_path) -> None:
+    public_result = _mission().model_dump(mode="json")
+    with installed(tmp_path) as (client, _coordinator):
+        first = client.post("/api/v1/agent/tasks/import-pcap", json=public_result)
+        second = client.post("/api/v1/agent/tasks/import-pcap", json=public_result)
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.json()["task_id"] == first.json()["task_id"]
+    assert second.json()["task_type"] == "pcap_capture_investigation"
+    assert second.json()["next_actions"]
+    encoded = second.text.lower()
+    for forbidden in ("filename", "file_path", "payload", "ip_address", '"port"'):
+        assert forbidden not in encoded
+
+
+def test_public_pcap_result_import_appends_to_existing_pcap_conversation(tmp_path) -> None:
+    public_result = _mission().model_dump(mode="json")
+    with installed(tmp_path) as (client, _coordinator):
+        created = client.post(
+            "/api/v1/agent/tasks",
+            json={"message": "你好", "workspace_mode": "pcap"},
+        ).json()
+        first = client.post(
+            f"/api/v1/agent/tasks/import-pcap?task_id={created['task_id']}",
+            json=public_result,
+        )
+        second = client.post(
+            f"/api/v1/agent/tasks/import-pcap?task_id={created['task_id']}",
+            json=public_result,
+        )
+        listed = client.get("/api/v1/agent/tasks").json()["items"]
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["task_id"] == created["task_id"]
+    assert second.json()["task_id"] == created["task_id"]
+    assert first.json()["messages"][0] == created["messages"][0]
+    assert len(first.json()["messages"]) > len(created["messages"])
+    assert second.json()["messages"] == first.json()["messages"]
+    assert second.json()["evidence"] == first.json()["evidence"]
+    assert first.json()["task_type"] == "pcap_capture_investigation"
+    assert len(listed) == 1
+
+
+def test_public_pcap_result_import_rejects_a_prompt_conversation_target(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        created = client.post(
+            "/api/v1/agent/tasks",
+            json={"message": "你好", "workspace_mode": "prompt"},
+        ).json()
+        response = client.post(
+            f"/api/v1/agent/tasks/import-pcap?task_id={created['task_id']}",
+            json=_mission().model_dump(mode="json"),
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "pcap_target_workspace_mismatch"
+
+
 def test_task_switch_does_not_cancel_background_execution(tmp_path) -> None:
     with installed(tmp_path) as (client, _coordinator):
         created = client.post(
@@ -152,6 +244,21 @@ def test_explicit_cancel_and_missing_task_errors(tmp_path) -> None:
     assert missing.json()["error"]["code"] == "agent_task_not_found"
 
 
+def test_task_can_be_deleted_and_is_no_longer_listed(tmp_path) -> None:
+    with installed(tmp_path) as (client, _coordinator):
+        task = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这段 Prompt 是否包含越狱风险"}
+        ).json()
+        deleted = client.delete(f"/api/v1/agent/tasks/{task['task_id']}")
+        restored = client.get(f"/api/v1/agent/tasks/{task['task_id']}")
+        listing = client.get("/api/v1/agent/tasks").json()
+
+    assert "越狱风险" in task["title"]
+    assert deleted.status_code == 204
+    assert restored.status_code == 404
+    assert all(item["task_id"] != task["task_id"] for item in listing["items"])
+
+
 def test_task_listing_and_follow_up_message(tmp_path) -> None:
     with installed(tmp_path) as (client, _coordinator):
         task = client.post(
@@ -164,17 +271,49 @@ def test_task_listing_and_follow_up_message(tmp_path) -> None:
         listing = client.get("/api/v1/agent/tasks?limit=20&offset=0")
 
     assert followed.status_code == 200
-    assert "数据包范围" in followed.json()["messages"][-1]["content"]
+    assert "当前 PCAP 调查范围" in followed.json()["messages"][-1]["content"]
+    assert "还没有可引用" in followed.json()["messages"][-1]["content"]
     assert listing.json()["items"][0]["task_id"] == task["task_id"]
 
 
-def test_resource_catalog_and_append_only_feedback_api(tmp_path) -> None:
-    with installed(tmp_path) as (client, _coordinator):
+def test_recommended_report_action_executes_and_rejects_stale_actions(tmp_path) -> None:
+    with installed(tmp_path) as (client, coordinator):
         task = client.post(
             "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
         ).json()
+        coordinator.authorize(task["task_id"], ("pcap:read",))
+        coordinator.run_until_blocked(task["task_id"])
+
+        generated = client.post(
+            f"/api/v1/agent/tasks/{task['task_id']}/actions",
+            json={"action_id": "generate_report"},
+        )
+        stale = client.post(
+            f"/api/v1/agent/tasks/{task['task_id']}/actions",
+            json={"action_id": "generate_report"},
+        )
+
+    assert generated.status_code == 200
+    assert generated.json()["report"] is not None
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "agent_action_not_available"
+
+
+def test_resource_catalog_and_append_only_feedback_api(tmp_path) -> None:
+    with installed(tmp_path) as (client, coordinator):
+        task = client.post(
+            "/api/v1/agent/tasks", json={"message": "检测这批 PCAP"}
+        ).json()
+        coordinator.authorize(task["task_id"], ("pcap:read",))
+        coordinator.run_until_blocked(task["task_id"])
+        client.post(
+            f"/api/v1/agent/tasks/{task['task_id']}/actions",
+            json={"action_id": "generate_report"},
+        )
         playbooks = client.get("/api/v1/agent/playbooks")
         connectors = client.get("/api/v1/agent/connectors")
+        knowledge = client.get("/api/v1/agent/knowledge")
+        reports = client.get("/api/v1/agent/reports")
         feedback = client.post(
             f"/api/v1/agent/tasks/{task['task_id']}/feedback",
             json={
@@ -189,6 +328,13 @@ def test_resource_catalog_and_append_only_feedback_api(tmp_path) -> None:
     assert any(item["playbook_id"] == "pcap_dataset_v1" for item in playbooks.json()["playbooks"])
     assert connectors.status_code == 200
     assert any(item["authenticity"] == "simulated" for item in connectors.json())
+    assert knowledge.status_code == 200
+    assert knowledge.json()["snapshot_version"] == "official-v2"
+    assert knowledge.json()["card_count"] >= 1
+    assert any(item["publisher"] == "owasp" for item in knowledge.json()["items"])
+    assert reports.status_code == 200
+    assert reports.json()["items"][0]["task_id"] == task["task_id"]
+    assert reports.json()["items"][0]["download_url"].startswith("/api/v1/agent/reports/")
     assert feedback.status_code == 201
     assert feedback.json()["task_id"] == task["task_id"]
 

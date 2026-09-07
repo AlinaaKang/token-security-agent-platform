@@ -160,6 +160,26 @@ def test_store_reports_missing_tasks(tmp_path) -> None:
         store.get("task_" + "f" * 32)
 
 
+def test_store_delete_removes_task_and_events(tmp_path) -> None:
+    store = SecurityAgentStore(tmp_path / "agent.sqlite3")
+    created = store.create(snapshot_payload(events=[event_payload(1)]))
+
+    store.delete(created.task_id)
+
+    with pytest.raises(AgentTaskNotFound):
+        store.get(created.task_id)
+    assert store.connection.execute(
+        "SELECT COUNT(*) FROM agent_events WHERE task_id = ?", (created.task_id,)
+    ).fetchone()[0] == 0
+
+
+def test_store_delete_reports_missing_task(tmp_path) -> None:
+    store = SecurityAgentStore(tmp_path / "agent.sqlite3")
+
+    with pytest.raises(AgentTaskNotFound):
+        store.delete("task_" + "f" * 32)
+
+
 def test_database_never_contains_rejected_private_sentinel(tmp_path) -> None:
     database_path = tmp_path / "agent.sqlite3"
     store = SecurityAgentStore(database_path)
@@ -197,4 +217,3 @@ def test_events_after_returns_only_later_validated_events(tmp_path) -> None:
         AgentEvent.model_validate(event_payload(2)),
         AgentEvent.model_validate(event_payload(3)),
     )
-

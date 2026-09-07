@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import { ResultGuide } from "../components/ResultGuide";
+import { PromptAnalysisNav } from "../components/PromptAnalysisNav";
 import type { EventPage, FusionReason, SemanticCategory, SemanticSeverity } from "../types";
 
 const decisionLabels = {
@@ -84,6 +85,7 @@ export function EventsPage() {
 
   return (
     <main className="page">
+      <PromptAnalysisNav />
       <header className="page-header">
         <div>
           <h1>安全事件</h1>

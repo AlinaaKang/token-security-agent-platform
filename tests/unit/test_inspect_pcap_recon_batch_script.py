@@ -99,12 +99,12 @@ def make_directory_junction(link: Path, target: Path) -> None:
     result = subprocess.run([os.environ["ComSpec"], "/d", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
-def run(root: Path, inspector: Path):
+def run(root: Path, inspector: Path, max_files: int = 20):
     env = os.environ.copy()
     env['FAKE_RECON_LOG_ROOT'] = str(inspector.parent / 'recon-log')
     Path(env['FAKE_RECON_LOG_ROOT']).mkdir(exist_ok=True)
     env['FAKE_RECON_CANCEL_MARKER'] = str(root / 'state' / f'{RECON_ID}.cancel')
-    return subprocess.run([str(WINDOWS_POWERSHELL), '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-QuarantineRoot',str(root),'-InspectorScript',str(inspector),'-ReconId',RECON_ID,'-StateId',STATE_ID],capture_output=True,text=True,env=env)
+    return subprocess.run([str(WINDOWS_POWERSHELL), '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-QuarantineRoot',str(root),'-InspectorScript',str(inspector),'-ReconId',RECON_ID,'-StateId',STATE_ID,'-MaxFiles',str(max_files)],capture_output=True,text=True,env=env)
 
 
 def run_with_env(root: Path, inspector: Path, updates: dict[str, str]):
@@ -121,6 +121,21 @@ def test_recon_selects_five_midpoints_per_quartile(tmp_path: Path):
     result=run(root,fake_inspector(tmp_path)); assert result.returncode==0, result.stdout+result.stderr
     state=json.loads((root/'state'/'pcap-recon-private.json').read_text())
     assert [e['size_bytes'] for e in state['entries']]==[2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40]
+
+
+def test_recon_can_select_one_hundred_stratified_samples(tmp_path: Path):
+    root=tmp_path/'q100'; inp=root/'input'; inp.mkdir(parents=True)
+    for n in range(1,121): (inp/f'{n:03}.pcap').write_bytes(b'x'*n)
+    result=run(root,fake_inspector(tmp_path),100); assert result.returncode==0, result.stdout+result.stderr
+    summary=json.loads((root/'output'/f'pcap-recon-{RECON_ID}.json').read_text())
+    assert summary['sampled_count']==100
+    assert summary['quartile_counts']=={'quartile_1':25,'quartile_2':25,'quartile_3':25,'quartile_4':25}
+
+
+def test_recon_checkpoints_in_bounded_intervals_instead_of_after_every_file():
+    source = SCRIPT.read_text(encoding='utf-8')
+    assert 'if ($processedSinceCheckpoint -ge 100)' in source
+    assert source.count('Save-AtomicJson ([ordered]@{ schema_version = 1; state_id = $StateId; entries = @($entries) }) $stateFile') == 2
 
 def test_recon_public_summary_is_aggregate_only(tmp_path: Path):
     root=tmp_path/'q'; inp=root/'input'; inp.mkdir(parents=True); (inp/'PRIVATE_SENTINEL.pcap').write_bytes(b'x'*4)

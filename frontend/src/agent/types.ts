@@ -13,6 +13,23 @@ export interface AgentMessage {
   evidence_refs: string[];
 }
 
+export interface AgentSuggestedQuestion {
+  question_id: string;
+  label: string;
+  message: string;
+}
+
+export interface AgentNextAction {
+  action_id: "explain_evidence" | "suggest_prompt_repair" | "recheck_prompt"
+    | "inspect_suspicious_packets" | "analyze_attack_chain"
+    | "generate_response_plan" | "generate_report" | "expand_pcap_scope";
+  label: string;
+  action_kind: "read_only" | "state_change";
+  requires_authorization: boolean;
+  enabled: boolean;
+  disabled_reason: string | null;
+}
+
 export interface AgentPlanStep {
   step_id: string;
   tool_id: string | null;
@@ -107,12 +124,15 @@ export interface AgentTaskSnapshot {
   task_id: string;
   version: number;
   task_type: string;
+  workspace_mode?: "prompt" | "pcap" | null;
   status: AgentTaskStatus;
   title: string;
   objective_summary: string;
   created_at: string;
   updated_at: string;
   messages: AgentMessage[];
+  suggested_questions?: AgentSuggestedQuestion[];
+  next_actions?: AgentNextAction[];
   plan: AgentPlanStep[];
   observations: AgentObservation[];
   evidence: AgentEvidence[];
@@ -165,3 +185,37 @@ export interface AgentPlaybookCatalog {
   version: string;
   playbooks: AgentPlaybook[];
 }
+
+export interface AgentConnector {
+  connector_id: string;
+  title: string;
+  state: "available" | "simulated" | "degraded" | "unavailable";
+  authenticity: EvidenceAuthenticity;
+}
+
+export interface AgentKnowledgeItem {
+  knowledge_id: string;
+  title: string;
+  publisher: string;
+  version: string;
+  risk_domain: string;
+}
+
+export interface AgentKnowledgeCatalog {
+  snapshot_version: string;
+  card_count: number;
+  items: AgentKnowledgeItem[];
+}
+
+export interface AgentReportListItem {
+  task_id: string;
+  task_title: string;
+  final_status: AgentTaskSnapshot["final_status"];
+  report_id: string;
+  title: string;
+  status: AgentReportMetadata["status"];
+  generated_at: string;
+  download_url: string;
+}
+
+export interface AgentReportCatalog { items: AgentReportListItem[]; }

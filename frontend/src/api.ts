@@ -27,6 +27,7 @@ import type {
   PcapDetectionAuthorizationRequest,
   PcapDetectionMissionRequest,
   PcapDetectionMissionResult,
+  PcapEvaluationSummary,
   PcapUploadCapability,
   SuperAgentCapabilities,
   SuperAgentMissionRequest,
@@ -35,7 +36,10 @@ import type {
 } from "./types";
 import type {
   AgentCapabilities,
+  AgentConnector,
+  AgentKnowledgeCatalog,
   AgentPlaybookCatalog,
+  AgentReportCatalog,
   AgentTaskPage,
   AgentTaskSnapshot,
 } from "./agent/types";
@@ -98,11 +102,17 @@ export const api = {
     requestJson<AgentCapabilities>("/api/v1/agent/capabilities"),
   agentPlaybooks: () =>
     requestJson<AgentPlaybookCatalog>("/api/v1/agent/playbooks"),
-  createAgentTask: (message: string) =>
+  agentConnectors: () =>
+    requestJson<AgentConnector[]>("/api/v1/agent/connectors"),
+  agentKnowledge: () =>
+    requestJson<AgentKnowledgeCatalog>("/api/v1/agent/knowledge"),
+  agentReports: () =>
+    requestJson<AgentReportCatalog>("/api/v1/agent/reports"),
+  createAgentTask: (message: string, workspaceMode: "prompt" | "pcap" = "prompt") =>
     requestJson<AgentTaskSnapshot>("/api/v1/agent/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, workspace_mode: workspaceMode }),
     }),
   listAgentTasks: (limit = 20, offset = 0) =>
     requestJson<AgentTaskPage>(`/api/v1/agent/tasks?limit=${limit}&offset=${offset}`),
@@ -114,6 +124,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
     }),
+  executeAgentAction: (taskId: string, actionId: string) =>
+    requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action_id: actionId }),
+    }),
+  importPcapAgentTask: (mission: PcapDetectionMissionResult, taskId?: string | null) =>
+    requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/import-pcap${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ""}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mission),
+    }),
   authorizeAgentTask: (taskId: string, scopes: string[]) =>
     requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}/authorizations`, {
       method: "POST",
@@ -123,6 +145,10 @@ export const api = {
   cancelAgentTask: (taskId: string) =>
     requestJson<AgentTaskSnapshot>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}/cancel`, {
       method: "POST",
+    }),
+  deleteAgentTask: (taskId: string) =>
+    requestJson<void>(`/api/v1/agent/tasks/${encodeURIComponent(taskId)}`, {
+      method: "DELETE",
     }),
   agentEventStreamUrl: (taskId: string) =>
     `/api/v1/agent/tasks/${encodeURIComponent(taskId)}/events`,
@@ -136,6 +162,8 @@ export const api = {
     requestJson<EventPage>("/api/v1/events?limit=" + limit + "&offset=" + offset),
   evaluation: () =>
     requestJson<EvaluationSummary>("/api/v1/evaluation/summary"),
+  pcapEvaluation: () =>
+    requestJson<PcapEvaluationSummary>("/api/v1/evaluation/pcap-summary"),
   demoSamples: () =>
     requestJson<DemoSample[]>("/api/v1/demo-samples?limit=30"),
   analyzeDemo: (sampleId: string) =>

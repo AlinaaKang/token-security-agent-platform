@@ -40,8 +40,17 @@ export const TOURS: Partial<Record<string, GuidedTourStep[]>> = {
     { id: "evaluation-methods", target: "evaluation-methods", title: "比较方法与工作点", description: "先比较 F1、AUROC 与 FPR，再确认阈值是在开发集选择，避免用测试集调参。" },
     { id: "evaluation-limits", target: "evaluation-limits", title: "区分能力与边界", description: "分类指标衡量是否检出；CPD 定位指标衡量异常起点误差，两者不能互相替代。" },
   ],
+  "/pcap-profile": [
+    { id: "pcap-profile-scope", target: "pcap-profile-scope", title: "选择画像范围", description: "可使用快速或推荐档位、自定义样本数，也可覆盖全部可选文件；系统只返回聚合统计。" },
+    { id: "pcap-profile-command", target: "pcap-profile-command", title: "授权生成画像", description: "点击后再次确认只读、无网络的隔离扫描边界，再启动画像任务。" },
+    { id: "pcap-profile-results", target: "pcap-profile-results", title: "读取聚合结果", description: "协议、Packet 数、持续时间和可见性用于选择后续检测方法，不等于攻击结论。" },
+  ],
+  "/pcap-evaluation": [
+    { id: "pcap-evaluation-scope", target: "pcap-evaluation-scope", title: "确认评测边界", description: "这里展示内置合成脱敏回归结果，不代表真实生产网络总体准确率。" },
+    { id: "pcap-evaluation-metrics", target: "pcap-evaluation-metrics", title: "查看核心指标", description: "同时比较 Precision、Recall、F1、误报率和 Packet 定位命中率。" },
+    { id: "pcap-evaluation-ablation", target: "pcap-evaluation-ablation", title: "比较检测贡献", description: "规则、行为与融合三行使用同一冻结数据，便于解释每类检测方法的贡献。" },
+  ],
   "/lab": [
-    { id: "lab-input-kind", target: "lab-input-kind", title: "选择攻防输入", description: "Prompt 攻防验证模型输入，PCAP 攻防检测一个本地网络抓包。", advanceOnClick: true },
     { id: "lab-active-input", target: "lab-active-input", title: "准备实验输入", description: "当前区域只读取你主动选择的 Prompt 场景或单个 PCAP 文件。" },
     { id: "lab-active-boundary", target: "lab-active-boundary", title: "确认实验边界", description: "Prompt 使用既有检测链路；PCAP 只在本地无网络 Docker 中解析。" },
     { id: "lab-active-command", target: "lab-active-command", title: "手动开始实验", description: "只有你点击最终操作后，系统才会运行调查或上传检测。" },
@@ -54,3 +63,49 @@ export const TOURS: Partial<Record<string, GuidedTourStep[]>> = {
   ],
   "/challenge": CHALLENGE_SETUP_STEPS,
 };
+
+const AGENT_PROMPT_STEPS: GuidedTourStep[] = [
+  { id: "agent-prompt-context", target: "agent-context", title: "开始 Prompt 安全对话", description: "这里既能进行普通交流和安全知识问答，也能创建需要检测工具的 Prompt 调查。" },
+  { id: "agent-prompt-conversation", target: "agent-conversation", title: "查看连续对话", description: "你的消息显示在右侧，智能体的解释、计划和结果显示在左侧；历史任务可以继续追问。" },
+  { id: "agent-prompt-composer", target: "agent-composer", title: "输入问题或调查目标", description: "直接提问不会自动运行工具；只有检测与处置任务才会进入授权和执行流程。" },
+  { id: "agent-prompt-inspector", target: "agent-inspector", title: "核对案件证据", description: "右侧检查器分别展示 Guard、Token、假设、工具和报告，帮助验证智能体回复。" },
+];
+
+const AGENT_PCAP_STEPS: GuidedTourStep[] = [
+  { id: "agent-pcap-context", target: "agent-context", title: "开始 PCAP 数据调查", description: "上传本机 PCAP 或描述调查目标，智能体会把检测过程和结论组织成连续对话。" },
+  { id: "agent-pcap-conversation", target: "agent-conversation", title: "阅读调查过程", description: "上传进度、Packet 证据和最终结论都保留在对话中，检测完成后仍可继续追问。" },
+  { id: "agent-pcap-composer", target: "agent-composer", title: "上传或继续追问", description: "可以添加 PCAP，也可以询问 Packet 含义、攻击目的、证据边界和处置建议。" },
+  { id: "agent-pcap-inspector", target: "agent-inspector", title: "复核 PCAP 证据", description: "右侧检查器展示 mission 状态、Packet 证据、工具过程和报告边界。" },
+];
+
+const RESOURCE_TOURS: Record<string, GuidedTourStep[]> = {
+  knowledge: [
+    { id: "resource-knowledge-header", target: "resource-header", title: "了解安全知识库", description: "这里展示智能体用于解释与报告引用的离线安全知识快照。" },
+    { id: "resource-knowledge-content", target: "resource-content", title: "核对知识条目", description: "每条知识标明发布方、版本与风险领域；知识不会绕过检测证据直接改变结论。" },
+    { id: "resource-knowledge-return", target: "resource-return", title: "返回安全对话", description: "回到对话后可询问知识内容，或让智能体在当前案件中引用相关条目。" },
+  ],
+  connectors: [
+    { id: "resource-connectors-header", target: "resource-header", title: "了解数据连接器", description: "这里核对智能体当前能够读取哪些真实、仿真或降级数据源。" },
+    { id: "resource-connectors-content", target: "resource-content", title: "检查连接状态", description: "连接器状态决定任务能否执行；未接入的数据源不会被描述成真实联动。" },
+    { id: "resource-connectors-return", target: "resource-return", title: "返回安全对话", description: "回到对话创建与当前可用连接器匹配的调查任务。" },
+  ],
+  reports: [
+    { id: "resource-reports-header", target: "resource-header", title: "了解调查报告", description: "这里集中展示已完成任务生成的公开报告，并保留任务摘要和生成时间。" },
+    { id: "resource-reports-content", target: "resource-content", title: "查看可审计结果", description: "报告区分任务来源、最终状态与证据引用；工具失败不会被包装成安全结论。" },
+    { id: "resource-reports-return", target: "resource-return", title: "返回安全对话", description: "回到对应调查继续追问，或创建新的 Prompt 与 PCAP 对话。" },
+  ],
+};
+
+export function resolveTour(pathname: string, search: string): { route: string; steps: GuidedTourStep[] } | null {
+  if (pathname !== "/super-agent") {
+    const steps = TOURS[pathname];
+    return steps ? { route: pathname, steps } : null;
+  }
+  const params = new URLSearchParams(search);
+  const resource = params.get("resource");
+  if (resource && RESOURCE_TOURS[resource]) {
+    return { route: `/super-agent:resource:${resource}`, steps: RESOURCE_TOURS[resource] };
+  }
+  const mode = params.get("mode") === "pcap" ? "pcap" : "prompt";
+  return { route: `/super-agent:${mode}`, steps: mode === "pcap" ? AGENT_PCAP_STEPS : AGENT_PROMPT_STEPS };
+}

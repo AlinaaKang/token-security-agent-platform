@@ -202,7 +202,7 @@ def authorize_pcap(
 class _PcapReconAuthorizationPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirmed: Literal[True]
-    sample_limit: Literal[20]
+    sample_limit: int = Field(ge=1, le=10_000, strict=True)
 
 
 class _PcapDetectionAuthorizationPayload(BaseModel):

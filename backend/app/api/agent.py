@@ -8,11 +8,12 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.pcap.detection_models import PcapDetectionMissionResult
 from app.security_agent.coordinator import (
     AgentAuthorizationScopeMismatch,
     SecurityAgentCoordinator,
 )
-from app.security_agent.models import AgentCommandRequest
+from app.security_agent.models import AgentActionRequest, AgentCommandRequest
 from app.security_agent.feedback import AnalystFeedbackService
 from app.security_agent.playbooks import PlaybookInvalid, load_playbook_catalog
 from app.security_agent.store import AgentTaskConflict, AgentTaskNotFound
@@ -102,13 +103,62 @@ def connectors(request: Request) -> Any:
     ]
 
 
+@router.get("/knowledge")
+def knowledge_catalog(request: Request) -> Any:
+    if _service(request) is None:
+        return _error(503, "security_agent_unavailable", "security agent is unavailable")
+    root = Path(__file__).resolve().parents[3]
+    manifest_path = root / "knowledge" / "snapshots" / "official-v2" / "manifest.json"
+    cards_path = root / "knowledge" / "snapshots" / "official-v2" / "cards.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        cards = json.loads(cards_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return _error(503, "agent_knowledge_unavailable", "security knowledge catalog is unavailable")
+    return {
+        "snapshot_version": manifest["snapshot_version"],
+        "card_count": manifest["card_count"],
+        "items": [
+            {
+                "knowledge_id": card["knowledge_id"],
+                "title": card["title_zh"],
+                "publisher": card["source"]["publisher"],
+                "version": card["source"]["version"],
+                "risk_domain": card["risk_domain"],
+            }
+            for card in cards
+        ],
+    }
+
+
+@router.get("/reports")
+def list_reports(request: Request) -> Any:
+    service = _service(request)
+    if service is None:
+        return _error(503, "security_agent_unavailable", "security agent is unavailable")
+    items = []
+    for task in service.list(limit=100, offset=0):
+        if task.report is None:
+            continue
+        items.append(
+            {
+                "task_id": task.task_id,
+                "task_title": task.title,
+                "final_status": task.final_status,
+                **task.report.model_dump(mode="json"),
+                "download_url": f"/api/v1/agent/reports/{task.report.report_id}",
+            }
+        )
+    return {"items": items}
+
+
 @router.post("/tasks", status_code=201)
 def create_task(payload: AgentCommandRequest, request: Request) -> Any:
     service = _service(request)
     if service is None:
         return _error(503, "security_agent_unavailable", "security agent is unavailable")
     try:
-        return service.create(payload.message)
+        return service.create(payload.message, workspace_mode=payload.workspace_mode)
     except ValueError:
         return _error(422, "agent_command_invalid", "security agent command is invalid")
 
@@ -126,6 +176,31 @@ def list_tasks(
     return {"items": items, "limit": limit, "offset": offset}
 
 
+@router.post("/tasks/import-pcap")
+def import_pcap_task(
+    payload: PcapDetectionMissionResult,
+    request: Request,
+    task_id: str | None = Query(default=None),
+) -> Any:
+    service = _service(request)
+    if service is None:
+        return _error(503, "security_agent_unavailable", "security agent is unavailable")
+    try:
+        task, created = service.create_from_pcap(payload, task_id=task_id)
+        return JSONResponse(
+            status_code=201 if created else 200,
+            content=task.model_dump(mode="json"),
+        )
+    except AgentTaskNotFound:
+        return _error(404, "agent_task_not_found", "security agent task was not found")
+    except ValueError as exc:
+        if str(exc) == "pcap_detection_not_terminal":
+            return _error(409, "pcap_detection_not_terminal", "pcap detection is not ready for import")
+        if str(exc) == "pcap_target_workspace_mismatch":
+            return _error(409, "pcap_target_workspace_mismatch", "PCAP evidence can only be added to a PCAP conversation")
+        return _error(422, "pcap_detection_import_invalid", "pcap detection result is invalid")
+
+
 @router.get("/tasks/{task_id}")
 def get_task(task_id: str, request: Request) -> Any:
     service = _service(request)
@@ -137,6 +212,18 @@ def get_task(task_id: str, request: Request) -> Any:
         return _error(404, "agent_task_not_found", "security agent task was not found")
 
 
+@router.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: str, request: Request) -> Response:
+    service = _service(request)
+    if service is None:
+        return _error(503, "security_agent_unavailable", "security agent is unavailable")
+    try:
+        service.delete(task_id)
+    except AgentTaskNotFound:
+        return _error(404, "agent_task_not_found", "security agent task was not found")
+    return Response(status_code=204)
+
+
 @router.post("/tasks/{task_id}/messages")
 def add_message(task_id: str, payload: AgentMessageRequest, request: Request) -> Any:
     service = _service(request)
@@ -146,6 +233,23 @@ def add_message(task_id: str, payload: AgentMessageRequest, request: Request) ->
         return service.add_message(task_id, payload.message)
     except AgentTaskNotFound:
         return _error(404, "agent_task_not_found", "security agent task was not found")
+    except AgentTaskConflict:
+        return _error(409, "agent_task_conflict", "security agent task changed; retry")
+
+
+@router.post("/tasks/{task_id}/actions")
+def execute_action(task_id: str, payload: AgentActionRequest, request: Request) -> Any:
+    service = _service(request)
+    if service is None:
+        return _error(503, "security_agent_unavailable", "security agent is unavailable")
+    try:
+        return service.execute_action(task_id, payload)
+    except AgentTaskNotFound:
+        return _error(404, "agent_task_not_found", "security agent task was not found")
+    except ValueError as exc:
+        if str(exc) == "agent_action_not_available":
+            return _error(409, "agent_action_not_available", "agent action is not available")
+        return _error(422, "agent_action_invalid", "agent action is invalid")
     except AgentTaskConflict:
         return _error(409, "agent_task_conflict", "security agent task changed; retry")
 

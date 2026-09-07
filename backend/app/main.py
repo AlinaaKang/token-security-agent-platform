@@ -29,6 +29,7 @@ from app.bootstrap import (
     load_service_bundle,
 )
 from app.evaluation.service import EvaluationReportService
+from app.evaluation.pcap_detection import load_pcap_evaluation
 from app.demo.service import DemoSampleService
 from app.lab.execution_store import SQLiteLabExecutionStore
 from app.lab.service import LabService
@@ -44,8 +45,10 @@ from app.superagent.pcap_detection_coordinator import PcapDetectionMissionCoordi
 from app.superagent.service import SuperAgentService
 from app.superagent.store import SuperAgentMissionStore
 from app.security_agent.coordinator import SecurityAgentCoordinator
+from app.security_agent.dialogue import GroundedDialogueService
 from app.security_agent.feedback import AnalystFeedbackService
 from app.security_agent.models import AgentCapabilities
+from app.security_agent.prompt_runtime import PromptAgentRuntime
 from app.security_agent.simulated import SimulatedTelemetryConnector
 from app.security_agent.store import SecurityAgentStore
 from app.security_agent.tools import build_registry
@@ -58,6 +61,7 @@ _LIFESPAN_STATE_NAMES = (
     "analysis_workflow",
     "demo_service",
     "evaluation_service",
+    "pcap_evaluation_summary",
     "event_store",
     "lab_enabled",
     "lab_service",
@@ -258,6 +262,19 @@ def _initialize_lifespan_services(
             logger.error(
                 "evaluation initialization failed error_type=%s", type(exc).__name__
             )
+    try:
+        pcap_evaluation_path = (
+            Path(__file__).resolve().parents[2]
+            / "data"
+            / "pcap-detection-regression-v1.json"
+        )
+        application.state.pcap_evaluation_summary = load_pcap_evaluation(
+            pcap_evaluation_path
+        )
+    except Exception as exc:
+        logger.error(
+            "pcap evaluation initialization failed error_type=%s", type(exc).__name__
+        )
     demo_health = {"ready": False, "sample_count": 0}
     demo_service = None
     try:
@@ -436,6 +453,8 @@ def _initialize_security_agent(application: FastAPI) -> SecurityAgentCoordinator
     if not database_value:
         raise ValueError("TOKEN_SECURITY_AGENT_DATABASE_PATH must not be blank")
     connector = SimulatedTelemetryConnector()
+    workflow = getattr(application.state, "analysis_workflow", None)
+    prompt_runtime = PromptAgentRuntime(workflow) if workflow is not None else None
 
     def simulated(arguments: dict[str, object]) -> dict[str, object]:
         case_id = str(arguments["case_id"])
@@ -474,6 +493,13 @@ def _initialize_security_agent(application: FastAPI) -> SecurityAgentCoordinator
             "verify_response_effect", observation_kind="response_verified"
         ),
     }
+    if prompt_runtime is not None:
+        handlers.update(
+            {
+                "analyze_prompt": prompt_runtime.analyze_prompt,
+                "counterfactual_recheck": prompt_runtime.counterfactual_recheck,
+            }
+        )
     registry = build_registry(handlers)
     capabilities = AgentCapabilities(
         planner_mode="deterministic_fallback",
@@ -481,7 +507,12 @@ def _initialize_security_agent(application: FastAPI) -> SecurityAgentCoordinator
         connector_states={
             "prompt_runtime": (
                 "available"
-                if getattr(application.state, "analysis_workflow", None) is not None
+                if workflow is not None
+                else "unavailable"
+            ),
+            "grounded_dialogue": (
+                "available"
+                if workflow is not None
                 else "unavailable"
             ),
             "pcap_docker": (
@@ -499,6 +530,10 @@ def _initialize_security_agent(application: FastAPI) -> SecurityAgentCoordinator
         store=SecurityAgentStore(Path(database_value)),
         registry=registry,
         capabilities=capabilities,
+        prompt_runtime=prompt_runtime,
+        dialogue=GroundedDialogueService(
+            workflow.runtime if workflow is not None else None
+        ),
     )
     application.state.security_agent_coordinator = coordinator
     return coordinator

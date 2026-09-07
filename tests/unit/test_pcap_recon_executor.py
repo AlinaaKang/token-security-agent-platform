@@ -81,7 +81,7 @@ def test_recon_executor_uses_fixed_script_arguments_and_dynamic_overview(
     assert overview.model_dump(mode="json") == {
         "enabled": True,
         "eligible_file_count": 1,
-        "sample_limit": 20,
+        "sample_limit": 100,
         "sampling_method": "size_quartile_v1",
     }
     assert tuple(inspect.signature(executor.execute).parameters) == (
@@ -104,11 +104,11 @@ def test_recon_executor_executes_with_fixed_maximum_and_timeout(tmp_path: Path) 
         "-ExecutionPolicy", "Bypass", "-File", str(config.recon_batch_script),
         "-QuarantineRoot", str(config.quarantine_root), "-InspectorScript",
         str(config.inspect_script), "-ReconId", recon_id(), "-StateId",
-        executor.checkpoint_scope_id, "-MaxFiles", "20",
+        executor.checkpoint_scope_id, "-MaxFiles", "100",
     ]
     assert runner.kwargs == {
         "capture_output": True, "check": False, "encoding": "utf-8",
-        "shell": False, "timeout": 3230,
+        "shell": False, "timeout": 16030,
     }
 
 
@@ -127,9 +127,38 @@ def test_recon_executor_rejects_non_recon_identifiers(tmp_path: Path, identifier
         PcapReconExecutor(config=config_fixture(tmp_path), runner=Runner()).execute(identifier)
 
 
-def test_recon_executor_rejects_caller_controlled_sample_limit(tmp_path: Path) -> None:
+def test_recon_executor_accepts_custom_sample_limit(tmp_path: Path) -> None:
+    config = config_fixture(tmp_path)
+    write_summary(config, summary_payload())
+    runner = Runner()
+
+    PcapReconExecutor(config=config, runner=runner).execute(recon_id(), 37)
+
+    assert runner.command is not None
+    assert runner.command[-1] == "37"
+
+
+def test_recon_executor_rejects_oversized_sample_limit(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
-        PcapReconExecutor(config=config_fixture(tmp_path), runner=Runner()).execute(recon_id(), 1)
+        PcapReconExecutor(config=config_fixture(tmp_path), runner=Runner()).execute(recon_id(), 10001)
+
+
+def test_recon_executor_rejects_summary_larger_than_authorized_scope(tmp_path: Path) -> None:
+    config = config_fixture(tmp_path)
+    payload = summary_payload()
+    payload.update(
+        sampled_count=2,
+        succeeded_count=2,
+        quartile_counts={"quartile_1": 2, "quartile_2": 0, "quartile_3": 0, "quartile_4": 0},
+        size_bucket_counts={"under_2_kib": 2, "2_kib_to_64_kib": 0, "64_kib_to_1_mib": 0, "at_least_1_mib": 0},
+        packet_bucket_counts={"empty": 0, "1_to_15": 2, "16_to_63": 0, "at_least_64": 0},
+        duration_bucket_counts={"zero": 0, "under_1_second": 2, "1_to_10_seconds": 0, "over_10_seconds": 0},
+        protocol_presence_counts={"dns": 2},
+    )
+    write_summary(config, payload)
+
+    with pytest.raises(PcapReconToolFailed):
+        PcapReconExecutor(config=config, runner=Runner()).execute(recon_id(), 1)
 
 
 def test_recon_executor_maps_timeout_without_reflecting_exception(tmp_path: Path) -> None:

@@ -182,6 +182,24 @@ class SecurityAgentStore:
             raise AgentTaskNotFound(task_id)
         return self._decode_snapshot(row["snapshot_json"], task_id)
 
+    def delete(self, task_id: str) -> None:
+        with self._lock:
+            self._ensure_open()
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                cursor = self._connection.execute(
+                    "DELETE FROM agent_tasks WHERE task_id = ?", (task_id,)
+                )
+                if cursor.rowcount != 1:
+                    self._rollback()
+                    raise AgentTaskNotFound(task_id)
+                self._connection.execute("COMMIT")
+            except AgentTaskNotFound:
+                raise
+            except Exception:
+                self._rollback()
+                raise
+
     def list(self, *, limit: int, offset: int) -> tuple[AgentTaskSnapshot, ...]:
         if limit < 1 or limit > 100:
             raise ValueError("limit must be between 1 and 100")
@@ -272,4 +290,3 @@ class SecurityAgentStore:
     def _rollback(self) -> None:
         if self._connection.in_transaction:
             self._connection.execute("ROLLBACK")
-

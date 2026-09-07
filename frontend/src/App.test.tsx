@@ -273,41 +273,113 @@ describe("competition security console", () => {
     vi.unstubAllGlobals();
   });
 
-  it("groups cases, professional workspaces, and agent resources without changing routes", () => {
+  it("groups Prompt and PCAP professional tools without a separate case section", () => {
     render(<App />);
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const groups = within(navigation).getAllByRole("group");
     expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual([
-      "安全案件",
-      "专业工作区",
+      "安全对话",
+      "Prompt 专业工作区",
+      "PCAP 专业工作区",
       "智能体资源",
     ]);
 
     expect(within(groups[0]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
-      "安全智能体",
-      "安全事件",
+      "Prompt 安全调查",
+      "新建对话",
+      "PCAP 数据调查",
+      "新建对话",
     ]);
     expect(within(groups[1]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
-      "安全分析",
-      "攻防实验舱",
-      "评测中心",
+      "Prompt 安全分析",
+      "Prompt 攻防实验",
+      "Prompt 评测中心",
       "Token 侦探挑战",
     ]);
     expect(within(groups[2]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
-      "检测技能",
+      "PCAP 流量画像",
+      "PCAP 攻防实验",
+      "PCAP 评测中心",
+      "PCAP 侦探挑战",
+    ]);
+    expect(within(groups[3]).getAllByRole("link").map((link) => link.textContent?.trim())).toEqual([
       "安全知识库",
       "数据连接器",
       "调查报告",
     ]);
 
-    expect(screen.getByRole("link", { name: "安全分析" })).toHaveAttribute("href", "/analyze");
-    expect(screen.getByRole("link", { name: "安全智能体" })).toHaveAttribute("href", "/super-agent");
-    expect(screen.getByRole("link", { name: "安全事件" })).toHaveAttribute("href", "/events");
-    expect(screen.getByRole("link", { name: "攻防实验舱" })).toHaveAttribute("href", "/lab");
-    expect(screen.getByRole("link", { name: "评测中心" })).toHaveAttribute("href", "/evaluation");
+    expect(screen.getByRole("link", { name: "Prompt 安全分析" })).toHaveAttribute("href", "/analyze");
+    expect(screen.getByRole("link", { name: "Prompt 安全调查" })).toHaveAttribute("href", "/super-agent?mode=prompt");
+    expect(within(navigation).queryByRole("link", { name: "安全事件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Prompt 攻防实验" })).toHaveAttribute("href", "/lab?surface=prompt");
+    expect(screen.getByRole("link", { name: "Prompt 评测中心" })).toHaveAttribute("href", "/evaluation");
     expect(screen.getByRole("link", { name: "Token 侦探挑战" })).toHaveAttribute("href", "/challenge");
-    expect(screen.getByRole("link", { name: "安全分析" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "PCAP 攻防实验" })).toHaveAttribute("href", "/lab?surface=pcap");
+    expect(screen.getByRole("link", { name: "PCAP 侦探挑战" })).toHaveAttribute("href", "/pcap-challenge");
+    expect(screen.getByRole("link", { name: "Prompt 安全分析" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keeps Prompt detection and redacted events inside one professional workspace", async () => {
+    window.history.pushState({}, "", "/analyze");
+    render(<App />);
+
+    expect(screen.getByRole("navigation", { name: "Prompt 安全分析视图" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "检测分析" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(screen.getByRole("link", { name: "安全事件" }));
+    expect(await screen.findByText("最近事件")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "安全事件" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Prompt 安全分析" })).toHaveClass("active");
+  });
+
+  it("opens agent resources as the main workspace instead of replacing the inspector or keeping the conversation", async () => {
+    window.history.pushState({}, "", "/super-agent?resource=knowledge");
+    window.sessionStorage.clear();
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/agent/capabilities") return jsonResponse({
+        planner_mode: "deterministic_fallback", tool_ids: [], connector_states: {},
+        max_plan_steps: 12, max_concurrent_tools: 3, max_replans: 2,
+        max_active_hypotheses: 5, pcap_batch_size: 20,
+      });
+      if (url.startsWith("/api/v1/agent/tasks")) return jsonResponse({ items: [], limit: 20, offset: 0 });
+      if (url === "/api/v1/agent/knowledge") return jsonResponse({
+        snapshot_version: "official-v2", card_count: 1,
+        items: [{ knowledge_id: "owasp-llm01", title: "提示词注入风险", publisher: "owasp", version: "2025", risk_domain: "prompt_injection" }],
+      });
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    render(<App />);
+
+    const workspace = await screen.findByRole("main", { name: "安全知识库资源工作区" });
+    expect(within(workspace).getByText("提示词注入风险")).toBeVisible();
+    expect(within(workspace).getByRole("link", { name: "返回安全对话" })).toHaveAttribute("href", "/super-agent?mode=prompt");
+    expect(within(workspace).queryByRole("textbox", { name: "安全任务" })).not.toBeInTheDocument();
+    expect(within(workspace).queryByText("从一句安全目标开始")).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "资源说明" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "案件检查器" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开检查器" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the case inspector only in the security conversation workspace", async () => {
+    window.history.pushState({}, "", "/super-agent?mode=prompt");
+    window.sessionStorage.clear();
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/agent/capabilities") return jsonResponse({
+        planner_mode: "deterministic_fallback", tool_ids: [], connector_states: {},
+        max_plan_steps: 12, max_concurrent_tools: 3, max_replans: 2,
+        max_active_hypotheses: 5, pcap_batch_size: 20,
+      });
+      if (url.startsWith("/api/v1/agent/tasks")) return jsonResponse({ items: [], limit: 20, offset: 0 });
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    render(<App />);
+
+    expect(await screen.findByRole("complementary", { name: "案件检查器" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开检查器" })).toBeInTheDocument();
   });
 
   it("opens a replayable first-use guide on primary routes", () => {
@@ -320,6 +392,15 @@ describe("competition security console", () => {
     window.history.pushState({}, "", "/events");
     render(<App />);
     expect(screen.getByRole("dialog", { name: "先看审计范围" })).toBeInTheDocument();
+  });
+
+  it("opens a non-empty contextual guide on agent resource pages", async () => {
+    window.history.pushState({}, "", "/super-agent?resource=reports");
+    window.sessionStorage.clear();
+    render(<App />);
+
+    expect(await screen.findByRole("dialog", { name: "了解调查报告" })).toBeInTheDocument();
+    expect(screen.getByText(/已完成任务生成的公开报告/)).toBeVisible();
   });
 
   it("separates semantic blocking from a normal Token distribution", async () => {

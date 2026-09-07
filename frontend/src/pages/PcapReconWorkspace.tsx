@@ -33,7 +33,8 @@ function Profile({ summary }: { summary: PcapReconSummary }) {
 }
 
 export function PcapReconWorkspace() {
-  const [overview, setOverview] = useState<{ enabled: boolean; eligible_file_count: number; sample_limit: 20 } | null>(null);
+  const [overview, setOverview] = useState<{ enabled: boolean; eligible_file_count: number; sample_limit: number } | null>(null);
+  const [sampleLimit, setSampleLimit] = useState(100);
   const [mission, setMission] = useState<PcapReconMissionResult | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -45,7 +46,7 @@ export function PcapReconWorkspace() {
     let active = true;
     let stored: string | null = null;
     try { stored = window.sessionStorage.getItem(PCAP_RECON_MISSION_STORAGE_KEY); } catch { stored = null; }
-    api.pcapReconOverview().then((nextOverview) => { if (active) setOverview(nextOverview); }).catch(() => active && setError("数据勘察暂不可用")).finally(() => active && setLoading(false));
+    api.pcapReconOverview().then((nextOverview) => { if (active) { setOverview(nextOverview); setSampleLimit(Math.min(nextOverview.sample_limit, Math.max(1, nextOverview.eligible_file_count))); } }).catch(() => active && setError("数据勘察暂不可用")).finally(() => active && setLoading(false));
     if (stored) {
       setRestorePending(true);
       api.getPcapMission(stored).then((storedMission) => {
@@ -77,7 +78,7 @@ export function PcapReconWorkspace() {
     if (!overview?.enabled || pending || restorePending) return;
     setPending(true); setError(null);
     try {
-      const receipt = await api.authorizePcapRecon({ confirmed: true, sample_limit: 20 });
+      const receipt = await api.authorizePcapRecon({ confirmed: true, sample_limit: sampleLimit });
       const result = await api.createPcapReconMission({ objective: "reconnoiter_pcap_dataset", authorization_id: receipt.authorization_id });
       setMission(result); try { window.sessionStorage.setItem(PCAP_RECON_MISSION_STORAGE_KEY, result.recon_id); } catch { /* optional persistence */ } setConfirmOpen(false);
     } catch { setError("无法启动数据勘察，请重试。"); } finally { setPending(false); }
@@ -87,19 +88,35 @@ export function PcapReconWorkspace() {
     if (pending || restorePending) return;
     setPending(true); setError(null);
     try {
-      const receipt = await api.authorizePcapRecon({ confirmed: true, sample_limit: 20 });
+      const receipt = await api.authorizePcapRecon({ confirmed: true, sample_limit: sampleLimit });
       const result = await api.createPcapReconMission({ objective: "reconnoiter_pcap_dataset", authorization_id: receipt.authorization_id });
       setMission(result); try { window.sessionStorage.setItem(PCAP_RECON_MISSION_STORAGE_KEY, result.recon_id); } catch { /* optional persistence */ }
     } catch { setError("无法重新启动数据勘察，请重试。"); } finally { setPending(false); }
   }
 
+  const eligibleCount = overview?.eligible_file_count ?? 0;
+  const maximumSelectable = Math.min(10_000, Math.max(1, eligibleCount));
+  const coversAllEligible = eligibleCount > 0 && eligibleCount <= 10_000;
+
   return <section className="pcap-recon-workspace" aria-label="PCAP 数据勘察工作区">
-    <div className="pcap-recon-authorization">
-      <div><strong>数据勘察范围</strong>{loading ? <p>正在读取勘察范围</p> : <><p>按文件大小四分位抽取 20 个代表样本</p><small>可选文件 {overview?.eligible_file_count ?? 0}</small></>}</div>
-    {!confirmOpen ? <button type="button" onClick={() => setConfirmOpen(true)} disabled={loading || restorePending || !overview?.enabled || Boolean(mission && !terminal.has(mission.status))}><Play size={16} />准备开始勘察</button> : <div className="pcap-recon-consent" role="region" aria-label="PCAP 勘察授权确认"><KeyRound size={20} /><p>本次将在无网络只读容器中完整扫描 20 个分层样本，仅返回聚合画像，不检测攻击，不展示文件身份或载荷。</p><button type="button" className="secondary-button" onClick={() => setConfirmOpen(false)}>返回</button><button type="button" onClick={start} disabled={pending}>{pending ? <LoaderCircle className="superagent-spinner" size={16} /> : <ShieldCheck size={16} />}确认并开始勘察</button></div>}
+    <div className="pcap-recon-authorization" data-tour="pcap-profile-scope">
+      <div className="pcap-recon-scope">
+        <strong>数据勘察范围</strong>
+        {loading ? <p>正在读取勘察范围</p> : <>
+          <p>按文件大小分层抽取 {sampleLimit} 个代表样本</p>
+          <small>当前可选文件 {eligibleCount} 个；{coversAllEligible ? "选择全部时运行时间会更长" : "单次画像上限为 10000 个"}</small>
+          <div className="pcap-recon-sample-controls" aria-label="画像样本范围">
+            <button type="button" aria-pressed={sampleLimit === 20} onClick={() => setSampleLimit(Math.min(20, maximumSelectable))}>快速 20</button>
+            <button type="button" aria-pressed={sampleLimit === 100} onClick={() => setSampleLimit(Math.min(100, maximumSelectable))}>推荐 100</button>
+            <button type="button" aria-pressed={sampleLimit === maximumSelectable} onClick={() => setSampleLimit(maximumSelectable)}>{coversAllEligible ? `全部 ${eligibleCount} 个` : "上限 10000 个"}</button>
+            <label>画像样本数<input type="number" min="1" max={maximumSelectable} value={sampleLimit} onChange={(event) => setSampleLimit(Math.max(1, Math.min(Number(event.target.value) || 1, maximumSelectable)))} /></label>
+          </div>
+        </>}
+      </div>
+    {!confirmOpen ? <button type="button" data-tour="pcap-profile-command" onClick={() => setConfirmOpen(true)} disabled={loading || restorePending || !overview?.enabled || Boolean(mission && !terminal.has(mission.status))}><Play size={16} />准备生成画像</button> : <div className="pcap-recon-consent" role="region" aria-label="PCAP 勘察授权确认"><KeyRound size={20} /><p>本次将在无网络只读容器中顺序扫描 {sampleLimit} 个分层样本，仅返回聚合画像，不检测攻击，不展示文件身份或载荷。</p><button type="button" className="secondary-button" onClick={() => setConfirmOpen(false)}>返回</button><button type="button" onClick={start} disabled={pending}>{pending ? <LoaderCircle className="superagent-spinner" size={16} /> : <ShieldCheck size={16} />}确认并生成画像</button></div>}
     </div>
     {error ? <div role="alert"><CircleAlert size={16} />{error}</div> : null}
-    {mission?.status === "degraded" ? <section className="pcap-recon-empty is-degraded" role="alert"><CircleAlert size={24} /><strong>勘察未完成，可重新授权重试</strong><span>{failureLabels[mission.failure_code ?? "tool_failed"]}</span><button type="button" onClick={retry} disabled={pending || restorePending}>{pending ? "正在重新授权" : "重新授权勘察"}</button></section> : mission?.summary ? <><div className="pcap-recon-phase"><strong>当前阶段：认识数据</strong><span>下一阶段：根据真实画像选择规则、Request 定位、行为异常或可选 CPD</span></div><Profile summary={mission.summary} /></> : <section className="pcap-recon-empty"><BarChart3 size={24} /><strong>{mission ? "正在形成聚合画像" : "等待开始数据勘察"}</strong></section>}
+    <div data-tour="pcap-profile-results">{mission?.status === "degraded" ? <section className="pcap-recon-empty is-degraded" role="alert"><CircleAlert size={24} /><strong>画像未完成，可重新授权重试</strong><span>{failureLabels[mission.failure_code ?? "tool_failed"]}</span><button type="button" onClick={retry} disabled={pending || restorePending}>{pending ? "正在重新授权" : "重新授权生成"}</button></section> : mission?.summary ? <><div className="pcap-recon-phase"><strong>当前阶段：认识数据</strong><span>下一阶段：根据真实画像选择规则、Request 定位、行为异常或可选 CPD</span></div><Profile summary={mission.summary} /></> : <section className="pcap-recon-empty"><BarChart3 size={24} /><strong>{mission ? "正在形成聚合画像" : "等待生成流量画像"}</strong></section>}</div>
     {mission && !terminal.has(mission.status) ? <div role="status">{mission.status === "running" ? "勘察运行中" : "勘察排队中"}</div> : null}
     {mission?.events?.length ? <ol className="pcap-recon-events">{mission.events.filter((event) => allowedNarratives.has(event.summary)).map((event) => <li key={event.sequence}>{narrativeLabels[event.summary]}</li>)}</ol> : null}
     {mission && terminal.has(mission.status) ? <ResultGuide

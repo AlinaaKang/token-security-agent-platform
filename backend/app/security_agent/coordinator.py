@@ -6,10 +6,13 @@ from threading import RLock
 from typing import Any
 from uuid import uuid4
 
+from app.pcap.detection_models import PcapDetectionMissionResult
+from app.security_agent.dialogue import GroundedDialogueService
 from app.security_agent.education import SecurityEducationService
-from app.security_agent.intent import parse_intent
+from app.security_agent.intent import extract_prompt_sample, parse_intent
 from app.security_agent.models import (
     AgentCapabilities,
+    AgentActionRequest,
     AgentEvent,
     AgentHypothesis,
     AgentMessage,
@@ -21,8 +24,10 @@ from app.security_agent.models import (
     AgentTimelineEvent,
 )
 from app.security_agent.planner import HypothesisEvaluator, SecurityAgentPlanner
+from app.security_agent.pcap_import import import_pcap_detection
 from app.security_agent.policy import AgentPlanRejected, validate_plan
 from app.security_agent.reporting import render_case_report
+from app.security_agent.recommendations import recommendations_for
 from app.security_agent.store import SecurityAgentStore
 
 
@@ -39,12 +44,16 @@ class SecurityAgentCoordinator:
         capabilities: AgentCapabilities,
         planner: SecurityAgentPlanner | None = None,
         education: SecurityEducationService | None = None,
+        prompt_runtime: Any | None = None,
+        dialogue: GroundedDialogueService | None = None,
     ) -> None:
         self.store = store
         self.registry = registry
         self.capabilities = capabilities
         self.planner = planner or SecurityAgentPlanner()
         self.education = education or SecurityEducationService()
+        self.prompt_runtime = prompt_runtime
+        self.dialogue = dialogue or GroundedDialogueService(None)
         self._hypotheses = HypothesisEvaluator()
         self._reports: dict[str, str] = {}
         self._pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="security-agent")
@@ -52,10 +61,22 @@ class SecurityAgentCoordinator:
         self._lock = RLock()
         self._closed = False
 
-    def create(self, message: str) -> AgentTaskSnapshot:
+    def create(self, message: str, *, workspace_mode: str | None = None) -> AgentTaskSnapshot:
         intent = parse_intent(message, None)
+        resolved_workspace = workspace_mode or (
+            "pcap"
+            if intent.task_type in {
+                AgentTaskType.PCAP_CAPTURE_INVESTIGATION,
+                AgentTaskType.PCAP_DATASET_INVESTIGATION,
+            }
+            else "prompt"
+        )
+        if resolved_workspace not in {"prompt", "pcap"}:
+            raise ValueError("agent_workspace_invalid")
         now = _timestamp()
         task_id = f"task_{uuid4().hex}"
+        if intent.task_type is AgentTaskType.PROMPT_INVESTIGATION and self.prompt_runtime is not None:
+            self.prompt_runtime.put(task_id, extract_prompt_sample(message))
         plan = self.planner.create_plan(intent, self.capabilities)
         conversational = intent.kind in {
             "identity",
@@ -74,7 +95,7 @@ class SecurityAgentCoordinator:
             if intent.requires_authorization
             else AgentTaskStatus.PLANNED
         )
-        messages = [self._placeholder_message(now, task_id)]
+        messages = [self._user_message(now, message)]
         if conversational:
             messages.append(self.education.answer(intent))
         events = [
@@ -103,8 +124,9 @@ class SecurityAgentCoordinator:
             task_id=task_id,
             version=1,
             task_type=intent.task_type or AgentTaskType.KNOWLEDGE_EXPLANATION,
+            workspace_mode=resolved_workspace,
             status=status,
-            title=_title_for(intent.task_type),
+            title=_title_for(intent.task_type, message),
             objective_summary=intent.objective_summary,
             created_at=now,
             updated_at=now,
@@ -114,7 +136,141 @@ class SecurityAgentCoordinator:
             events=tuple(events),
             limitations=_initial_limitations(intent.task_type),
         )
+        questions, actions = recommendations_for(snapshot, self.capabilities)
+        snapshot = snapshot.model_copy(
+            update={"suggested_questions": questions, "next_actions": actions}
+        )
         return self.store.create(snapshot)
+
+    def create_from_pcap(
+        self,
+        result: PcapDetectionMissionResult,
+        *,
+        task_id: str | None = None,
+    ) -> tuple[AgentTaskSnapshot, bool]:
+        imported = import_pcap_detection(result)
+        marker = f"已导入公开 PCAP 检测结果 {imported.source_ref}。"
+        if task_id is not None:
+            current = self.store.get(task_id)
+            if current.workspace_mode != "pcap":
+                raise ValueError("pcap_target_workspace_mismatch")
+            if any(
+                event.kind == "pcap_detection_imported" and event.summary == marker
+                for event in current.events
+            ):
+                return current, False
+            return self._append_pcap_import(current, imported, marker), False
+
+        offset = 0
+        while True:
+            page = self.store.list(limit=100, offset=offset)
+            for existing in page:
+                if any(event.kind == "pcap_detection_imported" and event.summary == marker for event in existing.events):
+                    return existing, False
+            if len(page) < 100:
+                break
+            offset += 100
+
+        now = _timestamp()
+        task_id = f"task_{uuid4().hex}"
+        snapshot = AgentTaskSnapshot(
+            task_id=task_id,
+            version=1,
+            task_type=AgentTaskType.PCAP_CAPTURE_INVESTIGATION,
+            workspace_mode="pcap",
+            status=AgentTaskStatus.DEGRADED if imported.degraded else AgentTaskStatus.COMPLETED,
+            title=f"PCAP 数据调查 · {result.created_at[5:16].replace('T', ' ')}",
+            objective_summary="定位异常 Packet、研判攻击类型与目的，并形成可继续追问的调查结论。",
+            created_at=now,
+            updated_at=now,
+            messages=(
+                self._user_message(now, "调查刚刚完成的 PCAP 检测结果"),
+                AgentMessage(
+                    message_id=f"msg_{uuid4().hex}",
+                    role="agent",
+                    kind="result",
+                    content=imported.result_text,
+                    created_at=now,
+                    evidence_scope="current_case",
+                    evidence_refs=tuple(item.evidence_id for item in imported.evidence),
+                ),
+            ),
+            plan=imported.plan,
+            observations=imported.observations,
+            evidence=imported.evidence,
+            hypotheses=imported.hypotheses,
+            timeline=imported.timeline,
+            events=(
+                AgentEvent(task_id=task_id, sequence=1, phase="understand", kind="pcap_detection_imported", summary=marker, created_at=now, evidence_refs=tuple(item.evidence_id for item in imported.evidence)),
+                AgentEvent(task_id=task_id, sequence=2, phase="complete", kind="task_degraded" if imported.degraded else "task_completed", summary=imported.result_text, created_at=now, evidence_refs=tuple(item.evidence_id for item in imported.evidence)),
+            ),
+            final_status=imported.final_status,
+            limitations=imported.limitations,
+        )
+        questions, actions = recommendations_for(snapshot, self.capabilities)
+        snapshot = snapshot.model_copy(update={"suggested_questions": questions, "next_actions": actions})
+        return self.store.create(snapshot), True
+
+    def _append_pcap_import(
+        self,
+        current: AgentTaskSnapshot,
+        imported: Any,
+        marker: str,
+    ) -> AgentTaskSnapshot:
+        now = _timestamp()
+        evidence_refs = tuple(item.evidence_id for item in imported.evidence)
+        messages = current.messages + (
+            self._user_message(now, "上传并调查新的 PCAP 文件"),
+            AgentMessage(
+                message_id=f"msg_{uuid4().hex}",
+                role="agent",
+                kind="result",
+                content=imported.result_text,
+                created_at=now,
+                evidence_scope="current_case",
+                evidence_refs=evidence_refs,
+            ),
+        )
+        events = current.events + (
+            self._event(
+                current,
+                phase="understand",
+                kind="pcap_detection_imported",
+                summary=marker,
+                evidence_refs=evidence_refs,
+            ),
+            AgentEvent(
+                task_id=current.task_id,
+                sequence=len(current.events) + 2,
+                phase="complete",
+                kind="task_degraded" if imported.degraded else "task_completed",
+                summary=imported.result_text,
+                created_at=now,
+                evidence_refs=evidence_refs,
+            ),
+        )
+        observations = _merge_by_id(
+            current.observations, imported.observations, "observation_id", 200
+        )
+        evidence = _merge_by_id(current.evidence, imported.evidence, "evidence_id", 200)
+        timeline = _merge_by_id(current.timeline, imported.timeline, "timeline_id", 200)
+        limitations = tuple(dict.fromkeys(current.limitations + imported.limitations))[-50:]
+        return self._save(
+            current,
+            task_type=AgentTaskType.PCAP_CAPTURE_INVESTIGATION,
+            status=AgentTaskStatus.DEGRADED if imported.degraded else AgentTaskStatus.COMPLETED,
+            objective_summary="持续接收 PCAP 证据，定位异常 Packet、研判攻击类型与目的。",
+            messages=messages[-100:],
+            plan=imported.plan,
+            observations=observations,
+            evidence=evidence,
+            hypotheses=imported.hypotheses,
+            timeline=timeline,
+            events=events[-500:],
+            final_status=imported.final_status,
+            report=None,
+            limitations=limitations,
+        )
 
     def authorize(self, task_id: str, scopes: tuple[str, ...]) -> AgentTaskSnapshot:
         current = self.store.get(task_id)
@@ -144,6 +300,22 @@ class SecurityAgentCoordinator:
             self._futures[task_id] = self._pool.submit(self.run_until_blocked, task_id)
 
     def run_until_blocked(self, task_id: str) -> AgentTaskSnapshot:
+        try:
+            return self._run_until_blocked(task_id)
+        finally:
+            try:
+                current = self.store.get(task_id)
+            except Exception:
+                current = None
+            if current is not None and current.status in {
+                AgentTaskStatus.COMPLETED,
+                AgentTaskStatus.DEGRADED,
+                AgentTaskStatus.FAILED,
+                AgentTaskStatus.CANCELLED,
+            }:
+                self._discard_prompt(task_id)
+
+    def _run_until_blocked(self, task_id: str) -> AgentTaskSnapshot:
         current = self.store.get(task_id)
         if current.status in {AgentTaskStatus.CANCELLED, AgentTaskStatus.COMPLETED}:
             return current
@@ -290,38 +462,79 @@ class SecurityAgentCoordinator:
             final_status = "inconclusive" if has_failures else "safe"
         if executed_action and verification != "verified":
             final_status = "inconclusive"
-        report_text = render_case_report(
-            title=current.title,
-            objective=current.objective_summary,
-            evidence=current.evidence,
-            hypotheses=current.hypotheses,
-            limitations=current.limitations,
-            final_status=final_status,
+        report = (
+            self._generate_report(
+                current, degraded=has_failures, final_status=final_status
+            )
+            if any(
+                step.tool_id == "generate_case_report" and step.status == "succeeded"
+                for step in current.plan
+            )
+            else None
         )
-        report_id = f"report_{uuid4().hex}"
-        self._reports[report_id] = report_text
-        report = AgentReportMetadata(
-            report_id=report_id,
-            title=f"{current.title}报告",
-            status="degraded" if has_failures else "ready",
-            artifact_ref=f"agent-report:{report_id}",
-            evidence_refs=tuple(item.evidence_id for item in current.evidence),
-            generated_at=_timestamp(),
-        )
+        evidence_refs = tuple(item.evidence_id for item in current.evidence)
         completed_event = self._event(
             current,
             phase="complete",
             kind="task_completed" if not has_failures else "task_degraded",
-            summary="调查完成并生成可审计报告。" if not has_failures else "调查以降级状态完成。",
-            evidence_refs=report.evidence_refs,
+            summary=(
+                "调查完成并生成可审计报告。"
+                if report is not None
+                else "调查完成，等待用户选择下一步。"
+            ) if not has_failures else "调查以降级状态完成。",
+            evidence_refs=evidence_refs,
+        )
+        result_message = _completion_message(
+            final_status=final_status,
+            evidence_refs=evidence_refs,
+            has_failures=has_failures,
         )
         return self._save(
             current,
             status=AgentTaskStatus.DEGRADED if has_failures else AgentTaskStatus.COMPLETED,
             final_status=final_status,
             report=report,
+            messages=current.messages + (result_message,),
             events=current.events + (completed_event,),
         )
+
+    def execute_action(
+        self, task_id: str, request: AgentActionRequest
+    ) -> AgentTaskSnapshot:
+        current = self.store.get(task_id)
+        available = next(
+            (
+                item
+                for item in current.next_actions
+                if item.action_id == request.action_id and item.enabled
+            ),
+            None,
+        )
+        if available is None:
+            raise ValueError("agent_action_not_available")
+        now = _timestamp()
+        messages = current.messages + (self._user_message(now, available.label),)
+        if request.action_id == "generate_report":
+            report = self._generate_report(
+                current, degraded=current.status is AgentTaskStatus.DEGRADED
+            )
+            reply = "调查报告已生成，并已加入智能体资源。"
+            updated_report = report
+        else:
+            updated_report = current.report
+            reply = _action_reply(request.action_id, current)
+        messages += (
+            AgentMessage(
+                message_id=f"msg_{uuid4().hex}",
+                role="agent",
+                kind="result",
+                content=reply,
+                created_at=_timestamp(),
+                evidence_scope="current_case",
+                evidence_refs=tuple(item.evidence_id for item in current.evidence),
+            ),
+        )
+        return self._save(current, messages=messages, report=updated_report)
 
     def add_message(self, task_id: str, message: str) -> AgentTaskSnapshot:
         current = self.store.get(task_id)
@@ -330,7 +543,7 @@ class SecurityAgentCoordinator:
             return self.cancel(task_id)
         now = _timestamp()
         messages = current.messages + (
-            self._placeholder_message(now, task_id),
+            self._user_message(now, message),
         )
         if intent.kind in {
             "identity",
@@ -343,6 +556,8 @@ class SecurityAgentCoordinator:
             "out_of_scope",
         }:
             messages += (self.education.answer(intent, current.evidence),)
+        elif intent.kind == "case_question":
+            messages += (self.dialogue.answer(message, current),)
         else:
             messages += (
                 AgentMessage(
@@ -366,17 +581,25 @@ class SecurityAgentCoordinator:
             kind="task_cancelled",
             summary="用户已明确取消当前任务。",
         )
-        return self._save(
+        cancelled = self._save(
             current,
             status=AgentTaskStatus.CANCELLED,
             events=current.events + (event,),
         )
+        self._discard_prompt(task_id)
+        return cancelled
 
     def get(self, task_id: str) -> AgentTaskSnapshot:
         return self.store.get(task_id)
 
     def list(self, *, limit: int, offset: int) -> tuple[AgentTaskSnapshot, ...]:
         return self.store.list(limit=limit, offset=offset)
+
+    def delete(self, task_id: str) -> None:
+        self.store.delete(task_id)
+        self._discard_prompt(task_id)
+        with self._lock:
+            self._futures.pop(task_id, None)
 
     def events_after(self, task_id: str, sequence: int) -> tuple[AgentEvent, ...]:
         return self.store.events_after(task_id, sequence)
@@ -390,7 +613,13 @@ class SecurityAgentCoordinator:
                 return
             self._closed = True
         self._pool.shutdown(wait=True, cancel_futures=False)
+        if self.prompt_runtime is not None:
+            self.prompt_runtime.clear()
         self.store.close()
+
+    def _discard_prompt(self, task_id: str) -> None:
+        if self.prompt_runtime is not None:
+            self.prompt_runtime.discard(task_id)
 
     def _save(self, current: AgentTaskSnapshot, **updates: Any) -> AgentTaskSnapshot:
         next_snapshot = current.model_copy(
@@ -400,7 +629,38 @@ class SecurityAgentCoordinator:
                 "updated_at": _timestamp(),
             }
         )
+        questions, actions = recommendations_for(next_snapshot, self.capabilities)
+        next_snapshot = next_snapshot.model_copy(
+            update={"suggested_questions": questions, "next_actions": actions}
+        )
         return self.store.replace(next_snapshot, expected_version=current.version)
+
+    def _generate_report(
+        self,
+        current: AgentTaskSnapshot,
+        *,
+        degraded: bool,
+        final_status: str | None = None,
+    ) -> AgentReportMetadata:
+        report_text = render_case_report(
+            title=current.title,
+            objective=current.objective_summary,
+            evidence=current.evidence,
+            hypotheses=current.hypotheses,
+            limitations=current.limitations,
+            final_status=final_status or current.final_status or "inconclusive",
+        )
+        report_id = f"report_{uuid4().hex}"
+        self._reports[report_id] = report_text
+        generated_at = _timestamp()
+        return AgentReportMetadata(
+            report_id=report_id,
+            title=f"{current.title} · {generated_at[:16].replace('T', ' ')}",
+            status="degraded" if degraded else "ready",
+            artifact_ref=f"agent-report:{report_id}",
+            evidence_refs=tuple(item.evidence_id for item in current.evidence),
+            generated_at=generated_at,
+        )
 
     def _event(
         self,
@@ -422,11 +682,11 @@ class SecurityAgentCoordinator:
         )
 
     @staticmethod
-    def _placeholder_message(created_at: str, task_id: str) -> AgentMessage:
+    def _user_message(created_at: str, content: str) -> AgentMessage:
         return AgentMessage(
             message_id=f"msg_{uuid4().hex}",
             role="user",
-            content="[用户已提交安全任务，原始内容未保存]",
+            content=content,
             created_at=created_at,
             evidence_scope="none",
         )
@@ -467,12 +727,18 @@ class SecurityAgentCoordinator:
     def _finish_degraded(
         self, current: AgentTaskSnapshot, observation: AgentObservation, limitation: str
     ) -> AgentTaskSnapshot:
+        result_message = _completion_message(
+            final_status="inconclusive",
+            evidence_refs=tuple(item.evidence_id for item in current.evidence),
+            has_failures=True,
+        )
         return self._save(
             current,
             status=AgentTaskStatus.DEGRADED,
             final_status="inconclusive",
             observations=current.observations + (observation,),
             limitations=current.limitations + (limitation,),
+            messages=current.messages + (result_message,),
         )
 
 
@@ -482,10 +748,63 @@ def _replace_step(plan, index: int, replacement):
     return tuple(values)
 
 
+def _completion_message(
+    *, final_status: str, evidence_refs: tuple[str, ...], has_failures: bool
+) -> AgentMessage:
+    if final_status == "contained":
+        content = "调查与处置验证完成：已发现风险，授权处置经独立验证生效。"
+    elif final_status == "risk_found":
+        content = (
+            "调查完成：发现异常候选。请结合证据与限制复核；"
+            "异常候选不等于攻击已经成功。"
+        )
+    elif final_status == "safe":
+        content = "调查完成：当前检测范围内未发现异常候选。检测未命中不等于全部安全。"
+    else:
+        content = (
+            "调查已结束，但证据不足或部分工具失败，当前结论不确定。"
+            "请查看失败项、限制和报告后重试或补充数据。"
+        )
+    if has_failures and final_status != "inconclusive":
+        content += " 部分工具未完成，结论需要人工复核。"
+    return AgentMessage(
+        message_id=f"msg_{uuid4().hex}",
+        role="agent",
+        kind="result",
+        content=content,
+        created_at=_timestamp(),
+        evidence_scope="current_case",
+        evidence_refs=evidence_refs,
+    )
+
+
+def _action_reply(action_id: str, current: AgentTaskSnapshot) -> str:
+    evidence = "；".join(item.summary for item in current.evidence[:3])
+    if action_id in {"explain_evidence", "inspect_suspicious_packets"}:
+        return f"当前可复核证据：{evidence or '当前没有可定位的公开证据。'}"
+    if action_id == "suggest_prompt_repair":
+        return "修复方案：保留业务目标，删除要求忽略规则、泄露指令或越权调用工具的内容，并对外部输入增加明确数据边界。"
+    if action_id == "recheck_prompt":
+        return "请在输入框中粘贴修复后的 Prompt；原始内容不会从服务端历史中恢复。"
+    if action_id == "analyze_attack_chain":
+        return f"攻击链研判基于当前公开时序证据：{evidence or '证据不足，暂时无法建立攻击链。'}"
+    if action_id == "generate_response_plan":
+        return "建议先保全证据并复核异常 Packet，再按影响范围选择限流、隔离或封禁；真实外部处置仍需连接器与单独授权。"
+    if action_id == "expand_pcap_scope":
+        return "扩大 PCAP 调查范围需要重新选择数据并授权，当前任务不会自动读取范围外文件。"
+    return "当前动作已完成。"
+
+
 def _merge_evidence(existing, new_items):
     values = {item.evidence_id: item for item in existing}
     values.update({item.evidence_id: item for item in new_items})
     return tuple(values.values())
+
+
+def _merge_by_id(existing, new_items, attribute, limit):
+    values = {getattr(item, attribute): item for item in existing}
+    values.update({getattr(item, attribute): item for item in new_items})
+    return tuple(values.values())[-limit:]
 
 
 def _merge_timeline(existing, evidence_items):
@@ -553,14 +872,25 @@ def _initial_limitations(task_type: AgentTaskType | None) -> tuple[str, ...]:
     return ("结论仅覆盖当前授权的数据源。",)
 
 
-def _title_for(task_type: AgentTaskType | None) -> str:
-    return {
-        AgentTaskType.PROMPT_INVESTIGATION: "Prompt 安全调查",
-        AgentTaskType.PCAP_DATASET_INVESTIGATION: "PCAP 数据集调查",
-        AgentTaskType.PCAP_CAPTURE_INVESTIGATION: "PCAP 单文件调查",
-        AgentTaskType.CROSS_DOMAIN_CASE: "跨域安全案件",
-        AgentTaskType.REPORT_GENERATION: "安全报告",
-    }.get(task_type, "安全知识对话")
+def _title_for(task_type: AgentTaskType | None, message: str) -> str:
+    compact = " ".join(message.split())
+    if task_type is AgentTaskType.PROMPT_INVESTIGATION:
+        if "越狱" in compact:
+            return "Prompt 越狱风险调查"
+        if "注入" in compact:
+            return "Prompt 注入风险调查"
+        return "Prompt 安全调查"
+    if task_type in {
+        AgentTaskType.PCAP_DATASET_INVESTIGATION,
+        AgentTaskType.PCAP_CAPTURE_INVESTIGATION,
+    }:
+        safe = compact.split("：", 1)[0].split(":", 1)[0]
+        return safe[:28] + ("…" if len(safe) > 28 else "")
+    if task_type is AgentTaskType.CROSS_DOMAIN_CASE:
+        return "跨域安全案件"
+    if task_type is AgentTaskType.REPORT_GENERATION:
+        return "安全报告"
+    return compact[:28] + ("…" if len(compact) > 28 else "")
 
 
 def _timestamp() -> str:

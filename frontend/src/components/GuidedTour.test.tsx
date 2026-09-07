@@ -21,11 +21,13 @@ function Harness({ storage }: { storage?: Storage } = {}) {
 describe("GuidedTour", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.stubGlobal("PointerEvent", MouseEvent);
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("opens once on the first route visit and stores the exact versioned route key", () => {
@@ -139,5 +141,32 @@ describe("GuidedTour", () => {
     expect(document.querySelector(".guided-tour-spotlight")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByRole("dialog", { name: "输入区域" })).toHaveAttribute("data-placement", "below");
     expect(screen.getByText("步骤 1 / 2")).toBeInTheDocument();
+  });
+
+  it("moves the closed launcher with the keyboard and persists its position", () => {
+    window.localStorage.setItem("token-sentinel-tour:/analyze:v1", "seen");
+    render(<Harness />);
+    const launcher = screen.getByRole("button", { name: "打开本页使用引导" });
+    vi.spyOn(launcher, "getBoundingClientRect").mockReturnValue({ x: 100, y: 100, left: 100, top: 100, right: 212, bottom: 142, width: 112, height: 42, toJSON: () => ({}) });
+
+    fireEvent.keyDown(launcher, { key: "ArrowLeft", shiftKey: true });
+
+    expect(launcher.style.left).toBe("68px");
+    expect(JSON.parse(localStorage.getItem("token-sentinel-tour-launcher:desktop:v1")!)).toEqual({ x: 68, y: 100 });
+  });
+
+  it("does not open the guide when a pointer gesture crosses the drag threshold", () => {
+    window.localStorage.setItem("token-sentinel-tour:/analyze:v1", "seen");
+    render(<Harness />);
+    const launcher = screen.getByRole("button", { name: "打开本页使用引导" });
+    vi.spyOn(launcher, "getBoundingClientRect").mockReturnValue({ x: 100, y: 100, left: 100, top: 100, right: 212, bottom: 142, width: 112, height: 42, toJSON: () => ({}) });
+
+    fireEvent.pointerDown(launcher, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(launcher, { pointerId: 1, clientX: 120, clientY: 112 });
+    fireEvent.pointerUp(launcher, { pointerId: 1, clientX: 120, clientY: 112 });
+    fireEvent.click(launcher);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(launcher.style.left).toBe("120px");
   });
 });

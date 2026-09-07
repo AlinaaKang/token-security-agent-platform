@@ -89,6 +89,14 @@ def _translate_evidence(
             key: candidate[key]
             for key in (
                 "confidence",
+                "decision",
+                "risk_score",
+                "detector_score",
+                "detector_status",
+                "semantic_severity",
+                "calibration_version",
+                "counterfactual_interpretation",
+                "counterfactual_reason",
                 "start_packet",
                 "end_packet",
                 "purpose_candidates",
@@ -103,6 +111,7 @@ def _translate_evidence(
                     "derived"
                     if tool_id
                     in {
+                        "counterfactual_recheck",
                         "explain_attack",
                         "explain_protocol",
                         "generate_case_report",
@@ -115,7 +124,8 @@ def _translate_evidence(
                 source_type=detector,
                 source_ref=source_ref,
                 tool_id=tool_id,
-                summary=f"{attack} 异常候选，由 {detector} 产生。",
+                summary=_as_optional_text(candidate.get("summary"))
+                or f"{attack} 异常候选，由 {detector} 产生。",
                 observed_at=observed_at,
                 uncertainty="该证据表示检测候选，不单独证明攻击成功。",
                 metadata=metadata,

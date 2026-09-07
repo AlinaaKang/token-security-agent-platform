@@ -18,6 +18,7 @@ import { api } from "../api";
 import { ResultGuide } from "../components/ResultGuide";
 import { buildAnalyzeDecisionTrace, publicModelName } from "../analyze/decisionTrace";
 import { AnalyzeDecisionTrace } from "../components/AnalyzeDecisionTrace";
+import { PromptAnalysisNav } from "../components/PromptAnalysisNav";
 import type {
   AnalysisResult,
   DemoSample,
@@ -392,9 +393,10 @@ export function AnalyzePage() {
 
   return (
     <main className="page">
+      <PromptAnalysisNav />
       <header className="page-header">
         <div>
-          <h1>安全分析</h1>
+          <h1>Prompt 安全分析</h1>
           <p>联合语义安全与 Token 分布变化，输出可审计的检测证据和处置动作。</p>
         </div>
         <span className={"readiness " + (serviceReady ? "ready" : "")}>

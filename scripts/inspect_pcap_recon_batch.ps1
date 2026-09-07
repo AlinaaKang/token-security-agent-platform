@@ -4,7 +4,7 @@ param(
     [string]$InspectorScript,
     [string]$ReconId,
     [ValidatePattern('^state_[0-9a-f]{32}$')][string]$StateId,
-    [ValidateRange(1,20)][int]$MaxFiles = 20,
+    [ValidateRange(1,10000)][int]$MaxFiles = 100,
     [string]$DockerExecutable
 )
 
@@ -40,9 +40,9 @@ function Get-OrderedFiles([IO.DirectoryInfo]$InputRoot) {
     for ($i = 1; $i -lt $items.Count; $i++) { $candidate = $items[$i]; $j = $i - 1; while ($j -ge 0 -and (($items[$j].File.Length -gt $candidate.File.Length) -or (($items[$j].File.Length -eq $candidate.File.Length) -and [string]::CompareOrdinal($items[$j].Ordinal, $candidate.Ordinal) -gt 0))) { $items[$j + 1] = $items[$j]; $j-- }; $items[$j + 1] = $candidate }; return @($items)
 }
 function Select-Samples($Files, [int]$Limit) {
-    if ($Files.Count -eq 0) { return @() }; $groups = @([Collections.ArrayList]::new(), [Collections.ArrayList]::new(), [Collections.ArrayList]::new(), [Collections.ArrayList]::new())
-    for ($i = 0; $i -lt $Files.Count; $i++) { $quartile = [int][Math]::Min(3, [Math]::Floor(($i * 4) / $Files.Count)); [void]$groups[$quartile].Add([pscustomobject]@{ File = $Files[$i].File; Ordinal = $Files[$i].Ordinal; Quartile = $quartile }) }
-    $selected = [Collections.ArrayList]::new(); for ($quartile = 0; $quartile -lt 4; $quartile++) { $memberCount = $groups[$quartile].Count; $sampleCount = [int][Math]::Min(5, $memberCount); $seen = @{}; for ($k = 0; $k -lt $sampleCount; $k++) { $index = [int][Math]::Floor((($k + 0.5) * $memberCount) / $sampleCount); if ($seen.ContainsKey($index)) { Fail 'invalid_sampling_state' }; $seen[$index] = $true; [void]$selected.Add($groups[$quartile][$index]) } }; if ($selected.Count -gt $Limit) { return @($selected | Select-Object -First $Limit) }; return @($selected)
+    if ($Files.Count -eq 0) { return @() }; $sampleCount = [int][Math]::Min($Limit, $Files.Count); $selected = [Collections.ArrayList]::new(); $seen = @{}
+    for ($k = 0; $k -lt $sampleCount; $k++) { $index = [int][Math]::Floor((($k + 0.5) * $Files.Count) / $sampleCount); if ($seen.ContainsKey($index)) { Fail 'invalid_sampling_state' }; $seen[$index] = $true; $quartile = [int][Math]::Min(3, [Math]::Floor(($index * 4) / $Files.Count)); [void]$selected.Add([pscustomobject]@{ File = $Files[$index].File; Ordinal = $Files[$index].Ordinal; Quartile = $quartile }) }
+    return @($selected)
 }
 
 function Assert-ValidProtocolCounts($Counts, [string]$Code) { $names = @(Get-Names $Counts $Code); for ($i = 0; $i -lt $names.Count; $i++) { $name = $names[$i]; if ($script:AllowedProtocols -notcontains $name -or -not (Test-NonnegativeInteger $Counts.$name)) { Fail $Code }; if ($i -gt 0 -and [string]::CompareOrdinal($names[$i - 1], $name) -ge 0) { Fail $Code } } }
@@ -72,7 +72,7 @@ try {
     if ($ReconId -notmatch '^recon_[0-9a-f]{32}$' -or $StateId -notmatch '^state_[0-9a-f]{32}$' -or [string]::IsNullOrWhiteSpace($QuarantineRoot) -or [string]::IsNullOrWhiteSpace($InspectorScript)) { Fail 'unexpected_failure' }
     $root = [IO.Path]::GetFullPath($QuarantineRoot); $inputPath = Join-Path $root 'input'; $outputPath = Join-Path $root 'output'; $stateDir = Join-Path $root 'state'; Ensure-Directory $inputPath 'input_reparse_point'; Ensure-Directory $outputPath 'output_reparse_point'; Ensure-Directory $stateDir 'state_reparse_point'
     $stateFile = Join-Path $stateDir 'pcap-recon-private.json'; Assert-NoReparse $stateFile 'state_reparse_point'; $state = Read-PrivateState $stateFile; $entries = [Collections.ArrayList]::new(); foreach ($entry in @($state.entries)) { [void]$entries.Add($entry) }
-    $cancelPath = Join-Path $stateDir ($ReconId + '.cancel'); Remove-ChildReports $outputPath; $files = @(Get-OrderedFiles (Get-Item -LiteralPath $inputPath)); $selected = @(Select-Samples $files $MaxFiles); $histogram = New-Histogram
+    $cancelPath = Join-Path $stateDir ($ReconId + '.cancel'); Remove-ChildReports $outputPath; $files = @(Get-OrderedFiles (Get-Item -LiteralPath $inputPath)); $selected = @(Select-Samples $files $MaxFiles); $histogram = New-Histogram; $processedSinceCheckpoint = 0
     foreach ($candidate in $selected) {
         if (Test-Path -LiteralPath $cancelPath -PathType Leaf) { Remove-Item -LiteralPath $cancelPath -Force -ErrorAction SilentlyContinue; break }
         Assert-NoReparse $candidate.File.FullName 'input_reparse_point'; $sha = Get-Sha256Hex $candidate.File.FullName; $size = [int64]$candidate.File.Length; $format = if ($candidate.File.Extension.ToLowerInvariant() -eq '.pcapng') { 'pcapng' } else { 'pcap' }; $prior = Find-Entry $entries $candidate.Ordinal
@@ -82,7 +82,8 @@ try {
             $exitCode = Invoke-Inspector $InspectorScript $candidate.File.FullName $root $DockerExecutable; $childReports = @(Get-ChildItem -LiteralPath $outputPath -Filter 'pcap-preflight-*.json' -File -ErrorAction SilentlyContinue); if ($exitCode -ne 0) { Fail 'inspector_failed' }; if ($childReports.Count -ne 1) { Fail 'invalid_report_schema' }; if (($childReports[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Fail 'output_reparse_point' }; try { $report = [IO.File]::ReadAllText($childReports[0].FullName) | ConvertFrom-Json -ErrorAction Stop } catch { Fail 'invalid_report_schema' }; $metrics = Convert-ChildReport $report $sha $size $format; $entry = [ordered]@{ internal_path = $candidate.Ordinal; sha256 = $sha; size_bytes = $size; status = 'succeeded'; error_code = $null; packet_count = $metrics.packet_count; duration_seconds = $metrics.duration_seconds; protocol_counts = $metrics.protocol_counts; visibility = $metrics.visibility }
         } catch { $code = if ($_.Exception.Message -eq 'invalid_report_schema') { 'invalid_report_schema' } elseif ($_.Exception.Message -eq 'output_reparse_point') { 'output_reparse_point' } else { 'inspector_failed' }; $entry = New-FailedEntry $candidate.Ordinal $sha $size $code }
         finally { Remove-ChildReports $outputPath }
-        Set-Entry $entries $entry; Add-ToHistogram $histogram $entry $candidate.Quartile; Save-AtomicJson ([ordered]@{ schema_version = 1; state_id = $StateId; entries = @($entries) }) $stateFile
+        Set-Entry $entries $entry; Add-ToHistogram $histogram $entry $candidate.Quartile; $processedSinceCheckpoint++
+        if ($processedSinceCheckpoint -ge 100) { Save-AtomicJson ([ordered]@{ schema_version = 1; state_id = $StateId; entries = @($entries) }) $stateFile; $processedSinceCheckpoint = 0 }
     }
     Save-AtomicJson ([ordered]@{ schema_version = 1; state_id = $StateId; entries = @($entries) }) $stateFile; $publicPath = Join-Path $outputPath ('pcap-recon-' + $ReconId + '.json'); Assert-NoReparse $publicPath 'output_reparse_point'; Save-AtomicJson $histogram $publicPath; Write-Output ('pcap_recon_result=' + $ReconId); exit 0
 }

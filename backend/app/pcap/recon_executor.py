@@ -23,9 +23,9 @@ from app.pcap.windows_handles import (
 
 
 _RECON_ID = re.compile(r"^recon_[0-9a-f]{32}$")
-_MAX_FILES = 20
+_DEFAULT_SAMPLE_LIMIT = 100
+_MAX_FILES = 10_000
 _MAX_OUTPUT_BYTES = 256 * 1024
-_TIMEOUT_SECONDS = 20 * 160 + 30
 
 
 class PcapReconToolFailed(RuntimeError):
@@ -43,8 +43,8 @@ def _validate_recon_id(recon_id: str) -> None:
 
 
 def _validate_max_files(max_files: int) -> None:
-    if type(max_files) is not int or max_files != _MAX_FILES:
-        raise ValueError("max_files is fixed at 20")
+    if type(max_files) is not int or not 1 <= max_files <= _MAX_FILES:
+        raise ValueError("max_files must be an integer between 1 and 10000")
 
 
 def _checkpoint_scope_id(config: PcapConfig) -> str:
@@ -79,16 +79,16 @@ class PcapReconExecutor:
             return PcapReconOverview(
                 enabled=True,
                 eligible_file_count=eligible_file_count,
-                sample_limit=20,
+                sample_limit=_DEFAULT_SAMPLE_LIMIT,
                 sampling_method="size_quartile_v1",
             )
         except Exception:
             raise PcapReconToolFailed() from None
 
-    def execute(self, recon_id: str, max_files: int = 20) -> PcapReconSummary:
+    def execute(self, recon_id: str, max_files: int = _DEFAULT_SAMPLE_LIMIT) -> PcapReconSummary:
         _validate_recon_id(recon_id)
         _validate_max_files(max_files)
-        command = self._command(recon_id)
+        command = self._command(recon_id, max_files)
         try:
             root_handle = _open_quarantine_root(self._config.quarantine_root)
             try:
@@ -98,7 +98,7 @@ class PcapReconExecutor:
                     check=False,
                     encoding="utf-8",
                     shell=False,
-                    timeout=_TIMEOUT_SECONDS,
+                    timeout=max_files * 160 + 30,
                 )
                 if (
                     getattr(completed, "returncode", None) != 0
@@ -106,7 +106,7 @@ class PcapReconExecutor:
                     != f"pcap_recon_result={recon_id}"
                 ):
                     raise PcapReconToolFailed()
-                return self._load_summary(root_handle, recon_id)
+                return self._load_summary(root_handle, recon_id, max_files)
             finally:
                 _close_handle(root_handle)
         except PcapReconToolFailed:
@@ -131,7 +131,7 @@ class PcapReconExecutor:
         except Exception:
             raise PcapReconToolFailed() from None
 
-    def _command(self, recon_id: str) -> list[str]:
+    def _command(self, recon_id: str, max_files: int) -> list[str]:
         return [
             str(self._config.powershell_executable),
             "-NoProfile",
@@ -149,10 +149,12 @@ class PcapReconExecutor:
             "-StateId",
             self._checkpoint_scope_id,
             "-MaxFiles",
-            "20",
+            str(max_files),
         ]
 
-    def _load_summary(self, root_handle: Any, recon_id: str) -> PcapReconSummary:
+    def _load_summary(
+        self, root_handle: Any, recon_id: str, max_files: int
+    ) -> PcapReconSummary:
         output_handle = _open_directory_relative(root_handle, "output")
         try:
             raw = _read_file_relative(output_handle, f"pcap-recon-{recon_id}.json")
@@ -165,6 +167,8 @@ class PcapReconExecutor:
                 raise PcapReconToolFailed()
             payload = json.loads(raw)
             summary = PcapReconSummary.model_validate(payload)
+            if summary.sampled_count > max_files:
+                raise PcapReconToolFailed()
             if sum(summary.quartile_counts.model_dump().values()) != summary.sampled_count:
                 raise PcapReconToolFailed()
             for histogram in (

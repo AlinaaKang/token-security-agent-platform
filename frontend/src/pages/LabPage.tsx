@@ -6,14 +6,13 @@ import {
   CircleAlert,
   FileLock2,
   FlaskConical,
-  MessageSquareText,
-  Network,
   ScanSearch,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { useLocation } from "react-router-dom";
 
 import { api } from "../api";
 import { ResultGuide } from "../components/ResultGuide";
@@ -248,7 +247,8 @@ function MetricsPanel({ metrics }: { metrics: LabMetrics }) {
 }
 
 export function LabPage() {
-  const [labSurface, setLabSurface] = useState<"prompt" | "pcap">("prompt");
+  const location = useLocation();
+  const labSurface = new URLSearchParams(location.search).get("surface") === "pcap" ? "pcap" : "prompt";
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [scenarios, setScenarios] = useState<LabScenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState("custom");
@@ -334,12 +334,8 @@ export function LabPage() {
     <main className="page lab-page" aria-label="AI 安全攻防实验舱">
       <header className="page-header">
         <div>
-          <div className="lab-input-switch" role="group" aria-label="实验输入类型" data-tour="lab-input-kind">
-            <button type="button" aria-pressed={labSurface === "prompt"} className={labSurface === "prompt" ? "active" : ""} onClick={() => setLabSurface("prompt")}><MessageSquareText size={16} />Prompt 攻防</button>
-            <button type="button" aria-pressed={labSurface === "pcap"} className={labSurface === "pcap" ? "active" : ""} onClick={() => setLabSurface("pcap")}><Network size={16} />PCAP 攻防</button>
-          </div>
-          <h1>AI 安全攻防实验舱</h1>
-          <p>按证据顺序调查异常，验证反事实敏感性，并对固定处置工具进行预览与平台内部执行。</p>
+          <h1>{labSurface === "pcap" ? "PCAP 攻防实验" : "Prompt 攻防实验"}</h1>
+          <p>{labSurface === "pcap" ? "上传单个网络抓包，在隔离环境中定位可验证的异常证据。" : "按证据顺序调查 Prompt 异常，验证反事实敏感性与受控处置。"}</p>
         </div>
         <span className={`readiness ${labReady ? "ready" : ""}`}>
           <Activity size={15} /> {labSurface === "pcap" ? "PCAP 独立模式" : health === null ? "正在连接" : labReady ? "实验舱已就绪" : "实验舱未启用"}

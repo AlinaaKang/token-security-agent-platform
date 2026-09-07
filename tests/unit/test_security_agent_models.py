@@ -10,7 +10,9 @@ from app.security_agent.models import (
     AgentConfidenceChange,
     AgentEvidence,
     AgentHypothesis,
+    AgentNextAction,
     AgentPlanStep,
+    AgentSuggestedQuestion,
     AgentTaskSnapshot,
     EvidenceAuthenticity,
 )
@@ -219,3 +221,24 @@ def test_capabilities_publish_bounded_runtime_limits() -> None:
     assert capabilities.max_plan_steps == 12
     assert capabilities.pcap_batch_size == 20
 
+
+def test_recommendation_models_are_strict_and_bounded() -> None:
+    question = AgentSuggestedQuestion(
+        question_id="why_risky",
+        label="为什么判断为高风险？",
+        message="为什么判断为高风险？",
+    )
+    action = AgentNextAction(
+        action_id="generate_report",
+        label="生成调查报告",
+        action_kind="read_only",
+    )
+
+    payload = snapshot_payload()
+    payload["suggested_questions"] = [question.model_dump()] * 5
+    payload["next_actions"] = [action.model_dump()]
+    with pytest.raises(ValidationError):
+        AgentTaskSnapshot.model_validate(payload)
+
+    with pytest.raises(ValidationError):
+        AgentNextAction.model_validate({**action.model_dump(), "action_id": "shell_exec"})

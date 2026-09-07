@@ -405,11 +405,11 @@ export interface PcapMissionResult {
 export interface PcapReconOverview {
   enabled: boolean;
   eligible_file_count: number;
-  sample_limit: 20;
+  sample_limit: number;
   sampling_method: "size_quartile_v1";
 }
 
-export interface PcapReconAuthorizationRequest { confirmed: true; sample_limit: 20; }
+export interface PcapReconAuthorizationRequest { confirmed: true; sample_limit: number; }
 export interface PcapReconAuthorizationReceipt { authorization_id: string; max_files: number; }
 export interface PcapReconMissionRequest {
   objective: "reconnoiter_pcap_dataset";
@@ -668,6 +668,33 @@ export interface EvaluationSummary {
   deployment_match: boolean;
   knowledge?: KnowledgeEvaluation | null;
   agent_ablation?: AgentAblationReport | null;
+}
+
+export interface PcapEvaluationMetrics {
+  sample_count: number;
+  true_positive: number;
+  false_positive: number;
+  false_negative: number;
+  true_negative: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  false_positive_rate: number;
+  localization_hit_rate: number;
+}
+
+export interface PcapEvaluationSummary {
+  schema_version: 1;
+  benchmark_version: string;
+  dataset_kind: "synthetic_sanitized_regression";
+  generated_at: string;
+  sample_count: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  false_positive_rate: number;
+  localization_hit_rate: number;
+  ablations: Record<"rule_only" | "behavior_only" | "fused", PcapEvaluationMetrics>;
 }
 
 export type AblationMethod = "semantic_only" | "cpd_only" | "fusion";

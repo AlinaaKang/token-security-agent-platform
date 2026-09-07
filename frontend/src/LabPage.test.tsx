@@ -268,26 +268,23 @@ describe("security lab workspace", () => {
     render(<App />);
 
     expect(await screen.findByRole("main", { name: "AI 安全攻防实验舱" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "攻防实验舱" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "Prompt 攻防" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "PCAP 攻防" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("link", { name: "Prompt 攻防实验" })).toHaveClass("active");
+    expect(screen.queryByRole("group", { name: "实验输入类型" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Prompt 攻防实验" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "专业调查" })).not.toBeInTheDocument();
     expect(screen.getByText("普通无害")).toBeInTheDocument();
     expect(screen.getByText("AutoDAN 优化攻击")).toBeInTheDocument();
   });
 
-  it("preserves the Prompt draft while switching through the PCAP experiment", async () => {
+  it("renders only the PCAP experiment on the PCAP surface URL", async () => {
+    window.history.pushState({}, "", "/lab?surface=pcap");
     installFetch();
     render(<App />);
-    await screen.findByText("实验舱已就绪");
-    fireEvent.change(screen.getByLabelText("自定义 Prompt"), { target: { value: "保留这段输入" } });
-
-    fireEvent.click(screen.getByRole("button", { name: "PCAP 攻防" }));
     expect(await screen.findByRole("region", { name: "PCAP 上传检测" })).toBeInTheDocument();
     expect(screen.getByText("PCAP 独立模式")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Prompt 攻防" }));
-
-    expect(screen.getByLabelText("自定义 Prompt")).toHaveValue("保留这段输入");
+    expect(screen.getByRole("heading", { name: "PCAP 攻防实验" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("自定义 Prompt")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "实验输入类型" })).not.toBeInTheDocument();
   });
 
   it("creates a custom investigation and renders the recorded evidence pipeline", async () => {

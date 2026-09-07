@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Sequence
+from pathlib import Path
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -60,6 +63,64 @@ class PcapDetectionEvaluation(BaseModel):
     false_positive_rate: float = Field(ge=0, le=1)
     localization_hit_rate: float = Field(ge=0, le=1)
     ablations: dict[str, PcapAblationMetrics]
+
+
+class PcapEvaluationManifest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    benchmark_version: str = Field(min_length=1, max_length=80)
+    dataset_kind: Literal["synthetic_sanitized_regression"]
+    generated_at: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
+    )
+    cases: tuple[PcapEvaluationCase, ...] = Field(min_length=1, max_length=500)
+
+
+class PcapEvaluationSummary(PcapDetectionEvaluation):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    benchmark_version: str = Field(min_length=1, max_length=80)
+    dataset_kind: Literal["synthetic_sanitized_regression"]
+    generated_at: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
+    )
+
+
+_FORBIDDEN_MANIFEST_FIELDS = frozenset(
+    {
+        "body", "filename", "hash", "header", "ip", "ip_address", "mac",
+        "path", "payload", "port", "prompt", "request_body", "sha256",
+        "stderr", "token_text", "uri",
+    }
+)
+
+
+def _validate_sanitized_manifest(value: Any) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).casefold().replace("-", "_")
+            if normalized in _FORBIDDEN_MANIFEST_FIELDS:
+                raise ValueError(f"forbidden field in PCAP evaluation manifest: {normalized}")
+            _validate_sanitized_manifest(child)
+    elif isinstance(value, list):
+        for child in value:
+            _validate_sanitized_manifest(child)
+
+
+def load_pcap_evaluation(path: Path) -> PcapEvaluationSummary:
+    raw = json.loads(path.read_text(encoding="ascii"))
+    _validate_sanitized_manifest(raw)
+    manifest = PcapEvaluationManifest.model_validate(raw)
+    result = evaluate_pcap_detection(manifest.cases)
+    return PcapEvaluationSummary(
+        schema_version=manifest.schema_version,
+        benchmark_version=manifest.benchmark_version,
+        dataset_kind=manifest.dataset_kind,
+        generated_at=manifest.generated_at,
+        **result.model_dump(),
+    )
 
 
 def evaluate_pcap_detection(cases: Sequence[PcapEvaluationCase]) -> PcapDetectionEvaluation:

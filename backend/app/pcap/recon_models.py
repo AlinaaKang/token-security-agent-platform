@@ -109,9 +109,9 @@ class PcapDurationHistogram(_FrozenPcapReconPublicModel):
 
 class PcapReconSummary(_FrozenPcapReconPublicModel):
     schema_version: Literal[1] = 1
-    sampled_count: _Count = Field(le=20)
-    succeeded_count: _Count = Field(le=20)
-    failed_count: _Count = Field(le=20)
+    sampled_count: _Count = Field(le=10_000)
+    succeeded_count: _Count = Field(le=10_000)
+    failed_count: _Count = Field(le=10_000)
     quartile_counts: PcapQuartileHistogram
     size_bucket_counts: PcapSizeHistogram
     packet_bucket_counts: PcapPacketHistogram
@@ -181,7 +181,7 @@ class PcapReconMissionResult(_FrozenPcapReconPublicModel):
 class PcapReconOverview(_FrozenPcapReconPublicModel):
     enabled: bool
     eligible_file_count: _Count
-    sample_limit: Literal[20] = 20
+    sample_limit: int = Field(default=100, ge=1, le=10_000, strict=True)
     sampling_method: Literal["size_quartile_v1"] = "size_quartile_v1"
 
 

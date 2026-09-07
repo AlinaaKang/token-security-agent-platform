@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "./api";
+import type { PcapDetectionMissionResult } from "./types";
 
 function ok(payload: object = {}) {
   return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
@@ -45,7 +46,7 @@ describe("API backend routing", () => {
   });
 
   it("exposes the unified agent task lifecycle on the main API", async () => {
-    const fetchMock = vi.fn((_url: string) => ok());
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => ok());
     vi.stubGlobal("fetch", fetchMock);
 
     await api.agentCapabilities();
@@ -53,8 +54,12 @@ describe("API backend routing", () => {
     await api.listAgentTasks(20, 0);
     await api.getAgentTask("task_01");
     await api.messageAgentTask("task_01", "解释 packet 4-4");
+    await api.executeAgentAction("task_01", "generate_report");
+    await api.importPcapAgentTask({} as PcapDetectionMissionResult);
+    await api.importPcapAgentTask({} as PcapDetectionMissionResult, "task_01");
     await api.authorizeAgentTask("task_01", ["pcap:read"]);
     await api.cancelAgentTask("task_01");
+    await api.deleteAgentTask("task_01");
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/v1/agent/capabilities",
@@ -62,9 +67,14 @@ describe("API backend routing", () => {
       "/api/v1/agent/tasks?limit=20&offset=0",
       "/api/v1/agent/tasks/task_01",
       "/api/v1/agent/tasks/task_01/messages",
+      "/api/v1/agent/tasks/task_01/actions",
+      "/api/v1/agent/tasks/import-pcap",
+      "/api/v1/agent/tasks/import-pcap?task_id=task_01",
       "/api/v1/agent/tasks/task_01/authorizations",
       "/api/v1/agent/tasks/task_01/cancel",
+      "/api/v1/agent/tasks/task_01",
     ]);
+    expect(fetchMock.mock.calls.at(-1)?.[1]).toMatchObject({ method: "DELETE" });
   });
 
   it("uploads the exact browser file through the local namespace without a filename header", async () => {

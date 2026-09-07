@@ -676,7 +676,7 @@ def test_recon_overview_authorization_and_refresh_restore_use_aggregate_public_c
     assert overview.json() == {
         "enabled": True,
         "eligible_file_count": 2318,
-        "sample_limit": 20,
+        "sample_limit": 100,
         "sampling_method": "size_quartile_v1",
     }
     assert receipt.status_code == 201
@@ -699,12 +699,12 @@ def test_recon_overview_authorization_and_refresh_restore_use_aggregate_public_c
 @pytest.mark.parametrize(
     "payload",
     [
-        {"confirmed": False, "sample_limit": 20},
-        {"confirmed": True, "sample_limit": 19},
-        {"confirmed": True, "sample_limit": 21},
+        {"confirmed": False, "sample_limit": 100},
+        {"confirmed": True, "sample_limit": 0},
+        {"confirmed": True, "sample_limit": 10001},
     ],
 )
-def test_recon_authorization_requires_confirmation_and_fixed_sample_limit(
+def test_recon_authorization_requires_confirmation_and_bounded_sample_limit(
     payload: dict[str, object],
 ) -> None:
     with installed_recon(SyntheticReconExecutor()):

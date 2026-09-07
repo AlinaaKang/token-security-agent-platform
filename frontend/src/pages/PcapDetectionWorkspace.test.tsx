@@ -68,15 +68,14 @@ describe("PcapDetectionWorkspace", () => {
     expect(screen.getByRole("button", { name: /确认并开始/ })).toBeEnabled();
   });
 
-  it("renders localized evidence, timeline, and mascot roles after detection", async () => {
+  it("renders localized evidence and timeline without duplicating the detection team", async () => {
     render(<PcapDetectionWorkspace />);
     fireEvent.click(await screen.findByRole("button", { name: /准备异常检测/ }));
     fireEvent.click(screen.getByRole("button", { name: /确认并开始/ }));
     expect((await screen.findAllByText("SQL 注入候选")).length).toBeGreaterThan(0);
     expect(screen.getByText("Packet 2-2")).toBeInTheDocument();
-    expect(screen.getByText("短请求无需调用 CPD")).toBeInTheDocument();
-    expect(screen.getByText("规则侦探")).toBeInTheDocument();
-    expect(screen.getByText("小队队长")).toBeInTheDocument();
+    expect(screen.queryByText("短请求无需调用 CPD")).not.toBeInTheDocument();
+    expect(screen.queryByText("小队队长")).not.toBeInTheDocument();
     expect(screen.getByText("样本 01 · 完成 · 证据 1")).toHaveClass("is-alert");
   });
 

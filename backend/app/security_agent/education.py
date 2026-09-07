@@ -66,7 +66,7 @@ class SecurityEducationService:
             )
         if kind == "smalltalk":
             return (
-                "你好。我可以先回答安全问题，也可以从一句调查目标开始建立计划。",
+                "你好。我正在等待你的安全问题，也可以继续解释当前案件，或从一句调查目标开始建立计划。",
                 "general",
                 (),
             )
@@ -118,4 +118,3 @@ class SecurityEducationService:
             "general",
             (),
         )
-

@@ -134,6 +134,16 @@ def test_detection_authorization_is_purpose_bound_and_single_use() -> None:
         store.consume(receipt.authorization_id, purpose="detection")
 
 
+@pytest.mark.parametrize("sample_count", [1, 20, 100, 2318, 10000])
+def test_reconnaissance_authorization_allows_custom_and_full_profile_samples(sample_count: int) -> None:
+    store = PcapAuthorizationStore()
+
+    receipt = store.issue(max_files=sample_count, purpose="reconnaissance")
+
+    assert receipt.max_files == sample_count
+    assert store.consume(receipt.authorization_id, purpose="reconnaissance").max_files == sample_count
+
+
 def test_upload_authorization_is_bound_to_one_file_and_exact_byte_count() -> None:
     store = PcapAuthorizationStore(upload_max_bytes=10)
 

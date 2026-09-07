@@ -66,6 +66,18 @@ class SecurityAgentPlanner:
         if intent.task_type is None:
             return ()
         templates = _PLAN_TEMPLATES[intent.task_type]
+        if (
+            intent.task_type
+            in {
+                AgentTaskType.PROMPT_INVESTIGATION,
+                AgentTaskType.PCAP_DATASET_INVESTIGATION,
+                AgentTaskType.PCAP_CAPTURE_INVESTIGATION,
+            }
+            and not intent.report_requested
+        ):
+            templates = tuple(
+                item for item in templates if item.tool_id != "generate_case_report"
+            )
         available = set(capabilities.tool_ids)
         return _build_steps(tuple(item for item in templates if item.tool_id in available))
 

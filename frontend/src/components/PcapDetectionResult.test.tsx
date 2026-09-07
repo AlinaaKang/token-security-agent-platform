@@ -53,7 +53,7 @@ function mission(
 describe("PcapDetectionResult", () => {
   afterEach(cleanup);
 
-  it("renders localized evidence, purpose candidates, timeline, and mascots", () => {
+  it("renders localized evidence, purpose candidates, and timeline without the challenge team", () => {
     render(
       <PcapDetectionResult
         mission={mission()}
@@ -66,8 +66,7 @@ describe("PcapDetectionResult", () => {
     expect(screen.getByText("上传样本 · 完成 · 证据 1")).toHaveClass("is-alert");
     expect(screen.getByText("目的候选：认证绕过、数据提取")).toBeInTheDocument();
     expect(screen.getByText("Packet 4-4")).toBeInTheDocument();
-    expect(screen.getByText("短请求无需调用 CPD")).toBeInTheDocument();
-    expect(screen.getByText("小队队长")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "PCAP 检测小队" })).not.toBeInTheDocument();
   });
 
   it("separates no-hit and incomplete conclusions with colored counts", () => {

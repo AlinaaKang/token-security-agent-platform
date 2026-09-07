@@ -140,7 +140,7 @@ def _valid_recon_overview(payload: object) -> bool:
         type(payload["enabled"]) is bool
         and _is_strict_int(payload["eligible_file_count"])
         and 0 <= payload["eligible_file_count"] <= 2_147_483_647
-        and payload["sample_limit"] == 20
+        and payload["sample_limit"] == 100
         and type(payload["sample_limit"]) is int
         and payload["sampling_method"] == "size_quartile_v1"
     )
@@ -244,12 +244,15 @@ def _endpoint_checks() -> tuple[_EndpointCheck, ...]:
         _EndpointCheck(
             method="POST",
             path="/api/v1/superagent/missions",
-            expected_status=422,
+            expected_status=403,
             request_body={
                 "objective": "detect_pcap_anomalies",
                 "authorization_id": _UNKNOWN_AUTHORIZATION,
             },
-            validate=validation_error,
+            validate=_fixed_error_validator(
+                code="pcap_authorization_required",
+                message="pcap authorization is required",
+            ),
         ),
         _EndpointCheck(
             method="POST",

@@ -6,7 +6,7 @@ import { SuperAgentPage as App } from "./pages/SuperAgentPage";
 const reconOverview = {
   enabled: true,
   eligible_file_count: 2318,
-  sample_limit: 20,
+  sample_limit: 100,
   sampling_method: "size_quartile_v1",
 };
 
@@ -73,16 +73,35 @@ describe("PCAP reconnaissance workspace", () => {
     await screen.findByLabelText("任务场景");
     fireEvent.click(screen.getByRole("button", { name: "PCAP 证据分诊" }));
     fireEvent.click(await screen.findByRole("button", { name: "数据勘察" }));
-    expect(await screen.findByText("按文件大小四分位抽取 20 个代表样本")).toBeVisible();
+    expect(await screen.findByText("按文件大小分层抽取 100 个代表样本")).toBeVisible();
     expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/reconnaissance/authorizations")).length).toBe(0);
-    fireEvent.click(screen.getByRole("button", { name: "准备开始勘察" }));
+    fireEvent.click(screen.getByRole("button", { name: "准备生成画像" }));
     expect(screen.getByRole("region", { name: "PCAP 勘察授权确认" })).toBeVisible();
     expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/reconnaissance/authorizations")).length).toBe(0);
-    expect(screen.getByText("本次将在无网络只读容器中完整扫描 20 个分层样本，仅返回聚合画像，不检测攻击，不展示文件身份或载荷。")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "确认并开始勘察" }));
+    expect(screen.getByText("本次将在无网络只读容器中顺序扫描 100 个分层样本，仅返回聚合画像，不检测攻击，不展示文件身份或载荷。")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "确认并生成画像" }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/reconnaissance/authorizations")).length).toBe(1));
     const body = JSON.parse(String(vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/reconnaissance/authorizations"))?.[1]?.body));
-    expect(body).toEqual({ confirmed: true, sample_limit: 20 });
+    expect(body).toEqual({ confirmed: true, sample_limit: 100 });
+  });
+
+  it.each([
+    { selection: "custom", expected: 240 },
+    { selection: "all", expected: 2318 },
+  ])("submits the $selection profile scope in the one-time authorization", async ({ selection, expected }) => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
+    fireEvent.click(await screen.findByRole("button", { name: "数据勘察" }));
+    if (selection === "custom") {
+      fireEvent.change(await screen.findByRole("spinbutton", { name: "画像样本数" }), { target: { value: "240" } });
+    } else {
+      fireEvent.click(await screen.findByRole("button", { name: "全部 2318 个" }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "准备生成画像" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认并生成画像" }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith("/reconnaissance/authorizations"))).toBe(true));
+    const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/reconnaissance/authorizations"));
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ confirmed: true, sample_limit: expected });
   });
 
   it("renders only aggregate profile fields and the phase gate", async () => {
@@ -108,8 +127,8 @@ describe("PCAP reconnaissance workspace", () => {
     cleanup(); vi.unstubAllGlobals(); installFetch({ reconRestoreStatus: 404 }); render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" }));
     fireEvent.click(await screen.findByRole("button", { name: "数据勘察" }));
-    expect(await screen.findByText("按文件大小四分位抽取 20 个代表样本")).toBeVisible();
-    expect(screen.getByRole("button", { name: "准备开始勘察" })).toBeEnabled();
+    expect(await screen.findByText("按文件大小分层抽取 100 个代表样本")).toBeVisible();
+    expect(screen.getByRole("button", { name: "准备生成画像" })).toBeEnabled();
     expect(window.sessionStorage.getItem("token-security-superagent-pcap-recon-mission-id")).toBeNull();
   });
 
@@ -147,8 +166,8 @@ describe("PCAP reconnaissance workspace", () => {
       throw new Error(`Unexpected request: ${url}`);
     }));
     render(<App />); fireEvent.click(await screen.findByRole("button", { name: "PCAP 证据分诊" })); fireEvent.click(await screen.findByRole("button", { name: "数据勘察" }));
-    expect(await screen.findByText("勘察未完成，可重新授权重试")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "重新授权勘察" }));
+    expect(await screen.findByText("画像未完成，可重新授权重试")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "重新授权生成" }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/reconnaissance/authorizations")).length).toBe(1));
   });
 });

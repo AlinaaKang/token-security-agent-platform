@@ -1,5 +1,7 @@
 import { CircleHelp, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import { clampGuidePosition, loadGuidePosition, saveGuidePosition, type GuidePosition } from "./guidedTourPosition";
 
 export type GuidedTourStep = {
   id: string;
@@ -25,6 +27,8 @@ type TargetBox = {
 const EDGE_GAP = 12;
 const PANEL_WIDTH = 340;
 const PANEL_HEIGHT_ESTIMATE = 230;
+const DRAG_THRESHOLD = 6;
+const MOBILE_BREAKPOINT = 760;
 
 function findAvailableStep(steps: GuidedTourStep[], from: number, direction = 1) {
   for (let index = from; index >= 0 && index < steps.length; index += direction) {
@@ -55,9 +59,23 @@ export function GuidedTour({ route, steps, storage: providedStorage }: GuidedTou
   const [open, setOpen] = useState(() => !canReadSeen(storage, storageKey));
   const [stepIndex, setStepIndex] = useState(0);
   const [targetBox, setTargetBox] = useState<TargetBox | null>(null);
+  const [launcherPosition, setLauncherPosition] = useState<GuidePosition | null>(() => loadGuidePosition(window.innerWidth <= MOBILE_BREAKPOINT, storage));
   const panelRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const pointerRef = useRef<{ id: number; x: number; y: number; origin: GuidePosition; dragged: boolean; latest: GuidePosition } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const boundedPosition = (position: GuidePosition, rect: Pick<DOMRect, "width" | "height">) => clampGuidePosition(
+    position,
+    { width: window.innerWidth, height: window.innerHeight },
+    { width: rect.width, height: rect.height },
+  );
+
+  const persistLauncherPosition = (position: GuidePosition) => {
+    setLauncherPosition(position);
+    saveGuidePosition(position, window.innerWidth <= MOBILE_BREAKPOINT, storage);
+  };
 
   const markSeen = () => {
     try {
@@ -86,6 +104,66 @@ export function GuidedTour({ route, steps, storage: providedStorage }: GuidedTou
     setStepIndex(first);
     setOpen(true);
   };
+
+  const onLauncherPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const origin = launcherPosition ?? { x: rect.left, y: rect.top };
+    pointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, origin, dragged: false, latest: origin };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const onLauncherPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
+    const dx = event.clientX - pointer.x;
+    const dy = event.clientY - pointer.y;
+    if (!pointer.dragged && Math.hypot(dx, dy) <= DRAG_THRESHOLD) return;
+    pointer.dragged = true;
+    const rect = event.currentTarget.getBoundingClientRect();
+    pointer.latest = boundedPosition({ x: pointer.origin.x + dx, y: pointer.origin.y + dy }, rect);
+    setLauncherPosition(pointer.latest);
+  };
+
+  const onLauncherPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const pointer = pointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+    if (pointer.dragged) {
+      suppressClickRef.current = true;
+      persistLauncherPosition(pointer.latest);
+    }
+    pointerRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const onLauncherKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const directions: Record<string, GuidePosition> = {
+      ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
+      ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 },
+    };
+    const direction = directions[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const origin = launcherPosition ?? { x: rect.left, y: rect.top };
+    const distance = event.shiftKey ? 32 : 12;
+    persistLauncherPosition(boundedPosition({ x: origin.x + direction.x * distance, y: origin.y + direction.y * distance }, rect));
+  };
+
+  useLayoutEffect(() => {
+    if (open || !launcherPosition || !launcherRef.current) return;
+    const next = boundedPosition(launcherPosition, launcherRef.current.getBoundingClientRect());
+    if (next.x !== launcherPosition.x || next.y !== launcherPosition.y) setLauncherPosition(next);
+  }, [open, launcherPosition]);
+
+  useEffect(() => {
+    const clampOnResize = () => {
+      if (!launcherRef.current) return;
+      setLauncherPosition((current) => current ? boundedPosition(current, launcherRef.current!.getBoundingClientRect()) : current);
+    };
+    window.addEventListener("resize", clampOnResize);
+    return () => window.removeEventListener("resize", clampOnResize);
+  }, []);
 
   useLayoutEffect(() => {
     if (!open || steps.length === 0) return;
@@ -184,7 +262,20 @@ export function GuidedTour({ route, steps, storage: providedStorage }: GuidedTou
         className="guided-tour-launcher"
         aria-label="打开本页使用引导"
         title="打开本页使用引导"
-        onClick={replay}
+        style={launcherPosition ? { left: launcherPosition.x, top: launcherPosition.y, right: "auto", bottom: "auto" } as CSSProperties : undefined}
+        onPointerDown={onLauncherPointerDown}
+        onPointerMove={onLauncherPointerMove}
+        onPointerUp={onLauncherPointerUp}
+        onPointerCancel={() => { pointerRef.current = null; }}
+        onKeyDown={onLauncherKeyDown}
+        onClick={(event) => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            event.preventDefault();
+            return;
+          }
+          replay();
+        }}
       >
         <CircleHelp size={20} aria-hidden="true" />
         <span>本页引导</span>
