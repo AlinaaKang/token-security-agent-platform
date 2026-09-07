@@ -21,6 +21,7 @@ TOOLS = (
     "retrieve_security_knowledge",
     "generate_case_report",
     "query_simulated_telemetry",
+    "map_attack_framework",
     "verify_response_effect",
 )
 
@@ -100,6 +101,24 @@ def test_http_candidate_adds_capture_explanation() -> None:
     assert "explain_pcap_capture" in tuple(item.tool_id for item in revised)
 
 
+def test_direct_attack_signal_adds_framework_mapping() -> None:
+    planner = SecurityAgentPlanner()
+    intent = AgentIntent(
+        kind="run_cross_domain_demo",
+        task_type="cross_domain_case",
+        objective_summary="运行跨域演示。",
+        requires_task=True,
+        requires_authorization=True,
+    )
+    plan = planner.create_plan(intent, capabilities())
+
+    revised = planner.replan(
+        task_with(plan), observation("direct_attack_signal"), capabilities()
+    )
+
+    assert "map_attack_framework" in tuple(item.tool_id for item in revised)
+
+
 def test_replanner_honors_two_revision_limit() -> None:
     planner = SecurityAgentPlanner()
     plan = planner.create_plan(pcap_dataset_intent(), capabilities())
@@ -162,3 +181,29 @@ def test_hypothesis_cannot_be_supported_without_direct_real_evidence() -> None:
 
     assert updated.hypotheses[0].status != "supported"
 
+
+def test_attack_signal_strengthens_attack_hypothesis_and_opposes_benign_alternative() -> None:
+    evidence = AgentEvidence(
+        evidence_id="ev_attack",
+        authenticity="simulated",
+        source_type="endpoint_demo",
+        source_ref="demo_case",
+        summary="仿真端点异常证据。",
+        observed_at="2026-09-07T08:00:00Z",
+        uncertainty="仅用于跨域演示。",
+    )
+    hypotheses = (
+        AgentHypothesis(hypothesis_id="hyp_01", title="存在攻击", status="investigating", confidence=0.35),
+        AgentHypothesis(hypothesis_id="hyp_02", title="正常业务", status="investigating", confidence=0.45),
+    )
+    current = task_with((), hypotheses=hypotheses, evidence=(evidence,))
+
+    updated = HypothesisEvaluator().evaluate(
+        current,
+        observation("direct_attack_signal", evidence_refs=("ev_attack",)),
+    )
+
+    assert updated.hypotheses[0].confidence > 0.35
+    assert updated.hypotheses[0].supporting_evidence_refs == ("ev_attack",)
+    assert updated.hypotheses[1].confidence < 0.45
+    assert updated.hypotheses[1].opposing_evidence_refs == ("ev_attack",)

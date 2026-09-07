@@ -94,15 +94,6 @@ def parse_intent(
             task_type=AgentTaskType.PCAP_DATASET_INVESTIGATION,
             requires_task=True,
         )
-    if not pcap_action and not prompt_action and any(word in text for word in ("报告", "markdown")) and any(
-        word in text for word in ("生成", "导出", "整理")
-    ):
-        return _intent(
-            "generate_report",
-            "基于当前案件的公开证据生成引用式报告。",
-            task_type=AgentTaskType.REPORT_GENERATION,
-            requires_task=True,
-        )
     if any(phrase in text for phrase in ("跨域", "攻防演示", "闭环演示")) and any(
         word in text for word in ("运行", "开始", "调查", "演示")
     ):
@@ -112,6 +103,15 @@ def parse_intent(
             task_type=AgentTaskType.CROSS_DOMAIN_CASE,
             requires_task=True,
             requires_authorization=True,
+        )
+    if not pcap_action and not prompt_action and any(word in text for word in ("报告", "markdown")) and any(
+        word in text for word in ("生成", "导出", "整理")
+    ):
+        return _intent(
+            "generate_report",
+            "基于当前案件的公开证据生成引用式报告。",
+            task_type=AgentTaskType.REPORT_GENERATION,
+            requires_task=True,
         )
     if pcap_action:
         task_type = (

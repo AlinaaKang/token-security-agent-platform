@@ -2,6 +2,8 @@
 
 本项目面向大模型应用入口，检测并定位附着在正常请求后的优化型 jailbreak 后缀。这里的“Token 流量异常”指模型内部 Token 序列的熵、负对数似然（NLL）及变化点，不是 API Token 用量或网络流量监控。
 
+统一入口为 `http://127.0.0.1:5173/super-agent`。完整操作、结果含义和故障处理见 [安全智能体使用手册](docs/security-agent-user-guide.md)，比赛逐条对应关系见 [比赛要求对照](docs/competition-requirement-traceability.md)。
+
 基础任务解决一个明确痛点：单一整句安全分类不能定位优化型后缀，单一 Token 变化点又不能识别没有分布突变的直接危险请求。平台分别保留两类独立证据：Qwen3Guard-Gen-0.6B 判断语义安全等级，Qwen2.5-7B-Instruct 的完整 logits 供 Entropy-CPD 检测异常候选与起点，最后由固定融合表给出处置。
 
 ## 已实现
@@ -42,8 +44,8 @@ PCAP 分层侦察同样是阶段门禁，不是攻击检测器。最小文件优
 
 ## 当前验证
 
-- 后端：990 passed；1 个本机真实 GPU 集成测试因未配置模型而 skipped，3 个 Windows 符号链接用例因当前账户无相应权限而 skipped；无需该权限的目录 junction 边界测试已通过。
-- 前端：244 个自动化测试全部通过；TypeScript 与 Vite 生产构建通过，1624 modules transformed。
+- 后端：1144 passed；1 个本机真实 GPU 集成测试因未配置模型而 skipped，3 个 Windows 符号链接用例因当前账户无相应权限而 skipped；无需该权限的目录 junction 边界测试已通过。
+- 前端：312 个自动化测试全部通过；TypeScript 与 Vite 生产构建通过。
 - PCAP Docker：隔离镜像已重建；无网络、只读根文件系统、非 root、能力全丢弃、禁止提权、资源限制和零公开载荷泄漏门禁全部通过。
 - AutoDL：RTX 4090 D 24GB，Qwen2.5-7B-Instruct + Qwen3Guard-Gen-0.6B；模型、检测器、语义 Guard、知识库、审计、评测、样本服务、实验舱和 SuperAgent 全部 ready，部署校准一致。
 - 原始 CPD/NLL 基准：冻结测试 663 条，其中攻击 460、无害 203。
@@ -118,6 +120,8 @@ CPD 算法和首批数据唯一参考为 CPDonline，固定 commit：
 - [PCAP 安全预检操作指南](docs/pcap-safe-preflight.md)
 - [PCAP SuperAgent 操作与演示指南](docs/pcap-superagent.md)
 - [比赛对照与使用手册](docs/competition-delivery-guide.md)
+- [统一安全智能体使用手册](docs/security-agent-user-guide.md)
+- [深信服 AI 安全比赛要求对照](docs/competition-requirement-traceability.md)
 
 PCAP 异常检测的合成评测只报告 precision、recall、F1、FPR、局部定位命中率及
 `rule_only`/`behavior_only`/`fused` 消融结果；真实 PCAP 没有经过审计的逐请求标签时，

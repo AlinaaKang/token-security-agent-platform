@@ -149,3 +149,14 @@ def test_unverified_action_cannot_finish_as_contained(tmp_path) -> None:
     assert finished.final_status != "contained"
     assert any(item.kind == "response_unavailable" for item in finished.observations)
 
+
+def test_public_evidence_builds_an_authenticity_labeled_timeline(tmp_path) -> None:
+    service = coordinator(tmp_path)
+    task = service.create("调查这批 PCAP 并生成报告")
+    service.authorize(task.task_id, ("pcap:read",))
+
+    finished = service.run_until_blocked(task.task_id)
+
+    assert finished.timeline
+    assert finished.timeline[0].evidence_refs == ("ev_tls_01",)
+    assert finished.timeline[0].authenticity == "real"

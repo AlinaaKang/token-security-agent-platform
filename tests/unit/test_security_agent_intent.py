@@ -19,6 +19,7 @@ from app.security_agent.intent import parse_intent
         ("检测这批 PCAP 文件", "investigate_pcap_dataset"),
         ("分析这个 Prompt 是否存在注入", "investigate_prompt"),
         ("运行跨域攻防演示", "run_cross_domain_demo"),
+        ("运行跨域攻防演示并生成处置报告", "run_cross_domain_demo"),
     ],
 )
 def test_deterministic_intent_fallback(message: str, expected: str) -> None:
@@ -65,4 +66,3 @@ def test_overly_long_or_blank_messages_are_rejected() -> None:
         parse_intent("安" * (MAX_PROMPT_CHARACTERS + 1), None)
     with pytest.raises(ValueError, match="blank"):
         parse_intent("\n \r\n", None)
-

@@ -14,6 +14,29 @@ from app.security_agent.tools import build_registry
 
 
 def _handler(tool_id: str):
+    if tool_id == "query_simulated_telemetry":
+        return lambda _arguments: {
+            "objective": tool_id,
+            "status": "completed",
+            "observation_kind": "direct_attack_signal",
+            "summary": {
+                "analyzed_count": 1,
+                "failed_count": 0,
+                "evidence": [{
+                    "evidence_id": "ev_simulated_endpoint",
+                    "detector": "endpoint_demo",
+                    "attack_candidate": "endpoint_process_anomaly",
+                    "confidence": 0.76,
+                }],
+            },
+        }
+    if tool_id == "verify_response_effect":
+        return lambda _arguments: {
+            "objective": tool_id,
+            "status": "completed",
+            "observation_kind": "response_verified",
+            "summary": "内部仿真处置效果已经独立复核。",
+        }
     return lambda _arguments: {
         "objective": tool_id,
         "status": "completed",
@@ -168,3 +191,28 @@ def test_resource_catalog_and_append_only_feedback_api(tmp_path) -> None:
     assert any(item["authenticity"] == "simulated" for item in connectors.json())
     assert feedback.status_code == 201
     assert feedback.json()["task_id"] == task["task_id"]
+
+
+def test_cross_domain_demo_exposes_observation_replan_counterevidence_and_verification(
+    tmp_path,
+) -> None:
+    with installed(tmp_path) as (client, coordinator):
+        created = client.post(
+            "/api/v1/agent/tasks", json={"message": "运行跨域攻防演示"}
+        ).json()
+        coordinator.authorize(
+            created["task_id"], ("demo:use", "response:execute")
+        )
+        finished = coordinator.run_until_blocked(created["task_id"])
+
+    phases = [event.phase for event in finished.events]
+    assert "plan" in phases
+    assert "observe" in phases
+    assert "replan" in phases
+    assert phases[-1] == "complete"
+    assert any(item.authenticity == "simulated" for item in finished.evidence)
+    assert any(item.authenticity == "simulated" for item in finished.timeline)
+    assert len(finished.hypotheses) >= 2
+    assert any(item.opposing_evidence_refs for item in finished.hypotheses)
+    assert any(item.kind == "response_verified" for item in finished.observations)
+    assert all(item.status in {"succeeded", "failed", "skipped"} for item in finished.plan)

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { App } from "./App";
+import { SuperAgentPage as App } from "./pages/SuperAgentPage";
 
 const reconOverview = {
   enabled: true,

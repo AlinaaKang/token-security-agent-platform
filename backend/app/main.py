@@ -443,6 +443,7 @@ def _initialize_security_agent(application: FastAPI) -> SecurityAgentCoordinator
         return {
             "objective": "cross_domain_case",
             "status": "completed",
+            "observation_kind": "direct_attack_signal",
             "summary": {
                 "analyzed_count": len(evidence),
                 "failed_count": 0,

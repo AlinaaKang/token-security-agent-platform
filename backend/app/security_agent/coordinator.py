@@ -18,6 +18,7 @@ from app.security_agent.models import (
     AgentTaskSnapshot,
     AgentTaskStatus,
     AgentTaskType,
+    AgentTimelineEvent,
 )
 from app.security_agent.planner import HypothesisEvaluator, SecurityAgentPlanner
 from app.security_agent.policy import AgentPlanRejected, validate_plan
@@ -195,6 +196,7 @@ class SecurityAgentCoordinator:
                 completed_step = current.plan[index].model_copy(update={"status": "succeeded"})
                 plan = _replace_step(current.plan, index, completed_step)
                 evidence = _merge_evidence(current.evidence, tool_result.evidence)
+                timeline = _merge_timeline(current.timeline, tool_result.evidence)
                 observations = current.observations + (tool_result.observation,)
                 event = self._event(
                     current,
@@ -208,6 +210,7 @@ class SecurityAgentCoordinator:
                         update={
                             "plan": plan,
                             "evidence": evidence,
+                            "timeline": timeline,
                             "observations": observations,
                         }
                     ),
@@ -217,6 +220,7 @@ class SecurityAgentCoordinator:
                     current,
                     plan=plan,
                     evidence=evidence,
+                    timeline=timeline,
                     observations=observations,
                     hypotheses=evaluated.hypotheses,
                     events=current.events + (event,),
@@ -484,6 +488,21 @@ def _merge_evidence(existing, new_items):
     return tuple(values.values())
 
 
+def _merge_timeline(existing, evidence_items):
+    values = {item.timeline_id: item for item in existing}
+    for evidence in evidence_items:
+        timeline_id = f"timeline_{evidence.evidence_id}"
+        values[timeline_id] = AgentTimelineEvent(
+            timeline_id=timeline_id,
+            occurred_at=evidence.observed_at,
+            source_type=evidence.source_type,
+            authenticity=evidence.authenticity,
+            summary=evidence.summary,
+            evidence_refs=(evidence.evidence_id,),
+        )
+    return tuple(values.values())
+
+
 def _required_scopes(task_type: AgentTaskType) -> frozenset[str]:
     if task_type in {
         AgentTaskType.PCAP_DATASET_INVESTIGATION,
@@ -546,4 +565,3 @@ def _title_for(task_type: AgentTaskType | None) -> str:
 
 def _timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-

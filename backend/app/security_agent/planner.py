@@ -120,6 +120,14 @@ class SecurityAgentPlanner:
                     True,
                 ),
             )
+        elif trigger == "direct_attack_signal":
+            _insert_before_report(
+                templates,
+                _StepTemplate(
+                    "map_attack_framework",
+                    "根据新增攻击信号映射 OWASP 与 MITRE 技战术。",
+                ),
+            )
         elif trigger == "knowledge_shortage":
             templates = [
                 item for item in templates if item.tool_id != "retrieve_security_knowledge"
@@ -160,10 +168,11 @@ class HypothesisEvaluator:
         )
         updated: list[AgentHypothesis] = []
         for hypothesis in snapshot.hypotheses:
-            confidence = min(1.0, max(0.0, hypothesis.confidence + weight))
+            hypothesis_weight = -weight if hypothesis.hypothesis_id == "hyp_02" else weight
+            confidence = min(1.0, max(0.0, hypothesis.confidence + hypothesis_weight))
             supporting = hypothesis.supporting_evidence_refs
             opposing = hypothesis.opposing_evidence_refs
-            if weight > 0:
+            if hypothesis_weight > 0:
                 supporting = _unique(supporting + observation.evidence_refs)
             else:
                 opposing = _unique(opposing + observation.evidence_refs)
@@ -178,7 +187,7 @@ class HypothesisEvaluator:
                 evidence_refs=observation.evidence_refs,
                 reason=(
                     "新增支持证据提高了候选假设置信度。"
-                    if weight > 0
+                    if hypothesis_weight > 0
                     else "新增反对证据降低了候选假设置信度。"
                 ),
                 changed_at=observation.observed_at,
