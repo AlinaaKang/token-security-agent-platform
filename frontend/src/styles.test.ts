@@ -27,3 +27,24 @@ describe("responsive motion styles", () => {
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.result-guide/);
   });
 });
+
+describe("unified color roles", () => {
+  it("uses one blue identity palette and a separate success role", () => {
+    expect(styles).toMatch(/--trusted:\s*#347fbe;/);
+    expect(styles).toMatch(/--trusted-soft:\s*#e7f2fb;/);
+    expect(styles).toMatch(/--success:\s*#2e7d62;/);
+    expect(styles).toMatch(/--success-soft:\s*#edf8f4;/);
+  });
+
+  it("removes the retired dark-green identity palette", () => {
+    for (const retired of ["#147863", "#0e6757", "#0f6755", "#126a58", "#123f36", "#087e70"]) {
+      expect(styles.toLowerCase()).not.toContain(retired);
+    }
+  });
+
+  it("keeps safe and successful outcomes green instead of primary blue", () => {
+    expect(styles).toMatch(/\.semantic-safe strong, \.status-text-allow strong \{ color: var\(--success\); \}/);
+    expect(styles).toMatch(/\.status-allow \{ color: var\(--success\) !important; background: var\(--success-soft\); \}/);
+    expect(styles).toMatch(/\.pcap-detection-counts \.is-success \{ color: var\(--success\); \}/);
+  });
+});
