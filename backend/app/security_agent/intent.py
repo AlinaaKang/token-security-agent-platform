@@ -50,7 +50,10 @@ def _intent(
 
 
 def parse_intent(
-    message: str, context: AgentTaskSnapshot | None
+    message: str,
+    context: AgentTaskSnapshot | None,
+    *,
+    workspace_mode: str | None = None,
 ) -> AgentIntent:
     text = _normalize(message)
     report_requested = any(word in text for word in ("报告", "markdown")) and any(
@@ -76,7 +79,15 @@ def parse_intent(
             "泄露系统提示",
         )
     )
-    prompt_context = context is not None and context.task_type == AgentTaskType.PROMPT_INVESTIGATION
+    prompt_context = (
+        workspace_mode == "prompt"
+        or context is not None and context.workspace_mode == "prompt"
+    ) and not (
+        context is not None and context.task_type in {
+            AgentTaskType.PCAP_CAPTURE_INVESTIGATION,
+            AgentTaskType.PCAP_DATASET_INVESTIGATION,
+        }
+    )
     if unsafe_tool_request and not prompt_action and not prompt_context:
         return _intent("out_of_scope", "拒绝越权工具或策略绕过请求。")
 

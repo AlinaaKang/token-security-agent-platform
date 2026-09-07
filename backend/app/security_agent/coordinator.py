@@ -62,7 +62,7 @@ class SecurityAgentCoordinator:
         self._closed = False
 
     def create(self, message: str, *, workspace_mode: str | None = None) -> AgentTaskSnapshot:
-        intent = parse_intent(message, None)
+        intent = parse_intent(message, None, workspace_mode=workspace_mode)
         resolved_workspace = workspace_mode or (
             "pcap"
             if intent.task_type in {
@@ -545,6 +545,31 @@ class SecurityAgentCoordinator:
         messages = current.messages + (
             self._user_message(now, message),
         )
+        if intent.kind == "investigate_prompt":
+            if self.prompt_runtime is not None:
+                self.prompt_runtime.put(task_id, extract_prompt_sample(message))
+            plan = self.planner.create_plan(intent, self.capabilities)
+            messages += (
+                AgentMessage(
+                    message_id=f"msg_{uuid4().hex}",
+                    role="agent",
+                    kind="status",
+                    content=f"已识别为 Prompt 安全调查，并生成 {len(plan)} 步检测计划。授权后开始执行。",
+                    created_at=now,
+                    evidence_scope="current_case",
+                ),
+            )
+            return self._save(
+                current,
+                task_type=AgentTaskType.PROMPT_INVESTIGATION,
+                status=AgentTaskStatus.AWAITING_AUTHORIZATION,
+                objective_summary=intent.objective_summary,
+                messages=messages,
+                plan=plan,
+                authorization_scopes=(),
+                final_status=None,
+                report=None,
+            )
         if intent.kind in {
             "identity",
             "smalltalk",
